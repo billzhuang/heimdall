@@ -53,6 +53,12 @@ npm run dev -- check --cluster my-cluster --context my-context -n my-namespace
 
 # Verbose mode (shows kubectl commands)
 npm run dev -- check --cluster my-cluster --context my-context -v
+
+# Select a model (shorthand)
+npm run dev -- check --cluster my-cluster --context my-context --model opus
+
+# Select a model (full ID)
+npm run dev -- check --cluster my-cluster --context my-context --model claude-opus-4-5-20251101
 ```
 
 ### CLI Options
@@ -64,6 +70,7 @@ npm run dev -- check --cluster my-cluster --context my-context -v
 | `-k, --kubeconfig <path>` | Path to kubeconfig file |
 | `-n, --namespace <name>` | Namespace to check (default: all) |
 | `-v, --verbose` | Show verbose output including commands |
+| `-m, --model <name>` | Model to use (sonnet, opus, haiku, or full model ID) |
 
 ## Output
 
