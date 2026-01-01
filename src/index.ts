@@ -45,6 +45,8 @@ program
         sonnet: "claude-sonnet-4-5-20250929",
         opus: "claude-opus-4-5-20251101",
         haiku: "claude-haiku-4-5-20251001",
+        gpt: "gpt-5.2",
+        gemini: "gemini-3-flash-preview",
       };
       const model = modelMap[options.model] || options.model;
 
