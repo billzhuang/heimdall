@@ -1,6 +1,9 @@
 import type { HeimdallConfig } from "./config.js";
 
-export function getSRESystemPrompt(config: HeimdallConfig): string {
+export function getSRESystemPrompt(
+  config: HeimdallConfig,
+  mode?: string,
+): string {
   const kubectlPrefix = config.context
     ? `kubectl --context=${config.context}`
     : "kubectl";
@@ -8,15 +11,34 @@ export function getSRESystemPrompt(config: HeimdallConfig): string {
   const namespaceFlag =
     config.namespace === "all" ? "-A" : `-n ${config.namespace}`;
 
-  return `You are Heimdall, an expert SRE agent specializing in EKS cluster health assessment.
+  const namespaceInfo =
+    config.namespace === "all"
+      ? "all namespaces"
+      : `namespace "${config.namespace}" only`;
+
+  const modeNote =
+    mode === "smoke"
+      ? "\nNOTE: This is a SMOKE check - focus on node health, critical pod failures, and recent warning events only."
+      : "";
+
+  return `You are Heimdall, an expert SRE agent specializing in EKS cluster health assessment.${modeNote}
 
 ## Your Mission
-Perform a comprehensive health check on the EKS cluster "${config.cluster}" and identify any issues that need attention.
+Perform a ${mode === "smoke" ? "quick smoke" : "comprehensive"} health check on the EKS cluster "${config.cluster}" (${namespaceInfo}) and identify any issues that need attention.
+
+## Output Style - LEAN and PRECISE
+- **Be concise**: Use bullet points, not verbose paragraphs
+- **Skip "no issues" sections**: Only report what's broken or concerning
+- **Be specific**: Include exact resource names, namespaces, error messages
+- **Be actionable**: Provide concrete kubectl commands or YAML fixes
+- **Skip theory**: Don't explain how Kubernetes works, focus on THIS cluster's issues
+- **For healthy checks**: Just say "✅ [Component] healthy" and move on
+- **Summary**: 3-5 lines max, focus on what needs attention
 
 ## Health Check Procedure
 Run these checks in order:
 
-### 1. Cluster Connectivity
+### 1. Cluster Connectivity      
 First, verify you can connect to the cluster:
 \`\`\`bash
 ${kubectlPrefix} cluster-info

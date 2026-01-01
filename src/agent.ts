@@ -1,4 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { writeFile } from "node:fs/promises";
+import { createInterface } from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 import type { HeimdallConfig } from "./config.js";
 import { getSRESystemPrompt } from "./prompts.js";
 
@@ -6,6 +9,9 @@ export interface RunHealthCheckOptions {
   config: HeimdallConfig;
   verbose?: boolean;
   model?: string;
+  mode?: string;
+  interactive?: boolean;
+  interactiveTranscriptPath?: string;
 }
 
 // Colors for terminal output
@@ -21,22 +27,185 @@ const colors = {
   gray: "\x1b[90m",
 };
 
-export async function runHealthCheck(
-  options: RunHealthCheckOptions,
+type TranscriptEntry = {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: string;
+};
+
+function formatTranscriptEntry(entry: TranscriptEntry): string {
+  return JSON.stringify(entry);
+}
+
+function recordTranscriptEntry(
+  transcript: TranscriptEntry[],
+  role: TranscriptEntry["role"],
+  content: string,
+): void {
+  transcript.push({
+    role,
+    content,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function persistTranscript(
+  transcript: TranscriptEntry[],
+  transcriptPath?: string,
 ): Promise<void> {
-  const { config, verbose, model } = options;
+  if (!transcriptPath) {
+    return;
+  }
 
-  const systemPrompt = getSRESystemPrompt(config);
+  const body = transcript.map(formatTranscriptEntry).join("\n") + "\n";
+  await writeFile(transcriptPath, body, "utf8");
+}
 
-  // Default to Sonnet for cost efficiency (Opus is ~10x more expensive)
-  const selectedModel = model || "claude-sonnet-4-5-20250929";
+type StreamUserMessage = {
+  type: "user";
+  session_id: string;
+  message: {
+    role: "user";
+    content: Array<{ type: "text"; text: string }>;
+  };
+  parent_tool_use_id: null;
+};
 
-  const userPrompt = `Perform a comprehensive health check on the EKS cluster "${config.cluster}".
+class UserMessageQueue implements AsyncIterable<StreamUserMessage> {
+  private closed = false;
+  private queue: StreamUserMessage[] = [];
+  private resolvers: Array<
+    (value: IteratorResult<StreamUserMessage>) => void
+  > = [];
+
+  enqueue(message: StreamUserMessage): void {
+    if (this.closed) {
+      return;
+    }
+
+    const resolver = this.resolvers.shift();
+    if (resolver) {
+      resolver({ value: message, done: false });
+      return;
+    }
+
+    this.queue.push(message);
+  }
+
+  close(): void {
+    if (this.closed) {
+      return;
+    }
+
+    this.closed = true;
+    while (this.resolvers.length > 0) {
+      const resolver = this.resolvers.shift();
+      if (resolver) {
+        resolver({
+          value: undefined as unknown as StreamUserMessage,
+          done: true,
+        });
+      }
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<StreamUserMessage> {
+    return {
+      next: () => {
+        if (this.queue.length > 0) {
+          const message = this.queue.shift();
+          return Promise.resolve({ value: message!, done: false });
+        }
+
+        if (this.closed) {
+          return Promise.resolve({
+            value: undefined as unknown as StreamUserMessage,
+            done: true,
+          });
+        }
+
+        return new Promise<IteratorResult<StreamUserMessage>>((resolve) => {
+          this.resolvers.push(resolve);
+        });
+      },
+    };
+  }
+}
+
+function createUserMessage(text: string): StreamUserMessage {
+  return {
+    type: "user",
+    session_id: "",
+    message: {
+      role: "user",
+      content: [{ type: "text", text }],
+    },
+    parent_tool_use_id: null,
+  };
+}
+
+type ReadlineInterface = ReturnType<typeof createInterface>;
+
+async function promptForFollowUp(
+  rl: ReadlineInterface,
+): Promise<string | null> {
+  try {
+    const answer = (await rl.question(
+      "Follow-up (empty or 'exit' to quit): ",
+    )).trim();
+    if (!answer || answer.toLowerCase() === "exit") {
+      return null;
+    }
+
+    return answer;
+  } catch {
+    return null;
+  }
+}
+
+function buildUserPrompt(
+  config: HeimdallConfig,
+  mode?: string,
+  interactive?: boolean,
+): string {
+  const modeType = mode || "smoke";
+  const namespaceInfo = config.namespace === "all"
+    ? "all namespaces"
+    : `namespace: ${config.namespace}`;
+
+  let basePrompt: string;
+
+  if (modeType === "smoke") {
+    basePrompt = `Perform a QUICK smoke health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
+
+Run these essential checks only:
+
+1. **Node Health** - Check all nodes for NotReady, MemoryPressure, DiskPressure conditions
+2. **Critical Pod Failures** - Check for CrashLoopBackOff, ImagePullBackOff, Pending pods (${namespaceInfo})
+3. **Recent Warning Events** - Last 20 warning events to spot immediate issues
+
+**IMPORTANT - Keep output LEAN and PRECISE:**
+- Only report actual issues found - skip "no issues" sections
+- Use concise bullet points, not verbose paragraphs
+- Include specific resource names and error messages
+- Skip generic explanations - focus on actionable information
+- If everything is healthy, just say "✅ No issues detected" with a brief summary
+
+For each issue found, provide:
+- Severity (CRITICAL or WARNING)
+- Resource name and location
+- Problem description (1-2 sentences max)
+- Suggested fix (command or brief YAML)
+
+At the end, provide a brief summary (3-5 lines max).`;
+  } else {
+    // Existing comprehensive prompt
+    basePrompt = `Perform a comprehensive health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
 
 Check the following in order:
 1. Cluster connectivity
 2. Node health (all nodes)
-3. Pod health (${config.namespace === "all" ? "all namespaces" : `namespace: ${config.namespace}`})
+3. Pod health (${namespaceInfo})
 4. Deployment health
 5. Service health
 6. Recent warning events
@@ -45,14 +214,43 @@ Check the following in order:
 9. Storage (PVC/PV)
 10. Jobs & CronJobs
 
+**IMPORTANT - Keep output LEAN and PRECISE:**
+- Only report actual issues found - skip "no issues" sections
+- Use concise bullet points, not verbose paragraphs
+- Include specific resource names and error messages
+- Skip generic explanations - focus on actionable information
+- For healthy components, just say "✅ [Component] healthy" without details
+
 For each issue found, provide:
 - Severity (CRITICAL or WARNING)
-- Description of the problem
-- Root cause analysis
-- Suggested fix (kubectl command or YAML manifest)
-- Risk level
+- Resource name and location
+- Problem description (1-2 sentences max)
+- Suggested fix (command or brief YAML)
 
-At the end, provide a summary of findings.`;
+At the end, provide a brief summary (3-5 lines max).`;
+  }
+
+  if (!interactive) {
+    return basePrompt;
+  }
+
+  return `${basePrompt}
+
+After the summary, be ready to answer follow-up questions about this run. Do not re-run the full checklist unless asked.`;
+}
+
+export async function runHealthCheck(
+  options: RunHealthCheckOptions,
+): Promise<void> {
+  const { config, verbose, model, mode, interactive, interactiveTranscriptPath } =
+    options;
+
+  const systemPrompt = getSRESystemPrompt(config, mode);
+
+  // Default to Sonnet for cost efficiency (Opus is ~10x more expensive)
+  const selectedModel = model || "claude-sonnet-4-5-20250929";
+
+  const userPrompt = buildUserPrompt(config, mode, interactive);
 
   console.log(
     `\n${colors.cyan}${colors.bright}🔍 Starting health check for cluster: ${config.cluster}${colors.reset}\n`,
@@ -61,20 +259,53 @@ At the end, provide a summary of findings.`;
   console.log(
     `${colors.dim}Context: ${config.context || "default"}${colors.reset}`,
   );
+  console.log(`${colors.dim}Mode: ${mode || "smoke"}${colors.reset}`);
   console.log(`${colors.dim}Model: ${selectedModel}${colors.reset}\n`);
   console.log("─".repeat(60));
 
+  const transcript: TranscriptEntry[] = [];
+  const shouldRecordTranscript = Boolean(
+    interactive || interactiveTranscriptPath,
+  );
+
+  if (shouldRecordTranscript) {
+    recordTranscriptEntry(transcript, "system", systemPrompt);
+    recordTranscriptEntry(transcript, "user", userPrompt);
+    await persistTranscript(transcript, interactiveTranscriptPath);
+  }
+
+  const queryOptions = {
+    allowedTools: ["Bash"],
+    systemPrompt,
+    permissionMode: "bypassPermissions" as const,
+    model: selectedModel,
+    ...(interactive || interactiveTranscriptPath
+      ? { persistSession: false }
+      : {}),
+  };
+
+  const messageQueue = interactive ? new UserMessageQueue() : null;
+  const rl = interactive ? createInterface({ input, output }) : null;
+
+  if (interactive && messageQueue) {
+    messageQueue.enqueue(createUserMessage(userPrompt));
+  }
+
+  let assistantBuffer = "";
+  let shouldExit = false;
+
   try {
-    for await (const message of query({
-      prompt: userPrompt,
-      options: {
-        allowedTools: ["Bash"],
-        systemPrompt,
-        permissionMode: "bypassPermissions",
-        model: selectedModel,
-      },
-    })) {
+    const queryStream = query({
+      prompt: interactive && messageQueue ? messageQueue : userPrompt,
+      options: queryOptions,
+    });
+
+    for await (const message of queryStream) {
       // Handle different message types
+      if (shouldExit) {
+        break;
+      }
+
       if ("type" in message) {
         const msg = message as Record<string, unknown>;
 
@@ -102,6 +333,7 @@ At the end, provide a summary of findings.`;
               // Text output from assistant
               if (block.type === "text" && block.text) {
                 console.log(block.text);
+                assistantBuffer += block.text + "\n";
               }
               // Tool use - show what command is being run
               if (block.type === "tool_use") {
@@ -162,9 +394,7 @@ At the end, provide a summary of findings.`;
             console.log(
               `${colors.green}${colors.bright}✅ Health check complete${colors.reset}\n`,
             );
-            if (msg.result) {
-              console.log(msg.result as string);
-            }
+            // Note: Don't print msg.result here - it was already streamed in real-time
           } else {
             console.log(
               `${colors.yellow}⚠️  Health check finished with status: ${msg.subtype}${colors.reset}\n`,
@@ -182,7 +412,35 @@ At the end, provide a summary of findings.`;
               `${colors.dim}Duration: ${((msg.duration_ms as number) / 1000).toFixed(1)}s${colors.reset}`,
             );
           }
+
+          if (assistantBuffer.trim().length > 0 && shouldRecordTranscript) {
+            recordTranscriptEntry(
+              transcript,
+              "assistant",
+              assistantBuffer.trim(),
+            );
+            assistantBuffer = "";
+          }
+
+          if (shouldRecordTranscript) {
+            await persistTranscript(transcript, interactiveTranscriptPath);
+          }
+
+          if (interactive && messageQueue && rl) {
+            const followUp = await promptForFollowUp(rl);
+            if (!followUp) {
+              rl.close();
+              messageQueue.close();
+              shouldExit = true;
+              await queryStream.interrupt();
+            } else {
+              recordTranscriptEntry(transcript, "user", followUp);
+              await persistTranscript(transcript, interactiveTranscriptPath);
+              messageQueue.enqueue(createUserMessage(followUp));
+            }
+          }
         }
+
       }
     }
   } catch (error) {
@@ -195,6 +453,9 @@ At the end, provide a summary of findings.`;
       }
     } else {
       console.error("\n❌ An unknown error occurred");
+    }
+    if (rl) {
+      rl.close();
     }
     process.exit(1);
   }

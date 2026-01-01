@@ -4,6 +4,7 @@ import "dotenv/config";
 import { Command } from "commander";
 import { loadConfig, validateConfig } from "./config.js";
 import { runHealthCheck } from "./agent.js";
+import { getModelId } from "./constants.js";
 
 const program = new Command();
 
@@ -15,45 +16,66 @@ program
 program
   .command("check")
   .description("Run health checks on an EKS cluster")
-  .requiredOption("-c, --cluster <name>", "EKS cluster name")
+  .option("-c, --cluster <name>", "EKS cluster name (interactive if not provided)")
   .option(
     "-k, --kubeconfig <path>",
     "Path to kubeconfig file",
     process.env.KUBECONFIG,
   )
   .option("--context <name>", "Kubernetes context to use")
-  .option("-n, --namespace <name>", "Namespace to check (default: all)", "all")
+  .option("-n, --namespace <name>", "Namespace to check (default: all)")
   .option("-v, --verbose", "Show verbose output including tool calls", false)
+  .option("--interactive", "Enable post-report interactive Q&A", false)
+  .option(
+    "--interactive-transcript <path>",
+    "Write interactive transcript to path (JSONL)",
+  )
   .option(
     "-m, --model <name>",
     "Claude model to use (sonnet, opus, haiku)",
-    "sonnet",
+  )
+  .option(
+    "--mode <type>",
+    "Health check mode: smoke (quick) or all (comprehensive)",
   )
   .action(async (options) => {
     try {
+      // Check if interactive prompting is needed
+      const shouldPrompt = !options.cluster;
+      let finalOptions = options;
+
+      if (shouldPrompt) {
+        // Lazy import interactive module
+        const { promptForMissingParams } = await import("./interactive.js");
+
+        // Prompt for missing parameters BEFORE validation
+        finalOptions = await promptForMissingParams(options);
+      }
+
+      // Apply defaults for options not provided (after interactive prompting)
+      finalOptions.namespace = finalOptions.namespace || "all";
+      finalOptions.model = finalOptions.model || "sonnet";
+      finalOptions.mode = finalOptions.mode || "smoke";
+
       const config = loadConfig({
-        cluster: options.cluster,
-        kubeconfig: options.kubeconfig,
-        context: options.context,
-        namespace: options.namespace,
+        cluster: finalOptions.cluster,
+        kubeconfig: finalOptions.kubeconfig,
+        context: finalOptions.context,
+        namespace: finalOptions.namespace,
       });
 
       validateConfig(config);
 
-      // Map model shorthand to full model name
-      const modelMap: Record<string, string> = {
-        sonnet: "claude-sonnet-4-5-20250929",
-        opus: "claude-opus-4-5-20251101",
-        haiku: "claude-haiku-4-5-20251001",
-        gpt: "gpt-5.2",
-        gemini: "gemini-3-flash-preview",
-      };
-      const model = modelMap[options.model] || options.model;
+      // Map model shorthand to full model ID
+      const model = getModelId(finalOptions.model);
 
       await runHealthCheck({
         config,
-        verbose: options.verbose,
+        verbose: finalOptions.verbose,
         model,
+        mode: finalOptions.mode,
+        interactive: finalOptions.interactive,
+        interactiveTranscriptPath: finalOptions.interactiveTranscript,
       });
     } catch (error) {
       if (error instanceof Error) {

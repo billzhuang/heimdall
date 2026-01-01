@@ -6,6 +6,9 @@ Heimdall performs comprehensive health checks on your EKS clusters, identifies i
 
 ## Features
 
+- **Smoke Mode** (Default, ~30s) - Quick checks: Node health, Critical pod failures, Recent warning events
+- **All Mode** (~2-3min) - Comprehensive: All 10 health check categories
+- **Interactive Mode** - Prompts for cluster, context, namespace, mode, and model selection
 - **Cluster Connectivity** - Verify control plane access
 - **Node Health** - NotReady, MemoryPressure, DiskPressure, resource overcommitment
 - **Pod Health** - CrashLoopBackOff, Pending, Failed, OOMKilled, high restarts
@@ -41,12 +44,85 @@ cp .env.example .env
 
 ## Usage
 
+### Interactive Mode (Recommended)
+
+Run the check command without flags to enter interactive mode:
+
 ```bash
-# Run health check
+# Easiest - use the interactive script
+npm run interactive
+
+# Or use tsx directly
+npx tsx src/index.ts check
+
+# Or build and run the production version
+npm run build
+node dist/index.js check
+```
+
+You'll be prompted to select:
+- **Kubernetes context** (from your kubeconfig)
+- **Cluster name**
+- **Namespace** to check
+- **Health check mode** (smoke or comprehensive)
+- **Model** to use (Sonnet, Opus, or Haiku)
+
+Interactive mode example:
+```
+Welcome to Heimdall - EKS Health Check Agent
+
+📁 Kubeconfig: /Users/user/.kube/config
+
+Available contexts:
+  1. arn:aws:eks:us-east-1:123456789:cluster/prod-cluster [current]
+  2. arn:aws:eks:us-west-2:987654321:cluster/staging-cluster
+
+? Select context (enter number or press Enter for current): 1
+? Enter cluster name: prod-cluster
+
+Namespace to check:
+  1. All namespaces
+  2. Select from available namespaces
+  3. Type a specific namespace
+? Select option (1-3): [1] 2
+
+Available namespaces:
+  1. default
+  2. kube-system
+  3. kube-public
+  4. my-app
+  5. monitoring
+? Select namespace (1-5): 4
+
+Health check mode:
+  1. Smoke - Quick health check
+     Node health, critical pod failures, recent warning events (~30s)
+  2. All - Comprehensive check
+     All 10 categories: nodes, pods, deployments, services, events, helm, configs, storage, jobs (~2-3min)
+
+? Select mode (1-2): [1] 1
+
+? Select model:
+  1. Sonnet - Recommended
+  2. Opus - Most capable
+  3. Haiku - Fastest
+  4. GPT - OpenAI
+  5. Gemini - Google
+? Choice (1-5): [1] 1
+
+🔍 Starting health check for cluster: prod-cluster
+```
+
+### Automated Mode (CI/CD)
+
+For automation, provide all flags explicitly:
+
+```bash
+# Quick smoke check (default)
 npm run dev -- check --cluster <cluster-name> --context <k8s-context>
 
-# Example
-npm run dev -- check --cluster my-cluster --context arn:aws:eks:us-east-1:123456789:cluster/my-cluster
+# Comprehensive check
+npm run dev -- check --cluster <cluster-name> --context <k8s-context> --mode all
 
 # Check specific namespace
 npm run dev -- check --cluster my-cluster --context my-context -n my-namespace
@@ -59,18 +135,61 @@ npm run dev -- check --cluster my-cluster --context my-context --model opus
 
 # Select a model (full ID)
 npm run dev -- check --cluster my-cluster --context my-context --model claude-opus-4-5-20251101
+
+# Post-report interactive Q&A
+npm run dev -- check --cluster my-cluster --context my-context --interactive
 ```
 
 ### CLI Options
 
-| Option | Description |
-|--------|-------------|
-| `-c, --cluster <name>` | EKS cluster name (required) |
-| `--context <name>` | Kubernetes context to use |
-| `-k, --kubeconfig <path>` | Path to kubeconfig file |
-| `-n, --namespace <name>` | Namespace to check (default: all) |
-| `-v, --verbose` | Show verbose output including commands |
-| `-m, --model <name>` | Model to use (sonnet, opus, haiku, or full model ID) |
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-c, --cluster <name>` | EKS cluster name (interactive if not provided) | - |
+| `--context <name>` | Kubernetes context to use | - |
+| `-k, --kubeconfig <path>` | Path to kubeconfig file | `~/.kube/config` |
+| `-n, --namespace <name>` | Namespace to check | `all` |
+| `--mode <type>` | Health check mode: `smoke` (quick) or `all` (comprehensive) | `smoke` |
+| `-m, --model <name>` | Model to use: `sonnet`, `opus`, `haiku`, or full model ID | `sonnet` |
+| `-v, --verbose` | Show verbose output including commands | `false` |
+| `--interactive` | Enable post-report interactive Q&A | `false` |
+| `--interactive-transcript <path>` | Write interactive transcript to path (JSONL) | - |
+
+## Health Check Modes
+
+### Smoke Mode (Default, ~30 seconds)
+
+Quick validation of cluster health. Checks:
+- **Node Health**: NotReady nodes, MemoryPressure, DiskPressure
+- **Critical Pod Failures**: CrashLoopBackOff, ImagePullBackOff, Pending
+- **Recent Warning Events**: Last 20 events for immediate issues
+
+Use for: Quick validation, pre-deployment checks, monitoring
+
+```bash
+npm run dev -- check --cluster my-cluster --context my-context --mode smoke
+# Or simply omit --mode (smoke is default)
+npm run dev -- check --cluster my-cluster --context my-context
+```
+
+### All Mode (~2-3 minutes)
+
+Comprehensive health check covering all 10 categories:
+1. Cluster connectivity
+2. Node health
+3. Pod health
+4. Deployment health
+5. Service health
+6. Recent warning events
+7. Helm releases
+8. ConfigMaps & Secrets
+9. Storage (PVC/PV)
+10. Jobs & CronJobs
+
+Use for: Deep troubleshooting, regular audits, post-incident analysis
+
+```bash
+npm run dev -- check --cluster my-cluster --context my-context --mode all
+```
 
 ## Output
 
