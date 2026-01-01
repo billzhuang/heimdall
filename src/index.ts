@@ -19,15 +19,16 @@ program
   .option(
     "-k, --kubeconfig <path>",
     "Path to kubeconfig file",
-    process.env.KUBECONFIG
+    process.env.KUBECONFIG,
   )
   .option("--context <name>", "Kubernetes context to use")
-  .option(
-    "-n, --namespace <name>",
-    "Namespace to check (default: all)",
-    "all"
-  )
+  .option("-n, --namespace <name>", "Namespace to check (default: all)", "all")
   .option("-v, --verbose", "Show verbose output including tool calls", false)
+  .option(
+    "-m, --model <name>",
+    "Claude model to use (sonnet, opus, haiku)",
+    "sonnet",
+  )
   .action(async (options) => {
     try {
       const config = loadConfig({
@@ -39,9 +40,18 @@ program
 
       validateConfig(config);
 
+      // Map model shorthand to full model name
+      const modelMap: Record<string, string> = {
+        sonnet: "claude-sonnet-4-5-20250929",
+        opus: "claude-opus-4-5-20251101",
+        haiku: "claude-haiku-4-5-20251001",
+      };
+      const model = modelMap[options.model] || options.model;
+
       await runHealthCheck({
         config,
         verbose: options.verbose,
+        model,
       });
     } catch (error) {
       if (error instanceof Error) {

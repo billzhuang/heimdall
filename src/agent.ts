@@ -5,6 +5,7 @@ import { getSRESystemPrompt } from "./prompts.js";
 export interface RunHealthCheckOptions {
   config: HeimdallConfig;
   verbose?: boolean;
+  model?: string;
 }
 
 // Colors for terminal output
@@ -21,11 +22,14 @@ const colors = {
 };
 
 export async function runHealthCheck(
-  options: RunHealthCheckOptions
+  options: RunHealthCheckOptions,
 ): Promise<void> {
-  const { config, verbose } = options;
+  const { config, verbose, model } = options;
 
   const systemPrompt = getSRESystemPrompt(config);
+
+  // Default to Sonnet for cost efficiency (Opus is ~10x more expensive)
+  const selectedModel = model || "claude-sonnet-4-5-20250929";
 
   const userPrompt = `Perform a comprehensive health check on the EKS cluster "${config.cluster}".
 
@@ -50,9 +54,14 @@ For each issue found, provide:
 
 At the end, provide a summary of findings.`;
 
-  console.log(`\n${colors.cyan}${colors.bright}🔍 Starting health check for cluster: ${config.cluster}${colors.reset}\n`);
+  console.log(
+    `\n${colors.cyan}${colors.bright}🔍 Starting health check for cluster: ${config.cluster}${colors.reset}\n`,
+  );
   console.log(`${colors.dim}Namespace: ${config.namespace}${colors.reset}`);
-  console.log(`${colors.dim}Context: ${config.context || "default"}${colors.reset}\n`);
+  console.log(
+    `${colors.dim}Context: ${config.context || "default"}${colors.reset}`,
+  );
+  console.log(`${colors.dim}Model: ${selectedModel}${colors.reset}\n`);
   console.log("─".repeat(60));
 
   try {
@@ -62,6 +71,7 @@ At the end, provide a summary of findings.`;
         allowedTools: ["Bash"],
         systemPrompt,
         permissionMode: "bypassPermissions",
+        model: selectedModel,
       },
     })) {
       // Handle different message types
@@ -72,12 +82,21 @@ At the end, provide a summary of findings.`;
         if (msg.type === "system" && msg.subtype === "init") {
           console.log(`${colors.green}✓ Agent initialized${colors.reset}`);
           console.log(`${colors.dim}  Model: ${msg.model}${colors.reset}`);
-          console.log(`${colors.dim}  Tools: ${(msg.tools as string[])?.join(", ")}${colors.reset}\n`);
+          console.log(
+            `${colors.dim}  Tools: ${(msg.tools as string[])?.join(", ")}${colors.reset}\n`,
+          );
         }
 
         // Assistant messages (thinking/text)
         if (msg.type === "assistant") {
-          const content = msg.message as { content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> };
+          const content = msg.message as {
+            content?: Array<{
+              type: string;
+              text?: string;
+              name?: string;
+              input?: unknown;
+            }>;
+          };
           if (content?.content) {
             for (const block of content.content) {
               // Text output from assistant
@@ -86,18 +105,28 @@ At the end, provide a summary of findings.`;
               }
               // Tool use - show what command is being run
               if (block.type === "tool_use") {
-                const input = block.input as { command?: string; description?: string };
-                console.log(`\n${colors.yellow}${colors.bright}🔧 Running: ${block.name}${colors.reset}`);
+                const input = block.input as {
+                  command?: string;
+                  description?: string;
+                };
+                console.log(
+                  `\n${colors.yellow}${colors.bright}🔧 Running: ${block.name}${colors.reset}`,
+                );
                 if (input?.description) {
-                  console.log(`${colors.dim}   ${input.description}${colors.reset}`);
+                  console.log(
+                    `${colors.dim}   ${input.description}${colors.reset}`,
+                  );
                 }
                 if (input?.command && verbose) {
-                  console.log(`${colors.gray}   $ ${input.command}${colors.reset}`);
+                  console.log(
+                    `${colors.gray}   $ ${input.command}${colors.reset}`,
+                  );
                 } else if (input?.command) {
                   // Show truncated command
-                  const cmd = input.command.length > 80
-                    ? input.command.substring(0, 80) + "..."
-                    : input.command;
+                  const cmd =
+                    input.command.length > 80
+                      ? input.command.substring(0, 80) + "..."
+                      : input.command;
                   console.log(`${colors.gray}   $ ${cmd}${colors.reset}`);
                 }
               }
@@ -107,7 +136,9 @@ At the end, provide a summary of findings.`;
 
         // User messages (tool results)
         if (msg.type === "user" && verbose) {
-          const content = msg.message as { content?: Array<{ type: string; content?: string }> };
+          const content = msg.message as {
+            content?: Array<{ type: string; content?: string }>;
+          };
           if (content?.content) {
             for (const block of content.content) {
               if (block.type === "tool_result" && block.content) {
@@ -115,7 +146,9 @@ At the end, provide a summary of findings.`;
                 const lines = block.content.split("\n").slice(0, 10);
                 console.log(`${colors.dim}${lines.join("\n")}${colors.reset}`);
                 if (block.content.split("\n").length > 10) {
-                  console.log(`${colors.dim}   ... (${block.content.split("\n").length - 10} more lines)${colors.reset}`);
+                  console.log(
+                    `${colors.dim}   ... (${block.content.split("\n").length - 10} more lines)${colors.reset}`,
+                  );
                 }
               }
             }
@@ -126,27 +159,37 @@ At the end, provide a summary of findings.`;
         if (msg.type === "result") {
           console.log("\n" + "─".repeat(60));
           if (msg.subtype === "success") {
-            console.log(`${colors.green}${colors.bright}✅ Health check complete${colors.reset}\n`);
+            console.log(
+              `${colors.green}${colors.bright}✅ Health check complete${colors.reset}\n`,
+            );
             if (msg.result) {
               console.log(msg.result as string);
             }
           } else {
-            console.log(`${colors.yellow}⚠️  Health check finished with status: ${msg.subtype}${colors.reset}\n`);
+            console.log(
+              `${colors.yellow}⚠️  Health check finished with status: ${msg.subtype}${colors.reset}\n`,
+            );
           }
 
           // Show usage stats
           if (msg.total_cost_usd !== undefined) {
-            console.log(`\n${colors.dim}Cost: $${(msg.total_cost_usd as number).toFixed(4)}${colors.reset}`);
+            console.log(
+              `\n${colors.dim}Cost: $${(msg.total_cost_usd as number).toFixed(4)}${colors.reset}`,
+            );
           }
           if (msg.duration_ms !== undefined) {
-            console.log(`${colors.dim}Duration: ${((msg.duration_ms as number) / 1000).toFixed(1)}s${colors.reset}`);
+            console.log(
+              `${colors.dim}Duration: ${((msg.duration_ms as number) / 1000).toFixed(1)}s${colors.reset}`,
+            );
           }
         }
       }
     }
   } catch (error) {
     if (error instanceof Error) {
-      console.error(`\n${colors.bright}❌ Error running health check: ${error.message}${colors.reset}`);
+      console.error(
+        `\n${colors.bright}❌ Error running health check: ${error.message}${colors.reset}`,
+      );
       if (verbose) {
         console.error(error.stack);
       }
