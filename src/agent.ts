@@ -176,30 +176,13 @@ function buildUserPrompt(
   let basePrompt: string;
 
   if (modeType === "smoke") {
-    basePrompt = `Perform a QUICK smoke health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
+    basePrompt = `Perform a quick smoke health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
 
-Run these essential checks only:
-
-1. **Node Health** - Check all nodes for NotReady, MemoryPressure, DiskPressure conditions
-2. **Critical Pod Failures** - Check for CrashLoopBackOff, ImagePullBackOff, Pending pods (${namespaceInfo})
-3. **Recent Warning Events** - Last 20 warning events to spot immediate issues
-
-**IMPORTANT - Keep output LEAN and PRECISE:**
-- Only report actual issues found - skip "no issues" sections
-- Use concise bullet points, not verbose paragraphs
-- Include specific resource names and error messages
-- Skip generic explanations - focus on actionable information
-- If everything is healthy, just say "✅ No issues detected" with a brief summary
-
-For each issue found, provide:
-- Severity (CRITICAL or WARNING)
-- Resource name and location
-- Problem description (1-2 sentences max)
-- Suggested fix (command or brief YAML)
-
-At the end, provide a brief summary (3-5 lines max).`;
+Run these essential checks:
+1. Node Health - Check all nodes for NotReady, MemoryPressure, DiskPressure conditions
+2. Critical Pod Failures - Check for CrashLoopBackOff, ImagePullBackOff, Pending pods
+3. Recent Warning Events - Last 20 warning events to spot immediate issues`;
   } else {
-    // Existing comprehensive prompt
     basePrompt = `Perform a comprehensive health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
 
 Check the following in order:
@@ -212,22 +195,7 @@ Check the following in order:
 7. Helm releases
 8. ConfigMaps & Secrets
 9. Storage (PVC/PV)
-10. Jobs & CronJobs
-
-**IMPORTANT - Keep output LEAN and PRECISE:**
-- Only report actual issues found - skip "no issues" sections
-- Use concise bullet points, not verbose paragraphs
-- Include specific resource names and error messages
-- Skip generic explanations - focus on actionable information
-- For healthy components, just say "✅ [Component] healthy" without details
-
-For each issue found, provide:
-- Severity (CRITICAL or WARNING)
-- Resource name and location
-- Problem description (1-2 sentences max)
-- Suggested fix (command or brief YAML)
-
-At the end, provide a brief summary (3-5 lines max).`;
+10. Jobs & CronJobs`;
   }
 
   if (!interactive) {
