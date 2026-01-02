@@ -18,12 +18,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Run built CLI: `npm start -- check --cluster <cluster-name>`
 
 ## Architecture
-- CLI entrypoint: `src/index.ts` defines the `check` command (Commander), parses flags, triggers interactive prompts if cluster is missing, loads config, validates inputs, and calls `runHealthCheck`.
+- CLI entrypoint: `src/index.ts` defines the `check` command (Commander), parses flags, triggers interactive prompts if no parameters provided, loads config, validates inputs, and calls `runHealthCheck`.
 - Interactive module: `src/interactive.ts` provides readline prompts for cluster, context, namespace, mode, and model selection. Parses kubeconfig to show available contexts.
-- Agent runtime: `src/agent.ts` builds the system and user prompts based on mode (smoke vs all), configures the model/namespace, streams Claude responses, logs tool usage, and prints the final summary.
+- Agent runtime: `src/agent.ts` builds the system and user prompts based on mode (smoke vs all), configures the model/namespace, streams Claude responses, logs tool usage, and prints the final summary. Supports interactive chat mode for follow-up questions.
 - Prompts: `src/prompts.ts` contains the system prompt with kubectl examples. User prompt is built in agent.ts based on health check mode.
 - Config resolution: `src/config.ts` loads kubeconfig/context defaults and validates required inputs (cluster, API key).
-- Domain types: `src/types.ts` defines the health report shapes and agent message types used across the runtime.
+- Constants: `src/constants.ts` defines model mapping (shorthand to full model IDs) for Sonnet, Opus, Haiku, GPT, and Gemini.
+- Types: `src/types.ts` is currently minimal (reserved for future type definitions).
 
 ## CLI usage notes (from README)
 - Requires Node.js 18+, `kubectl` access to the cluster, and `ANTHROPIC_API_KEY` in the environment.

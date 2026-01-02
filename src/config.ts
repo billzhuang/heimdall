@@ -39,17 +39,3 @@ export function validateConfig(config: HeimdallConfig): void {
     );
   }
 }
-
-export function getKubectlContext(config: HeimdallConfig): string {
-  const parts: string[] = [];
-
-  if (config.kubeconfig) {
-    parts.push(`--kubeconfig=${config.kubeconfig}`);
-  }
-
-  if (config.context) {
-    parts.push(`--context=${config.context}`);
-  }
-
-  return parts.join(" ");
-}

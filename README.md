@@ -23,7 +23,6 @@ Heimdall performs comprehensive health checks on your EKS clusters, identifies i
 ## Prerequisites
 
 - Node.js 18+
-- [Claude Code CLI](https://claude.ai/code) installed
 - `kubectl` configured with access to your EKS cluster
 - `ANTHROPIC_API_KEY` environment variable
 
@@ -37,9 +36,8 @@ cd heimdall
 # Install dependencies
 npm install
 
-# Set up environment
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Set up environment variable
+export ANTHROPIC_API_KEY="your-api-key-here"
 ```
 
 ## Usage
@@ -52,12 +50,9 @@ Run the check command without flags to enter interactive mode:
 # Easiest - use the interactive script
 npm run interactive
 
-# Or use tsx directly
-npx tsx src/index.ts check
-
 # Or build and run the production version
 npm run build
-node dist/index.js check
+npm start -- check
 ```
 
 You'll be prompted to select:
