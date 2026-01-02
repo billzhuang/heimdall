@@ -40,7 +40,6 @@ export interface CLIOptions {
   model?: string;
   mode?: string;
   verbose?: boolean;
-  interactive?: boolean;
   interactiveTranscript?: string;
 }
 
