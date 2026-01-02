@@ -33,3 +33,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Health check modes: `smoke` (default, quick) or `all` (comprehensive).
 - Common options: `--cluster`, `--context`, `--kubeconfig`, `--namespace`, `--mode`, `--verbose`, `--model` (see README for full list).
 - Model selection uses shorthand mapping (`sonnet`, `opus`, `haiku`) or any full model ID string via `--model`.
+
+## Claude Code tool usage
+- If the built-in web_search tool fails or is unavailable, try using the Tavily MCP server for web search capabilities.

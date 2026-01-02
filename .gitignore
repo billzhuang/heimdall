@@ -19,6 +19,7 @@ dist/
 # Logs
 *.log
 npm-debug.log*
+logs.txt
 
 # TypeScript cache
 *.tsbuildinfo
