@@ -36,3 +36,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Claude Code tool usage
 - If the built-in web_search tool fails or is unavailable, try using the Tavily MCP server for web search capabilities.
+- For querying library documentation and code examples, use the MCP Context7 server (resolve-library-id and query-docs tools).

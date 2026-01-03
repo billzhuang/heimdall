@@ -81,16 +81,10 @@ Modes:
         // Traditional mode - no chat
         interactiveMode = false;
       } else {
-        // Mode 2: Interactive - Prompt for everything
-        const { promptForMissingParams } = await import("./interactive.js");
-        finalOptions = await promptForMissingParams(options);
-
-        // Enable interactive chat mode
-        interactiveMode = true;
-        console.log(
-          `${colors.cyan}${colors.bright}💬 Interactive mode${colors.reset} - ` +
-          `You can ask follow-up questions after the health check completes.\n`
-        );
+        // Mode 2: Interactive - Enter chat mode
+        const { runInteractiveChatMode } = await import("./interactive.js");
+        await runInteractiveChatMode(options);
+        return; // Exit after chat mode ends
       }
 
       // Apply defaults for options not provided (after interactive prompting)

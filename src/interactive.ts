@@ -394,6 +394,139 @@ async function promptForModel(): Promise<string> {
   }
 }
 
+export interface ParsedCommand {
+  action: 'check' | 'help' | 'exit' | 'unknown';
+  mode?: 'smoke' | 'all';
+  model?: string;
+  rawInput: string;
+}
+
+export function parseHealthCheckCommand(input: string): ParsedCommand {
+  const normalized = input.toLowerCase().trim();
+
+  // Exit commands
+  if (['exit', 'quit', 'q'].includes(normalized)) {
+    return { action: 'exit', rawInput: input };
+  }
+
+  // Help commands
+  if (['help', '?', 'h'].includes(normalized)) {
+    return { action: 'help', rawInput: input };
+  }
+
+  // Default to 'check' action if any health-check related keywords
+  const checkKeywords = ['check', 'run', 'test', 'scan', 'analyze', 'health'];
+  const isCheckCommand = checkKeywords.some(kw => normalized.includes(kw));
+
+  if (!isCheckCommand && normalized.length > 0) {
+    return { action: 'unknown', rawInput: input };
+  }
+
+  // Extract mode (smoke/quick vs all/comprehensive/full)
+  let mode: 'smoke' | 'all' = 'smoke';
+
+  if (normalized.match(/\b(all|comprehensive|full|complete|thorough|deep)\b/)) {
+    mode = 'all';
+  } else if (normalized.match(/\b(smoke|quick|fast|rapid|brief)\b/)) {
+    mode = 'smoke';
+  }
+
+  // Extract model (opus, sonnet, haiku, gpt, gemini)
+  let model: string = 'sonnet';
+
+  const modelNames = Object.keys(MODEL_MAP);
+  for (const modelName of modelNames) {
+    if (normalized.includes(modelName)) {
+      model = modelName;
+      break;
+    }
+  }
+
+  return {
+    action: 'check',
+    mode,
+    model,
+    rawInput: input
+  };
+}
+
+function displayChatHelp(): void {
+  console.log(`${colors.cyan}${colors.bright}Available Commands:${colors.reset}`);
+  console.log(`${colors.dim}  • "run quick check"          - Smoke test with default model${colors.reset}`);
+  console.log(`${colors.dim}  • "run check with opus"      - Smoke test with Opus${colors.reset}`);
+  console.log(`${colors.dim}  • "comprehensive check"      - Full check all categories${colors.reset}`);
+  console.log(`${colors.dim}  • "all check with haiku"     - Full check with Haiku${colors.reset}`);
+  console.log(`${colors.dim}  • "help"                     - Show this help${colors.reset}`);
+  console.log(`${colors.dim}  • "exit"                     - Quit${colors.reset}\n`);
+  console.log(`${colors.gray}Available models: ${Object.keys(MODEL_MAP).join(', ')}${colors.reset}`);
+}
+
+async function promptForInitialSetup(
+  options: CLIOptions,
+): Promise<{
+  cluster: string;
+  context: string;
+  namespace: string;
+  kubeconfig: string;
+}> {
+  // Check if we're in a TTY environment
+  if (!process.stdin.isTTY) {
+    throw new Error(
+      "Interactive mode requires a terminal. Please provide --cluster, --context, and other required flags.",
+    );
+  }
+
+  console.log(`${colors.cyan}${colors.bright}Welcome to Heimdall - Interactive Health Check${colors.reset}\n`);
+
+  const finalOptions: Partial<CLIOptions> = { ...options };
+
+  // Determine kubeconfig path
+  const kubeconfigPath = options.kubeconfig ||
+    process.env.KUBECONFIG ||
+    resolve(homedir(), ".kube/config");
+
+  console.log(`${colors.dim}📁 Kubeconfig: ${kubeconfigPath}${colors.reset}`);
+
+  // Prompt for context if not provided
+  if (!finalOptions.context) {
+    const kubeconfigData = await parseKubeconfig(kubeconfigPath);
+
+    if (kubeconfigData && kubeconfigData.contexts.length > 0) {
+      const contextNames = kubeconfigData.contexts.map((ctx) => ctx.name);
+      const currentContext = kubeconfigData["current-context"];
+
+      finalOptions.context = await promptForContext(contextNames, currentContext);
+    } else {
+      console.log(
+        `${colors.yellow}⚠️  Could not parse kubeconfig at ${kubeconfigPath}${colors.reset}`,
+      );
+      console.log(`${colors.dim}   Falling back to manual context entry.${colors.reset}\n`);
+
+      finalOptions.context = await promptForManualContext();
+    }
+  }
+
+  // Prompt for cluster name if not provided
+  if (!finalOptions.cluster) {
+    finalOptions.cluster = await promptForClusterName();
+  }
+
+  // Prompt for namespace if not provided
+  if (!finalOptions.namespace) {
+    finalOptions.namespace = await promptForNamespace(
+      finalOptions.context,
+      kubeconfigPath,
+    );
+  }
+
+  return {
+    cluster: finalOptions.cluster!,
+    context: finalOptions.context!,
+    namespace: finalOptions.namespace!,
+    kubeconfig: kubeconfigPath,
+  };
+}
+
 export async function promptForMissingParams(
   options: CLIOptions,
 ): Promise<CLIOptions> {
@@ -463,3 +596,108 @@ export async function promptForMissingParams(
 
   return finalOptions;
 }
+
+export async function runInteractiveChatMode(
+  options: CLIOptions,
+): Promise<void> {
+  // Step 1: Collect initial parameters (cluster, context, namespace)
+  const setupParams = await promptForInitialSetup(options);
+
+  // Step 2: Display welcome and help
+  console.log(`\n${colors.green}✓ Setup complete!${colors.reset}`);
+  console.log(`${colors.dim}Cluster: ${setupParams.cluster}${colors.reset}`);
+  console.log(`${colors.dim}Context: ${setupParams.context}${colors.reset}`);
+  console.log(`${colors.dim}Namespace: ${setupParams.namespace}${colors.reset}\n`);
+
+  displayChatHelp();
+
+  // Import dependencies we'll need for health checks
+  const { loadConfig, validateConfig } = await import("./config.js");
+  const { runHealthCheck } = await import("./agent.js");
+  const { getModelId } = await import("./constants.js");
+
+  // Step 3: Chat loop
+  const rl = createInterface({ input, output });
+
+  try {
+    while (true) {
+      const userInput = (
+        await rl.question(`\n${colors.cyan}heimdall>${colors.reset} `)
+      ).trim();
+
+      if (!userInput) continue;
+
+      const parsed = parseHealthCheckCommand(userInput);
+
+      switch (parsed.action) {
+        case 'exit':
+          console.log(`\n${colors.dim}Goodbye!${colors.reset}\n`);
+          rl.close();
+          return;
+
+        case 'help':
+          console.log(); // Add spacing
+          displayChatHelp();
+          break;
+
+        case 'unknown':
+          console.log(`${colors.yellow}⚠️  Unknown command. Type 'help' for available commands.${colors.reset}`);
+          break;
+
+        case 'check':
+          try {
+            // Load config
+            const config = loadConfig({
+              cluster: setupParams.cluster,
+              kubeconfig: setupParams.kubeconfig,
+              context: setupParams.context,
+              namespace: setupParams.namespace,
+            });
+
+            validateConfig(config);
+
+            const modelId = getModelId(parsed.model!);
+
+            console.log(`\n${colors.dim}Running ${parsed.mode} check with ${parsed.model}...${colors.reset}\n`);
+
+            // Close readline before running health check to avoid double input
+            rl.close();
+
+            // Run health check (with post-check chat enabled)
+            await runHealthCheck({
+              config,
+              verbose: options.verbose || false,
+              model: modelId,
+              mode: parsed.mode,
+              interactive: true, // Enable post-check follow-up
+              interactiveTranscriptPath: options.interactiveTranscript,
+            });
+
+            // After runHealthCheck returns (including its own chat session),
+            // we loop back to the main chat prompt
+            console.log(`\n${colors.green}✓ Ready for another command${colors.reset}`);
+            console.log(`${colors.dim}Type a command or 'exit' to quit.${colors.reset}`);
+
+            // Recreate readline interface for next command
+            const newRl = createInterface({ input, output });
+            Object.assign(rl, newRl);
+          } catch (error) {
+            if (error instanceof Error) {
+              console.error(`${colors.bright}❌ Health check failed: ${error.message}${colors.reset}`);
+            } else {
+              console.error(`${colors.bright}❌ An unknown error occurred${colors.reset}`);
+            }
+            console.log(`${colors.dim}You can try again or type 'exit' to quit.${colors.reset}`);
+
+            // Recreate readline interface after error
+            const newRl = createInterface({ input, output });
+            Object.assign(rl, newRl);
+          }
+          break;
+      }
+    }
+  } finally {
+    rl.close();
+  }
+}
+

@@ -395,15 +395,15 @@ export async function runHealthCheck(
           }
 
           if (interactive && messageQueue && rl) {
-            // Inform user they're in interactive mode
+            // Inform user they're in interactive mode with better formatting
             console.log(
-              `\n${colors.cyan}${colors.bright}💬 Interactive Mode${colors.reset}`
+              `\n${colors.cyan}${colors.bright}💬 Interactive Mode - Follow-up Questions${colors.reset}`
             );
             console.log(
-              `${colors.dim}Ask follow-up questions about this health check.${colors.reset}`
+              `${colors.dim}You can now ask follow-up questions about this health check.${colors.reset}`
             );
             console.log(
-              `${colors.dim}Press Enter or type 'exit' to quit.${colors.reset}\n`
+              `${colors.dim}Press Enter or type 'exit' to return to main menu.${colors.reset}\n`
             );
 
             const followUp = await promptForFollowUp(rl);
