@@ -436,6 +436,10 @@ export async function runHealthCheck(
     if (rl) {
       rl.close();
     }
-    process.exit(1);
+    // Only exit process in non-interactive mode
+    // In interactive mode, let the error propagate to be handled by runInteractiveChatMode
+    if (!interactive) {
+      process.exit(1);
+    }
   }
 }
