@@ -395,9 +395,10 @@ async function promptForModel(): Promise<string> {
 }
 
 export interface ParsedCommand {
-  action: 'check' | 'help' | 'exit' | 'unknown';
+  action: 'check' | 'help' | 'exit' | 'config' | 'list-namespaces' | 'change-namespace' | 'unknown';
   mode?: 'smoke' | 'all';
   model?: string;
+  namespace?: string;
   rawInput: string;
 }
 
@@ -412,6 +413,23 @@ export function parseHealthCheckCommand(input: string): ParsedCommand {
   // Help commands
   if (['help', '?', 'h'].includes(normalized)) {
     return { action: 'help', rawInput: input };
+  }
+
+  // Config/show config commands
+  if (normalized === 'config' || normalized === 'show config' || normalized === 'show') {
+    return { action: 'config', rawInput: input };
+  }
+
+  // List namespaces commands
+  if (normalized === 'list namespaces' || normalized === 'namespaces' || normalized === 'list ns' || normalized === 'ns') {
+    return { action: 'list-namespaces', rawInput: input };
+  }
+
+  // Change namespace commands
+  // Patterns: "namespace <name>", "change namespace <name>", "ns <name>", "switch namespace <name>"
+  const namespaceMatch = normalized.match(/^(?:change\s+)?(?:namespace|ns)\s+(.+)$/);
+  if (namespaceMatch && namespaceMatch[1]) {
+    return { action: 'change-namespace', namespace: namespaceMatch[1].trim(), rawInput: input };
   }
 
   // Default to 'check' action if any health-check related keywords
@@ -456,9 +474,52 @@ function displayChatHelp(): void {
   console.log(`${colors.dim}  • "run check with opus"      - Smoke test with Opus${colors.reset}`);
   console.log(`${colors.dim}  • "comprehensive check"      - Full check all categories${colors.reset}`);
   console.log(`${colors.dim}  • "all check with haiku"     - Full check with Haiku${colors.reset}`);
+  console.log(`${colors.dim}  • "config"                   - Show current configuration${colors.reset}`);
+  console.log(`${colors.dim}  • "list namespaces"          - List available namespaces${colors.reset}`);
+  console.log(`${colors.dim}  • "namespace <name>"         - Switch to namespace${colors.reset}`);
   console.log(`${colors.dim}  • "help"                     - Show this help${colors.reset}`);
   console.log(`${colors.dim}  • "exit"                     - Quit${colors.reset}\n`);
   console.log(`${colors.gray}Available models: ${Object.keys(MODEL_MAP).join(', ')}${colors.reset}`);
+}
+
+function displayCurrentConfig(setupParams: {
+  cluster: string;
+  context: string;
+  namespace: string;
+}): void {
+  console.log(`\n${colors.cyan}${colors.bright}Current Configuration:${colors.reset}`);
+  console.log(`${colors.dim}  Cluster:   ${colors.reset}${colors.green}${setupParams.cluster}${colors.reset}`);
+  console.log(`${colors.dim}  Context:   ${colors.reset}${colors.green}${setupParams.context}${colors.reset}`);
+  console.log(`${colors.dim}  Namespace: ${colors.reset}${colors.green}${setupParams.namespace}${colors.reset}\n`);
+}
+
+async function listNamespaces(context: string, kubeconfigPath: string): Promise<void> {
+  try {
+    const { execSync } = await import("child_process");
+    const contextFlag = context ? `--context=${context}` : "";
+    const kubeconfigFlag = kubeconfigPath
+      ? `--kubeconfig=${kubeconfigPath.split(":")[0]}`
+      : "";
+    const cmd = `kubectl ${contextFlag} ${kubeconfigFlag} get namespaces -o jsonpath='{.items[*].metadata.name}'`.trim();
+
+    const output = execSync(cmd, { encoding: "utf8" });
+    const namespaces = output.trim().split(/\s+/).filter(Boolean);
+
+    if (namespaces.length === 0) {
+      console.log(`${colors.yellow}No namespaces found.${colors.reset}\n`);
+      return;
+    }
+
+    console.log(`\n${colors.cyan}${colors.bright}Available Namespaces:${colors.reset}`);
+    namespaces.forEach((ns, index) => {
+      console.log(`${colors.dim}  ${index + 1}. ${ns}${colors.reset}`);
+    });
+    console.log();
+  } catch (error) {
+    console.log(
+      `${colors.yellow}⚠️  Could not list namespaces (kubectl may not be accessible)${colors.reset}\n`
+    );
+  }
 }
 
 async function promptForInitialSetup(
@@ -642,6 +703,23 @@ export async function runInteractiveChatMode(
 
         case 'unknown':
           console.log(`${colors.yellow}⚠️  Unknown command. Type 'help' for available commands.${colors.reset}`);
+          break;
+
+        case 'config':
+          displayCurrentConfig(setupParams);
+          break;
+
+        case 'list-namespaces':
+          await listNamespaces(setupParams.context, setupParams.kubeconfig);
+          break;
+
+        case 'change-namespace':
+          if (parsed.namespace) {
+            setupParams.namespace = parsed.namespace;
+            console.log(`\n${colors.green}✓ Switched to namespace: ${colors.reset}${colors.bright}${parsed.namespace}${colors.reset}\n`);
+          } else {
+            console.log(`${colors.yellow}⚠️  Please specify a namespace name.${colors.reset}`);
+          }
           break;
 
         case 'check':
