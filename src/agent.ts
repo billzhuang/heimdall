@@ -191,11 +191,12 @@ Check the following in order:
 3. Pod health (${namespaceInfo})
 4. Deployment health
 5. Service health
-6. Recent warning events
-7. Helm releases
-8. ConfigMaps & Secrets
-9. Storage (PVC/PV)
-10. Jobs & CronJobs`;
+6. Ingress health (Traefik/ALB routing)
+7. Recent warning events
+8. Helm releases
+9. ConfigMaps & Secrets
+10. Storage (PVC/PV)
+11. Jobs & CronJobs`;
   }
 
   if (!interactive) {

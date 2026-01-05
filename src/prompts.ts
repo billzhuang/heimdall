@@ -101,13 +101,81 @@ Look for:
 - Services with no endpoints (selector matches no pods)
 - LoadBalancer services stuck in pending
 
-### 6. Recent Events
+### 6. Ingress Health
+Check ingress resources and routing configuration:
+\`\`\`bash
+${kubectlPrefix} get ingress ${namespaceFlag} -o wide
+\`\`\`
+
+Look for:
+- Ingress resources with no ADDRESS (load balancer not provisioned)
+- Empty or missing CLASS (no ingress controller handling the resource)
+- Ingress resources older than 5 minutes still without ADDRESS
+- Misconfigured annotations (especially for ALB/Traefik)
+
+For each ingress, verify backend services exist and have healthy endpoints:
+\`\`\`bash
+${kubectlPrefix} describe ingress <ingress-name> -n <namespace>
+\`\`\`
+
+Check backend service availability:
+\`\`\`bash
+# Extract backend services from ingress and verify they exist
+${kubectlPrefix} get ingress <ingress-name> -n <namespace> -o jsonpath='{.spec.rules[*].http.paths[*].backend.service.name}' | xargs -n1 ${kubectlPrefix} get service -n <namespace>
+\`\`\`
+
+Verify backend services have healthy endpoints:
+\`\`\`bash
+${kubectlPrefix} get endpoints <service-name> -n <namespace>
+\`\`\`
+
+**Controller-Specific Checks:**
+
+For AWS Load Balancer Controller (ALB):
+\`\`\`bash
+# Check for ALB ingress resources
+${kubectlPrefix} get ingress ${namespaceFlag} -o jsonpath='{range .items[?(@.spec.ingressClassName=="alb")]}{.metadata.name}{"\\n"}{end}'
+
+# Look for ALB-related issues in events
+${kubectlPrefix} get events ${namespaceFlag} --field-selector involvedObject.kind=Ingress | grep -i "alb\\|load.*balancer"
+\`\`\`
+
+For Traefik:
+\`\`\`bash
+# Check for Traefik ingress resources
+${kubectlPrefix} get ingress ${namespaceFlag} -o jsonpath='{range .items[?(@.spec.ingressClassName=="traefik")]}{.metadata.name}{"\\n"}{end}'
+
+# Check Traefik controller pods
+${kubectlPrefix} get pods -A -l app.kubernetes.io/name=traefik -o wide
+\`\`\`
+
+Look for problematic patterns:
+- Ingress with backend services that don't exist
+- Backend services with zero endpoints (no healthy pods)
+- Multiple ingress resources with conflicting host/path rules
+- Missing TLS secrets referenced in ingress spec
+- Ingress controller pods not running (Traefik)
+- ALB provisioning failures (check Events for "failed to reconcile")
+
+For problematic ingress resources, investigate:
+\`\`\`bash
+# Get full ingress details including annotations
+${kubectlPrefix} get ingress <ingress-name> -n <namespace> -o yaml
+
+# Check events for this specific ingress
+${kubectlPrefix} get events -n <namespace> --field-selector involvedObject.name=<ingress-name>
+
+# Verify TLS secrets if configured
+${kubectlPrefix} get secret <tls-secret-name> -n <namespace>
+\`\`\`
+
+### 7. Recent Events
 Check for warning events:
 \`\`\`bash
 ${kubectlPrefix} get events ${namespaceFlag} --sort-by='.lastTimestamp' --field-selector type=Warning
 \`\`\`
 
-### 7. Helm Releases
+### 8. Helm Releases
 Check Helm release status:
 \`\`\`bash
 helm list ${namespaceFlag} 2>/dev/null || echo "Helm not available or no releases"
@@ -123,7 +191,7 @@ helm history <release> -n <namespace>
 helm status <release> -n <namespace>
 \`\`\`
 
-### 8. ConfigMaps & Secrets
+### 9. ConfigMaps & Secrets
 Check configuration resources:
 \`\`\`bash
 ${kubectlPrefix} get configmaps ${namespaceFlag}
@@ -140,7 +208,7 @@ To check for missing references:
 ${kubectlPrefix} get events ${namespaceFlag} | grep -i "configmap\\|secret"
 \`\`\`
 
-### 9. Storage (PVC/PV)
+### 10. Storage (PVC/PV)
 Check persistent storage:
 \`\`\`bash
 ${kubectlPrefix} get pvc ${namespaceFlag}
@@ -157,7 +225,7 @@ For pending PVCs, investigate:
 ${kubectlPrefix} describe pvc <pvc-name> -n <namespace>
 \`\`\`
 
-### 10. Jobs & CronJobs
+### 11. Jobs & CronJobs
 Check batch workloads:
 \`\`\`bash
 ${kubectlPrefix} get jobs ${namespaceFlag}
