@@ -217,12 +217,15 @@ async function promptForNamespace(
         try {
           const { execSync } = await import("child_process");
           const contextFlag = context ? `--context=${context}` : "";
-          const kubeconfigFlag = kubeconfigPath
-            ? `--kubeconfig=${kubeconfigPath.split(":")[0]}`
-            : "";
-          const cmd = `kubectl ${contextFlag} ${kubeconfigFlag} get namespaces -o jsonpath='{.items[*].metadata.name}'`.trim();
+          const cmd = `kubectl ${contextFlag} get namespaces -o jsonpath='{.items[*].metadata.name}'`.trim();
 
-          const output = execSync(cmd, { encoding: "utf8" });
+          // Set KUBECONFIG env var to support multiple config files
+          const env = { ...process.env };
+          if (kubeconfigPath) {
+            env.KUBECONFIG = kubeconfigPath;
+          }
+
+          const output = execSync(cmd, { encoding: "utf8", env });
           const namespaces = output.trim().split(/\s+/).filter(Boolean);
 
           if (namespaces.length === 0) {
