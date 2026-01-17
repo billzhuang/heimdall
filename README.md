@@ -1,21 +1,21 @@
 # Heimdall
 
-AI-powered SRE agent for EKS health checks using the Claude Agent SDK.
+AI-powered Kubernetes assistant and SRE agent using the Claude Agent SDK.
 
-Heimdall performs comprehensive health checks on your EKS clusters, identifies issues, and suggests fixes for human execution.
+Heimdall is an interactive TUI for Kubernetes diagnostics - ask questions in natural language and get intelligent answers powered by AI.
 
 ## Features
 
-- **Interactive Chat Mode** - Natural language commands for health checks
-- **Smoke Mode** (~30s) - Quick checks: Node health, Critical pod failures, Recent warning events
-- **All Mode** (~2-3min) - Comprehensive: All 10 health check categories
-- **Follow-up Questions** - Ask questions about results after each check
-- **Multi-Model Support** - Sonnet, Opus, Haiku, GPT, Gemini
+- **Interactive TUI** - Natural language interface for K8s diagnostics
+- **Auto-load Context** - Automatically uses current-context from kubeconfig
+- **Multi-Model Support** - Claude Sonnet/Opus/Haiku, GPT, Gemini
+- **Web Search** - Search for error messages, CVEs, deprecated APIs
+- **Cancellable Queries** - Press ESC to cancel running queries
 
 ## Prerequisites
 
 - Node.js 18+
-- `kubectl` configured with access to your EKS cluster
+- `kubectl` configured with access to your Kubernetes cluster
 - `ANTHROPIC_API_KEY` environment variable
 
 ## Installation
@@ -36,92 +36,67 @@ export ANTHROPIC_API_KEY="your-api-key-here"
 
 ```bash
 # Development
-npm run interactive
+npm run dev
 
 # Or build and run
 npm run build
 npm start
 ```
 
-### Initial Setup
+### Auto-load Behavior
 
-On launch, you'll be prompted to select:
-- **Kubernetes context** (from your kubeconfig)
-- **Namespace** to check
+On launch, Heimdall automatically:
+- Loads the `current-context` from your kubeconfig
+- Uses the default namespace for that context (or `kube-system` if none)
 
-### Chat Commands
+### Slash Commands
 
-Once setup is complete, use natural language commands:
+| Command | Description |
+|---------|-------------|
+| `/ctx` | Switch Kubernetes context |
+| `/ns` | Switch namespace |
+| `/model` | Change AI model |
+| `/clear` | Clear conversation history |
+| `/help` | Show available commands |
+| `/exit` or `/quit` | Exit Heimdall |
+
+### Example Queries
 
 ```
-heimdall> run quick check
-heimdall> comprehensive check with opus
-heimdall> run check with haiku
-heimdall> help
-heimdall> exit
+heimdall> check pdb configuration
+heimdall> why is my pod in CrashLoopBackOff?
+heimdall> list all deployments with less than 2 replicas
+heimdall> explain the network policies in this namespace
 ```
-
-Available models: `sonnet` (default), `opus`, `haiku`, `gpt`, `gemini`
 
 ### CLI Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-k, --kubeconfig <path>` | Path to kubeconfig file | `~/.kube/config` |
-| `-v, --verbose` | Show verbose output including commands | `false` |
+| `-v, --verbose` | Show verbose output including tool calls | `false` |
 | `--transcript <path>` | Write session transcript to path (JSONL) | - |
-
-## Health Check Modes
-
-### Smoke Mode (~30 seconds)
-
-Quick validation of cluster health:
-- **Node Health**: NotReady nodes, MemoryPressure, DiskPressure
-- **Critical Pod Failures**: CrashLoopBackOff, ImagePullBackOff, Pending
-- **Recent Warning Events**: Last 20 events for immediate issues
-
-### All Mode (~2-3 minutes)
-
-Comprehensive health check covering all 10 categories:
-1. Cluster connectivity
-2. Node health
-3. Pod health
-4. Deployment health
-5. Service health
-6. Recent warning events
-7. Helm releases
-8. ConfigMaps & Secrets
-9. Storage (PVC/PV)
-10. Jobs & CronJobs
-
-## Output
-
-Heimdall provides:
-
-1. **Real-time progress** - See each check as it runs
-2. **Issue detection** - CRITICAL and WARNING severity levels
-3. **Root cause analysis** - Explains why issues are happening
-4. **Suggested fixes** - kubectl commands and YAML manifests
-5. **Follow-up Q&A** - Ask questions about the results
 
 ## Development
 
 ```bash
+npm run dev        # Run in development mode
 npm run typecheck  # Type check
 npm run build      # Build
-npm start          # Run built version
+npm test           # Run tests
+npm run test:coverage  # Run tests with coverage
 ```
 
 ## How It Works
 
 Heimdall uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents) to:
 
-1. Run kubectl/helm commands via the built-in Bash tool
-2. Analyze output using Claude's understanding of Kubernetes
-3. Identify issues and determine severity
-4. Generate actionable fix suggestions
+1. Run kubectl commands via the built-in Bash tool
+2. Search the web for error messages and documentation
+3. Analyze output using AI understanding of Kubernetes
+4. Provide focused answers to your specific questions
 
-The agent operates in **advisory mode** - it only runs read-only commands and suggests fixes for you to review and execute.
+The agent operates in **advisory mode** - it runs read-only commands and provides information to help you make decisions.
 
 ## License
 

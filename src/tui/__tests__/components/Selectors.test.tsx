@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { render } from 'ink-testing-library';
 import { ContextSelector } from '../../components/ContextSelector.js';
 import { ModelSelector } from '../../components/ModelSelector.js';
-import { MODEL_MAP } from '../../../constants.js';
+import { MODEL_MAP, type ModelInfo } from '../../constants.js';
 
 describe('ContextSelector', () => {
   it('should render context list', () => {

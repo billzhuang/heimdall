@@ -1,4 +1,4 @@
-import { MODEL_MAP } from '../constants.js';
+import { MODEL_MAP } from './constants.js';
 
 // Slash command types
 export type SlashCommand =
@@ -12,14 +12,7 @@ export type SlashCommand =
   | { type: 'compact' }
   | { type: 'context' };
 
-// Quick check command
-export interface QuickCheckCommand {
-  type: 'quickCheck';
-  mode: 'smoke' | 'all';
-  model?: string;
-}
-
-// General query command
+// General query command - all user queries go to LLM
 export interface QueryCommand {
   type: 'query';
   text: string;
@@ -32,7 +25,7 @@ export interface UnknownCommand {
   raw: string;
 }
 
-export type ParsedCommand = SlashCommand | QuickCheckCommand | QueryCommand | UnknownCommand;
+export type ParsedCommand = SlashCommand | QueryCommand | UnknownCommand;
 
 // Valid slash commands with descriptions
 export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; description: string }> = {
@@ -52,12 +45,9 @@ export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; descri
 const HELP_ALIASES = ['help', '?', 'h'];
 const EXIT_ALIASES = ['exit', 'quit', 'q'];
 
-// Quick check keywords
-const COMPREHENSIVE_KEYWORDS = ['all', 'comprehensive', 'full', 'complete', 'thorough', 'deep'];
-const CHECK_KEYWORDS = ['check', 'run', 'test', 'scan', 'analyze', 'health'];
-
 /**
  * Parse user input into a structured command
+ * All non-slash commands are passed directly to the LLM
  */
 export function parseCommand(input: string): ParsedCommand {
   const trimmed = input.trim();
@@ -88,26 +78,7 @@ export function parseCommand(input: string): ParsedCommand {
     return { type: 'exit' };
   }
 
-  // Check for quick check commands
-  const hasCheckKeyword = CHECK_KEYWORDS.some(kw => normalized.includes(kw));
-  if (hasCheckKeyword) {
-    // Determine mode
-    const isComprehensive = COMPREHENSIVE_KEYWORDS.some(kw => 
-      new RegExp(`\\b${kw}\\b`).test(normalized)
-    );
-    const mode: 'smoke' | 'all' = isComprehensive ? 'all' : 'smoke';
-
-    // Extract model if specified
-    const model = extractModel(normalized);
-
-    return {
-      type: 'quickCheck',
-      mode,
-      model,
-    };
-  }
-
-  // Default to general query
+  // Everything else goes to the LLM as a query
   const model = extractModel(normalized);
   return {
     type: 'query',
@@ -134,13 +105,6 @@ function extractModel(input: string): string | undefined {
  */
 export function isSlashCommand(cmd: ParsedCommand): cmd is SlashCommand {
   return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'compact', 'context'].includes(cmd.type);
-}
-
-/**
- * Check if a command is a quick check
- */
-export function isQuickCheck(cmd: ParsedCommand): cmd is QuickCheckCommand {
-  return cmd.type === 'quickCheck';
 }
 
 /**

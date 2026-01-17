@@ -1,5 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { HeimdallConfig } from '../config.js';
+import type { HeimdallConfig } from './types.js';
 
 export interface OutputMessage {
   id: string;
@@ -36,6 +36,13 @@ export interface AgentRunnerCallbacks {
 }
 
 /**
+ * Controller for cancelling a running agent query
+ */
+export interface AgentController {
+  cancel: () => void;
+}
+
+/**
  * Build the unified system prompt for Heimdall
  */
 function buildSystemPrompt(config: HeimdallConfig): string {
@@ -51,6 +58,12 @@ function buildSystemPrompt(config: HeimdallConfig): string {
 - Cluster context: ${config.context}
 - Namespace scope: ${namespaceScope}
 
+## IMPORTANT: Answer the Specific Question
+- Focus ONLY on what the user asks. Do NOT run a full health check unless explicitly requested.
+- If user asks about PDBs, only check PDBs. If user asks about pods, only check pods.
+- Be efficient - run the minimum commands needed to answer the question.
+- Do NOT check nodes, events, or other resources unless directly relevant to the question.
+
 ## CRITICAL SAFETY RULES
 You are in READ-ONLY mode. You must NEVER execute commands that modify the cluster:
 - FORBIDDEN: kubectl create, apply, delete, patch, edit, replace, scale, rollout, drain, cordon, taint
@@ -58,21 +71,20 @@ You are in READ-ONLY mode. You must NEVER execute commands that modify the clust
 - FORBIDDEN: Any command that creates, updates, or deletes resources
 
 If the user asks to fix something, provide the command as a SUGGESTION they can run manually.
-Example: "To fix this, you could run: \`kubectl delete pod xyz\` (run this manually if you want to proceed)"
 
 ## Allowed Commands (READ-ONLY)
 - kubectl get, describe, logs, top, explain, api-resources, version
 - helm list, status, get, history
 - Any command that only reads data
 
-## Guidelines
+## Command Format
 Always use: kubectl --context=${config.context} for all commands.
 For namespace-scoped resources, use: ${namespaceFlag}
+
+## Response Style
 - Be concise and actionable
 - Summarize findings clearly and highlight issues
 - When fixes are needed, suggest commands but DO NOT execute them
-
-You have read access to all K8s resources: pods, deployments, services, ingress, nodes, events, configmaps, secrets, PVCs, jobs, cronjobs, helm releases, etc.
 
 ## Web Search Capabilities
 You have access to web search tools for enhanced diagnostics:
@@ -82,9 +94,7 @@ You have access to web search tools for enhanced diagnostics:
 Use web search when:
 - You encounter unfamiliar error messages or codes
 - Checking for known issues or CVEs related to specific versions
-- Looking up deprecated APIs or migration guides
-- Finding solutions to obscure K8s problems
-- Verifying best practices or recommended configurations`;
+- Looking up deprecated APIs or migration guides`;
 }
 
 // Conversation context manager
@@ -242,13 +252,14 @@ function generateMessageId(): string {
 /**
  * Run any K8s query through the agent
  * The LLM decides what to check based on the user's request
+ * Returns a controller that can be used to cancel the query
  */
 export async function runAgentQuery(
   queryText: string,
   options: AgentRunnerOptions,
   callbacks: AgentRunnerCallbacks,
   context?: ConversationContext
-): Promise<void> {
+): Promise<AgentController> {
   const { config, model, verbose } = options;
   const systemPrompt = buildSystemPrompt(config);
 
@@ -261,11 +272,12 @@ export async function runAgentQuery(
 
   context?.addTurn('user', queryText);
 
-  await runAgentStream(fullQuery, systemPrompt, model, verbose, callbacks, context);
+  return runAgentStream(fullQuery, systemPrompt, model, verbose, callbacks, context);
 }
 
 /**
  * Internal function to run the agent stream
+ * Returns a controller for cancellation
  */
 async function runAgentStream(
   userPrompt: string,
@@ -274,7 +286,7 @@ async function runAgentStream(
   verbose: boolean | undefined,
   callbacks: AgentRunnerCallbacks,
   context?: ConversationContext
-): Promise<void> {
+): Promise<AgentController> {
   const queryOptions = {
     allowedTools: ['Bash', 'WebSearch', 'WebFetch'],
     systemPrompt,
@@ -287,84 +299,114 @@ async function runAgentStream(
   messageQueue.enqueue(createUserMessage(userPrompt));
 
   let assistantBuffer = '';
+  let cancelled = false;
+  let queryStream: ReturnType<typeof query> | null = null;
 
-  try {
-    const queryStream = query({ prompt: messageQueue, options: queryOptions });
+  // Start the query in the background
+  const runQuery = async () => {
+    try {
+      queryStream = query({ prompt: messageQueue, options: queryOptions });
 
-    for await (const message of queryStream) {
-      if ('type' in message) {
-        const msg = message as Record<string, unknown>;
-
-        if (msg.type === 'system' && msg.subtype === 'init') {
-          callbacks.onMessage({
-            id: generateMessageId(),
-            type: 'system',
-            content: `Agent initialized with model: ${msg.model}`,
-            timestamp: new Date(),
-          });
-        }
-
-        if (msg.type === 'assistant') {
-          const content = msg.message as { content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> };
-          for (const block of content?.content || []) {
-            if (block.type === 'text' && block.text) {
-              callbacks.onMessage({
-                id: generateMessageId(),
-                type: 'assistant',
-                content: block.text,
-                timestamp: new Date(),
-              });
-              assistantBuffer += block.text + '\n';
-            }
-            if (block.type === 'tool_use') {
-              const inp = block.input as { command?: string; description?: string; query?: string; url?: string };
-              // Build details string based on tool type
-              let details: string | undefined;
-              if (inp?.command) {
-                details = `$ ${inp.command}`;
-              } else if (inp?.query) {
-                details = `🔍 "${inp.query}"`;
-              } else if (inp?.url) {
-                details = `🌐 ${inp.url}`;
-              }
-              callbacks.onToolUse(block.name || 'unknown', details);
-              // Note: onToolUse callback handles adding the message, don't duplicate here
-            }
-          }
-        }
-
-        if (msg.type === 'user' && verbose) {
-          const content = msg.message as { content?: Array<{ type: string; content?: string }> };
-          for (const block of content?.content || []) {
-            if (block.type === 'tool_result' && block.content) {
-              callbacks.onMessage({
-                id: generateMessageId(),
-                type: 'info',
-                content: block.content.split('\n').slice(0, 10).join('\n'),
-                timestamp: new Date(),
-              });
-            }
-          }
-        }
-
-        if (msg.type === 'result') {
-          const cost = msg.total_cost_usd as number | undefined;
-          const duration = msg.duration_ms as number | undefined;
-
-          // Add assistant response to context
-          if (assistantBuffer.trim() && context) {
-            context.addTurn('assistant', assistantBuffer.trim());
-          }
-
-          callbacks.onComplete(cost, duration);
-          messageQueue.close();
+      for await (const message of queryStream) {
+        if (cancelled) {
           break;
         }
+
+        if ('type' in message) {
+          const msg = message as Record<string, unknown>;
+
+          if (msg.type === 'system' && msg.subtype === 'init') {
+            callbacks.onMessage({
+              id: generateMessageId(),
+              type: 'system',
+              content: `Agent initialized with model: ${msg.model}`,
+              timestamp: new Date(),
+            });
+          }
+
+          if (msg.type === 'assistant') {
+            const content = msg.message as { content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> };
+            for (const block of content?.content || []) {
+              if (block.type === 'text' && block.text) {
+                callbacks.onMessage({
+                  id: generateMessageId(),
+                  type: 'assistant',
+                  content: block.text,
+                  timestamp: new Date(),
+                });
+                assistantBuffer += block.text + '\n';
+              }
+              if (block.type === 'tool_use') {
+                const inp = block.input as { command?: string; description?: string; query?: string; url?: string };
+                // Build details string based on tool type
+                let details: string | undefined;
+                if (inp?.command) {
+                  details = `$ ${inp.command}`;
+                } else if (inp?.query) {
+                  details = `🔍 "${inp.query}"`;
+                } else if (inp?.url) {
+                  details = `🌐 ${inp.url}`;
+                }
+                callbacks.onToolUse(block.name || 'unknown', details);
+              }
+            }
+          }
+
+          if (msg.type === 'user' && verbose) {
+            const content = msg.message as { content?: Array<{ type: string; content?: string }> };
+            for (const block of content?.content || []) {
+              if (block.type === 'tool_result' && block.content) {
+                callbacks.onMessage({
+                  id: generateMessageId(),
+                  type: 'info',
+                  content: block.content.split('\n').slice(0, 10).join('\n'),
+                  timestamp: new Date(),
+                });
+              }
+            }
+          }
+
+          if (msg.type === 'result') {
+            const cost = msg.total_cost_usd as number | undefined;
+            const duration = msg.duration_ms as number | undefined;
+
+            // Add assistant response to context
+            if (assistantBuffer.trim() && context) {
+              context.addTurn('assistant', assistantBuffer.trim());
+            }
+
+            callbacks.onComplete(cost, duration);
+            messageQueue.close();
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      messageQueue.close();
+      if (!cancelled) {
+        callbacks.onError(error instanceof Error ? error : new Error(String(error)));
       }
     }
-  } catch (error) {
-    messageQueue.close();
-    callbacks.onError(error instanceof Error ? error : new Error(String(error)));
-    throw error;
-  }
+  };
+
+  // Start the query
+  runQuery();
+
+  // Return controller for cancellation
+  return {
+    cancel: () => {
+      cancelled = true;
+      messageQueue.close();
+      if (queryStream && typeof (queryStream as { interrupt?: () => Promise<void> }).interrupt === 'function') {
+        (queryStream as { interrupt: () => Promise<void> }).interrupt().catch(() => {});
+      }
+      callbacks.onMessage({
+        id: generateMessageId(),
+        type: 'system',
+        content: '⚠️ Query cancelled by user',
+        timestamp: new Date(),
+      });
+      callbacks.onComplete();
+    },
+  };
 }

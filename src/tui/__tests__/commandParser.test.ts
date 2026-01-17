@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCommand, isSlashCommand, isQuickCheck, isQuery, getSlashCommands } from '../commandParser.js';
+import { parseCommand, isSlashCommand, isQuery, getSlashCommands } from '../commandParser.js';
 
 describe('commandParser', () => {
   describe('slash commands', () => {
@@ -90,47 +90,35 @@ describe('commandParser', () => {
     });
   });
 
-  describe('quick check commands', () => {
-    it('should parse "run check" as smoke quick check', () => {
-      const result = parseCommand('run check');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'smoke', model: undefined });
-    });
-
-    it('should parse "quick check" as smoke mode', () => {
-      const result = parseCommand('quick check');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'smoke', model: undefined });
-    });
-
-    it('should parse "comprehensive check" as all mode', () => {
-      const result = parseCommand('comprehensive check');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'all', model: undefined });
-    });
-
-    it('should parse "full check" as all mode', () => {
-      const result = parseCommand('full check');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'all', model: undefined });
-    });
-
-    it('should extract model from check command', () => {
-      const result = parseCommand('run check with opus');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'smoke', model: 'opus' });
-    });
-
-    it('should extract haiku model', () => {
-      const result = parseCommand('quick check haiku');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'smoke', model: 'haiku' });
-    });
-
-    it('should handle comprehensive check with model', () => {
-      const result = parseCommand('comprehensive check with sonnet');
-      expect(result).toEqual({ type: 'quickCheck', mode: 'all', model: 'sonnet' });
-    });
-  });
-
-  describe('general queries', () => {
+  describe('general queries (all go to LLM)', () => {
     it('should parse general text as query', () => {
       const result = parseCommand('show me pods in crashloop');
       expect(result).toEqual({ type: 'query', text: 'show me pods in crashloop', model: undefined });
+    });
+
+    it('should parse "check pdb" as query', () => {
+      const result = parseCommand('check pdb');
+      expect(result).toEqual({ type: 'query', text: 'check pdb', model: undefined });
+    });
+
+    it('should parse "health check" as query', () => {
+      const result = parseCommand('health check');
+      expect(result).toEqual({ type: 'query', text: 'health check', model: undefined });
+    });
+
+    it('should parse "run check" as query', () => {
+      const result = parseCommand('run check');
+      expect(result).toEqual({ type: 'query', text: 'run check', model: undefined });
+    });
+
+    it('should parse "comprehensive check" as query', () => {
+      const result = parseCommand('comprehensive check');
+      expect(result).toEqual({ type: 'query', text: 'comprehensive check', model: undefined });
+    });
+
+    it('should parse "check ingress configuration" as query', () => {
+      const result = parseCommand('check ingress configuration');
+      expect(result).toEqual({ type: 'query', text: 'check ingress configuration', model: undefined });
     });
 
     it('should extract model from query', () => {
@@ -166,16 +154,13 @@ describe('commandParser', () => {
       expect(isSlashCommand(parseCommand('/ctx'))).toBe(true);
       expect(isSlashCommand(parseCommand('/help'))).toBe(true);
       expect(isSlashCommand(parseCommand('help'))).toBe(true);
-      expect(isSlashCommand(parseCommand('run check'))).toBe(false);
-    });
-
-    it('isQuickCheck should identify quick check commands', () => {
-      expect(isQuickCheck(parseCommand('run check'))).toBe(true);
-      expect(isQuickCheck(parseCommand('/ctx'))).toBe(false);
+      expect(isSlashCommand(parseCommand('check pdb'))).toBe(false);
     });
 
     it('isQuery should identify general queries', () => {
       expect(isQuery(parseCommand('show pods'))).toBe(true);
+      expect(isQuery(parseCommand('check pdb'))).toBe(true);
+      expect(isQuery(parseCommand('health check'))).toBe(true);
       expect(isQuery(parseCommand('/ctx'))).toBe(false);
     });
 

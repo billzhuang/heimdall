@@ -1,7 +1,8 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import type { OutputMessage } from './agentRunner.js';
-import { MODEL_MAP, getModelId } from '../constants.js';
-import type { HeimdallConfig } from '../config.js';
+import { MODEL_MAP, getModelId } from './constants.js';
+import type { HeimdallConfig } from './types.js';
+import type { KubeconfigContext } from './kubeconfigParser.js';
 
 export type AppMode = 'repl' | 'selector' | 'running';
 export type SelectorType = 'context' | 'namespace' | 'model';
@@ -56,6 +57,9 @@ export interface AppStateActions {
   // Config builder
   buildConfig: () => HeimdallConfig | null;
   getModelId: () => string;
+  
+  // Context data storage (for looking up default namespaces)
+  setContextData: (data: KubeconfigContext[]) => void;
 }
 
 const DEFAULT_MODEL = 'sonnet';
@@ -81,6 +85,9 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
   const [state, setState] = useState<TUIState>(() => 
     createInitialState(initialKubeconfigPath)
   );
+  
+  // Store context data for looking up default namespaces
+  const contextDataRef = useRef<KubeconfigContext[]>([]);
 
   const setMode = useCallback((mode: AppMode) => {
     setState(prev => ({ ...prev, mode }));
@@ -103,15 +110,31 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
   }, []);
 
   const setContext = useCallback((context: string) => {
+    // When context changes, reset namespace to context's default or kube-system
+    const ctxData = contextDataRef.current.find(c => c.name === context);
+    const defaultNs = ctxData?.namespace || 'kube-system';
+    
     setState(prev => ({ 
       ...prev, 
       context,
-      statusHint: null, // Clear hint when context is set
+      namespace: defaultNs,
+      statusHint: null,
+      mode: 'repl',
+      activeSelector: null,
     }));
   }, []);
 
   const setNamespace = useCallback((namespace: string) => {
-    setState(prev => ({ ...prev, namespace }));
+    setState(prev => ({ 
+      ...prev, 
+      namespace,
+      mode: 'repl',
+      activeSelector: null,
+    }));
+  }, []);
+  
+  const setContextData = useCallback((data: KubeconfigContext[]) => {
+    contextDataRef.current = data;
   }, []);
 
   const setModel = useCallback((model: string) => {
@@ -187,11 +210,12 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     setError,
     buildConfig,
     getModelId: getModelIdFn,
+    setContextData,
   }), [
     setMode, openSelector, closeSelector,
     setContext, setNamespace, setModel,
     setKubeconfigPath, setContexts, setStatusHint, addMessage, clearMessages,
-    setRunning, setError, buildConfig, getModelIdFn,
+    setRunning, setError, buildConfig, getModelIdFn, setContextData,
   ]);
 
   return [state, actions];

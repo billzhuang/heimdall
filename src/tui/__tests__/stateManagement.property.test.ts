@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { buildConfigFromState, getModelOptions } from '../useAppState.js';
-import { MODEL_MAP, getModelId } from '../../constants.js';
+import { MODEL_MAP, getModelId } from '../constants.js';
 
 /**
  * Property 8: Config Construction from State

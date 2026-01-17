@@ -4,7 +4,7 @@ import {
   buildConfigFromState,
   getModelOptions,
 } from '../useAppState.js';
-import { MODEL_MAP } from '../../constants.js';
+import { MODEL_MAP } from '../constants.js';
 
 describe('stateManagement', () => {
   describe('createInitialState', () => {

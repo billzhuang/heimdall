@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback } from 'react';
-import { Box, Text, useApp, useInput } from 'ink';
+import React, { useEffect, useCallback, useRef } from 'react';
+import { Box, useApp, useInput } from 'ink';
 import { StatusBar } from './StatusBar.js';
 import { OutputArea } from './OutputArea.js';
 import { InputField } from './InputField.js';
@@ -8,11 +8,12 @@ import { NamespaceSelector } from './NamespaceSelector.js';
 import { ModelSelector } from './ModelSelector.js';
 import { useAppState } from '../useAppState.js';
 import { parseKubeconfig } from '../kubeconfigParser.js';
-import { parseCommand, isSlashCommand, isQuery } from '../commandParser.js';
+import { parseCommand, isSlashCommand } from '../commandParser.js';
 import {
   runAgentQuery,
   ConversationContext,
   type OutputMessage,
+  type AgentController,
 } from '../agentRunner.js';
 
 export interface AppProps {
@@ -31,31 +32,40 @@ function generateMessageId(): string {
 export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const [state, actions] = useAppState(kubeconfig);
+  const agentControllerRef = useRef<AgentController | null>(null);
 
-  // Load kubeconfig on mount and auto-select defaults
+  // Load kubeconfig on mount and auto-select defaults (runs only once)
+  const hasInitialized = useRef(false);
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    
     async function loadDefaults() {
       const data = await parseKubeconfig(kubeconfig);
       if (data) {
-        // Store all contexts for later selection
+        // Store context data for namespace lookups
+        actions.setContextData(data.contexts);
+        
+        // Store all context names for selector
         actions.setContexts(data.contexts.map(c => c.name));
         
         // Auto-select current context from kubeconfig
         if (data.currentContext) {
-          actions.setContext(data.currentContext);
-          
           // Find the context to get its default namespace
           const ctx = data.contexts.find(c => c.name === data.currentContext);
-          if (ctx?.namespace) {
-            actions.setNamespace(ctx.namespace);
-          } else {
-            // No default namespace, use kube-system as safe default
-            actions.setNamespace('kube-system');
-          }
+          const defaultNs = ctx?.namespace || 'kube-system';
+          
+          // Set context (this will also set namespace via setContext logic)
+          // But we need to set namespace explicitly here since contextDataRef
+          // might not be populated yet
+          actions.setContexts(data.contexts.map(c => c.name));
+          
+          // Manually set both to avoid race condition
+          actions.setContext(data.currentContext);
+          // setContext will handle namespace reset
         } else if (data.contexts.length > 0) {
           // No current-context set, use first available
           actions.setContext(data.contexts[0].name);
-          actions.setNamespace('kube-system');
           actions.setStatusHint('No default context in kubeconfig, using first available');
         } else {
           actions.setStatusHint('No contexts found in kubeconfig');
@@ -67,10 +77,16 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     loadDefaults();
   }, [kubeconfig, actions]);
 
-  // Handle Ctrl+C
+  // Handle Ctrl+C and ESC
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
       exit();
+    }
+    // ESC to cancel running query
+    if (key.escape && state.isRunning && agentControllerRef.current) {
+      agentControllerRef.current.cancel();
+      agentControllerRef.current = null;
+      actions.setRunning(false);
     }
   });
 
@@ -180,6 +196,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
         });
       },
       onComplete: (cost?: number, duration?: number) => {
+        agentControllerRef.current = null;
         actions.addMessage({
           id: generateMessageId(),
           type: 'info',
@@ -190,6 +207,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
         actions.setRunning(false);
       },
       onError: (error: Error) => {
+        agentControllerRef.current = null;
         actions.addMessage({
           id: generateMessageId(),
           type: 'error',
@@ -203,11 +221,10 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     actions.setRunning(true);
 
     try {
-      // All queries go through runAgentQuery - LLM decides what to check
-      const queryText = cmd.type === 'quickCheck' 
-        ? `${cmd.mode === 'all' ? 'comprehensive' : 'quick'} health check`
-        : (cmd as { text: string }).text;
-      await runAgentQuery(queryText, options, callbacks, conversationContext);
+      // All queries go directly to the LLM
+      const queryText = (cmd as { text: string }).text;
+      const controller = await runAgentQuery(queryText, options, callbacks, conversationContext);
+      agentControllerRef.current = controller;
     } catch (error) {
       // Error already handled in callbacks
     }
@@ -218,6 +235,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     return (
       <Box flexDirection="column" padding={1}>
         <StatusBar 
+          key={`${state.context}-${state.namespace}-${state.model}`}
           context={state.context} 
           namespace={state.namespace} 
           model={state.model}
@@ -228,10 +246,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
             contexts={state.contexts}
             currentContext={state.context}
             selectedContext={state.context}
-            onSelect={(ctx) => {
-              actions.setContext(ctx);
-              actions.closeSelector();
-            }}
+            onSelect={actions.setContext}
             onCancel={actions.closeSelector}
           />
         )}
@@ -240,10 +255,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
             context={state.context}
             kubeconfigPath={kubeconfig}
             selectedNamespace={state.namespace}
-            onSelect={(ns) => {
-              actions.setNamespace(ns);
-              actions.closeSelector();
-            }}
+            onSelect={actions.setNamespace}
             onCancel={actions.closeSelector}
           />
         )}
@@ -262,6 +274,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
   return (
     <Box flexDirection="column" padding={1}>
       <StatusBar 
+        key={`${state.context}-${state.namespace}-${state.model}`}
         context={state.context} 
         namespace={state.namespace} 
         model={state.model}

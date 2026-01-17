@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { parseCommand, getSlashCommands } from '../commandParser.js';
-import { MODEL_MAP } from '../../constants.js';
+import { parseCommand } from '../commandParser.js';
+import { MODEL_MAP } from '../constants.js';
 
 /**
  * Property-based tests for command parser
@@ -64,89 +64,20 @@ describe('commandParser property tests', () => {
   });
 
   /**
-   * Property 2: Quick Check Command Parsing
-   * For any input containing quick check keywords, parseCommand SHALL return
-   * a quickCheck command with correct mode and model extraction.
-   * 
-   * **Validates: Requirements 6.3**
-   */
-  describe('Property 2: Quick check command parsing', () => {
-    const checkKeywords = ['check', 'run', 'test', 'scan', 'analyze', 'health'];
-    const comprehensiveKeywords = ['all', 'comprehensive', 'full', 'complete', 'thorough', 'deep'];
-    const smokeKeywords = ['smoke', 'quick', 'fast', 'rapid', 'brief'];
-    const modelNames = Object.keys(MODEL_MAP);
-
-    it('should detect comprehensive mode when comprehensive keywords present', () => {
-      fc.assert(
-        fc.property(
-          fc.constantFrom(...checkKeywords),
-          fc.constantFrom(...comprehensiveKeywords),
-          (checkKw, compKw) => {
-            const input = `${compKw} ${checkKw}`;
-            const result = parseCommand(input);
-            expect(result.type).toBe('quickCheck');
-            if (result.type === 'quickCheck') {
-              expect(result.mode).toBe('all');
-            }
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should detect smoke mode when smoke keywords present', () => {
-      fc.assert(
-        fc.property(
-          fc.constantFrom(...checkKeywords),
-          fc.constantFrom(...smokeKeywords),
-          (checkKw, smokeKw) => {
-            const input = `${smokeKw} ${checkKw}`;
-            const result = parseCommand(input);
-            expect(result.type).toBe('quickCheck');
-            if (result.type === 'quickCheck') {
-              expect(result.mode).toBe('smoke');
-            }
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should extract model when model name present in check command', () => {
-      fc.assert(
-        fc.property(
-          fc.constantFrom(...checkKeywords),
-          fc.constantFrom(...modelNames),
-          (checkKw, model) => {
-            const input = `${checkKw} with ${model}`;
-            const result = parseCommand(input);
-            expect(result.type).toBe('quickCheck');
-            if (result.type === 'quickCheck') {
-              expect(result.model).toBe(model);
-            }
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-  });
-
-  /**
-   * Property 3: General Query Parsing
-   * For any input that is not a slash command, not a quick check, and not a control command,
+   * Property 2: General Query Parsing
+   * For any input that is not a slash command and not a control command,
    * parseCommand SHALL return a query command containing the original text.
    * 
    * **Validates: Requirements 6.1, 6.2, 6.4**
    */
-  describe('Property 3: General query parsing', () => {
-    // Generate strings that won't match slash commands, control commands, or check keywords
+  describe('Property 2: General query parsing', () => {
+    // Generate strings that won't match slash commands or control commands
     const nonCommandString = fc.string({ minLength: 1 })
       .filter(s => {
         const trimmed = s.trim().toLowerCase();
         if (!trimmed) return false;
         if (trimmed.startsWith('/')) return false;
         if (['help', '?', 'h', 'exit', 'quit', 'q'].includes(trimmed)) return false;
-        if (['check', 'run', 'test', 'scan', 'analyze', 'health'].some(kw => trimmed.includes(kw))) return false;
         return true;
       });
 
@@ -171,16 +102,38 @@ describe('commandParser property tests', () => {
         { numRuns: 100 }
       );
     });
+
+    it('should pass any "check" query to LLM', () => {
+      const checkQueries = [
+        'check pdb',
+        'check pdb configuration',
+        'check ingress',
+        'health check',
+        'run check',
+        'comprehensive check',
+      ];
+      
+      fc.assert(
+        fc.property(fc.constantFrom(...checkQueries), (query) => {
+          const result = parseCommand(query);
+          expect(result.type).toBe('query');
+          if (result.type === 'query') {
+            expect(result.text).toBe(query);
+          }
+        }),
+        { numRuns: 100 }
+      );
+    });
   });
 
   /**
-   * Property 4: Control Command Parsing
+   * Property 3: Control Command Parsing
    * For any input matching control commands (help, ?, h, exit, quit, q),
    * parseCommand SHALL return the corresponding command type.
    * 
    * **Validates: Requirements 6.6, 6.7**
    */
-  describe('Property 4: Control command parsing', () => {
+  describe('Property 3: Control command parsing', () => {
     const helpAliases = ['help', '?', 'h'];
     const exitAliases = ['exit', 'quit', 'q'];
 
@@ -212,6 +165,31 @@ describe('commandParser property tests', () => {
             const upperResult = parseCommand(alias.toUpperCase());
             const lowerResult = parseCommand(alias.toLowerCase());
             expect(upperResult.type).toBe(lowerResult.type);
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+  });
+
+  /**
+   * Property 4: Model Extraction
+   * For any query containing a model name, the model should be extracted.
+   */
+  describe('Property 4: Model extraction', () => {
+    const modelNames = Object.keys(MODEL_MAP);
+
+    it('should extract model when model name present in query', () => {
+      fc.assert(
+        fc.property(
+          fc.constantFrom(...modelNames),
+          fc.string({ minLength: 1, maxLength: 20 }).filter(s => !s.startsWith('/') && s.trim().length > 0),
+          (model, prefix) => {
+            const input = `${prefix} ${model}`;
+            const result = parseCommand(input);
+            if (result.type === 'query') {
+              expect(result.model).toBe(model);
+            }
           }
         ),
         { numRuns: 100 }

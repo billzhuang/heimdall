@@ -8,12 +8,11 @@ const program = new Command();
 
 program
   .name("heimdall")
-  .description("AI-powered SRE agent for EKS health checks")
+  .description("AI-powered Kubernetes assistant and SRE agent")
   .version("0.1.0");
 
+// Default command - run the interactive TUI
 program
-  .command("check", { isDefault: true })
-  .description("Run interactive health check on an EKS cluster")
   .option(
     "-k, --kubeconfig <path>",
     "Path to kubeconfig file",
