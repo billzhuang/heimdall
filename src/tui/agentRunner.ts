@@ -94,6 +94,37 @@ export class ConversationContext {
     
     return summary;
   }
+
+  /**
+   * Get memory/context statistics
+   */
+  getStats(): {
+    turnCount: number;
+    userTurns: number;
+    assistantTurns: number;
+    totalChars: number;
+    estimatedTokens: number;
+    sessionId: string;
+    oldestTurn: Date | null;
+    newestTurn: Date | null;
+  } {
+    const userTurns = this.turns.filter(t => t.role === 'user').length;
+    const assistantTurns = this.turns.filter(t => t.role === 'assistant').length;
+    const totalChars = this.turns.reduce((sum, t) => sum + t.content.length, 0);
+    // Rough estimate: ~4 chars per token
+    const estimatedTokens = Math.ceil(totalChars / 4);
+    
+    return {
+      turnCount: this.turns.length,
+      userTurns,
+      assistantTurns,
+      totalChars,
+      estimatedTokens,
+      sessionId: this.sessionId,
+      oldestTurn: this.turns.length > 0 ? this.turns[0].timestamp : null,
+      newestTurn: this.turns.length > 0 ? this.turns[this.turns.length - 1].timestamp : null,
+    };
+  }
 }
 
 // Stream user message type for the SDK

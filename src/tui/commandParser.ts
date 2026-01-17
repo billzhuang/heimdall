@@ -9,7 +9,8 @@ export type SlashCommand =
   | { type: 'exit' }
   | { type: 'clear' }
   | { type: 'new' }
-  | { type: 'compact' };
+  | { type: 'compact' }
+  | { type: 'context' };
 
 // Quick check command
 export interface QuickCheckCommand {
@@ -33,16 +34,17 @@ export interface UnknownCommand {
 
 export type ParsedCommand = SlashCommand | QuickCheckCommand | QueryCommand | UnknownCommand;
 
-// Valid slash commands
-const SLASH_COMMANDS: Record<string, SlashCommand['type']> = {
-  '/ctx': 'ctx',
-  '/ns': 'ns',
-  '/model': 'model',
-  '/help': 'help',
-  '/exit': 'exit',
-  '/clear': 'clear',
-  '/new': 'new',
-  '/compact': 'compact',
+// Valid slash commands with descriptions
+export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; description: string }> = {
+  '/ctx': { type: 'ctx', description: 'Select Kubernetes context' },
+  '/ns': { type: 'ns', description: 'Select namespace' },
+  '/model': { type: 'model', description: 'Select LLM model' },
+  '/context': { type: 'context', description: 'Show conversation memory stats' },
+  '/help': { type: 'help', description: 'Show available commands' },
+  '/clear': { type: 'clear', description: 'Clear conversation history' },
+  '/new': { type: 'new', description: 'Start new conversation' },
+  '/compact': { type: 'compact', description: 'Compact conversation context' },
+  '/exit': { type: 'exit', description: 'Exit Heimdall' },
 };
 
 // Control command aliases
@@ -70,9 +72,9 @@ export function parseCommand(input: string): ParsedCommand {
   // Check for slash commands first
   if (trimmed.startsWith('/')) {
     const slashCmd = trimmed.split(/\s/)[0].toLowerCase();
-    const cmdType = SLASH_COMMANDS[slashCmd];
-    if (cmdType) {
-      return { type: cmdType } as SlashCommand;
+    const cmdInfo = SLASH_COMMANDS[slashCmd];
+    if (cmdInfo) {
+      return { type: cmdInfo.type } as SlashCommand;
     }
     // Unknown slash command
     return { type: 'unknown', raw: input };
@@ -131,7 +133,7 @@ function extractModel(input: string): string | undefined {
  * Check if a command is a slash command
  */
 export function isSlashCommand(cmd: ParsedCommand): cmd is SlashCommand {
-  return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'compact'].includes(cmd.type);
+  return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'compact', 'context'].includes(cmd.type);
 }
 
 /**
@@ -153,4 +155,24 @@ export function isQuery(cmd: ParsedCommand): cmd is QueryCommand {
  */
 export function getSlashCommands(): string[] {
   return Object.keys(SLASH_COMMANDS);
+}
+
+/**
+ * Get slash commands with descriptions for autocomplete
+ */
+export function getSlashCommandsWithDescriptions(): Array<{ command: string; description: string }> {
+  return Object.entries(SLASH_COMMANDS).map(([cmd, info]) => ({
+    command: cmd,
+    description: info.description,
+  }));
+}
+
+/**
+ * Filter slash commands by prefix
+ */
+export function filterSlashCommands(prefix: string): Array<{ command: string; description: string }> {
+  const lowerPrefix = prefix.toLowerCase();
+  return getSlashCommandsWithDescriptions().filter(
+    item => item.command.toLowerCase().startsWith(lowerPrefix)
+  );
 }

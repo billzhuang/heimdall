@@ -103,6 +103,9 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
             timestamp: new Date(),
           });
           break;
+        case 'context':
+          showContextStats(actions.addMessage, conversationContext);
+          break;
       }
       return;
     }
@@ -279,6 +282,7 @@ Available Commands:
   /ctx      - Select Kubernetes context
   /ns       - Select namespace
   /model    - Select LLM model
+  /context  - Show conversation memory stats
   /clear    - Clear conversation history
   /new      - Start new conversation
   /compact  - Compact conversation context
@@ -300,6 +304,37 @@ General Queries:
     id: generateMessageId(),
     type: 'system',
     content: helpText,
+    timestamp: new Date(),
+  });
+}
+
+function showContextStats(addMessage: (msg: OutputMessage) => void, context: ConversationContext): void {
+  const stats = context.getStats();
+  
+  const formatDate = (date: Date | null) => {
+    if (!date) return 'N/A';
+    return date.toLocaleTimeString();
+  };
+
+  const statsText = `
+📊 Conversation Memory Stats
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Session ID:       ${stats.sessionId}
+Total Turns:      ${stats.turnCount}
+  • User:         ${stats.userTurns}
+  • Assistant:    ${stats.assistantTurns}
+Total Characters: ${stats.totalChars.toLocaleString()}
+Est. Tokens:      ~${stats.estimatedTokens.toLocaleString()}
+First Message:    ${formatDate(stats.oldestTurn)}
+Last Message:     ${formatDate(stats.newestTurn)}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${stats.turnCount === 0 ? '💡 Tip: Start a conversation to build context for follow-up questions.' : '💡 Tip: Use /compact to reduce context size, or /clear to start fresh.'}
+`;
+
+  addMessage({
+    id: generateMessageId(),
+    type: 'system',
+    content: statsText,
     timestamp: new Date(),
   });
 }
