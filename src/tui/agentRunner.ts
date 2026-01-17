@@ -25,7 +25,6 @@ export interface AgentRunnerOptions {
   config: HeimdallConfig;
   model: string;
   verbose?: boolean;
-  transcriptPath?: string;
 }
 
 export interface AgentRunnerCallbacks {

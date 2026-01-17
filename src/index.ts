@@ -19,16 +19,11 @@ program
     process.env.KUBECONFIG,
   )
   .option("-v, --verbose", "Show verbose output including tool calls", false)
-  .option(
-    "--transcript <path>",
-    "Write session transcript to path (JSONL)",
-  )
   .action(async (options) => {
     try {
       await runInkTUI({
         kubeconfig: options.kubeconfig,
         verbose: options.verbose,
-        transcriptPath: options.transcript,
       });
     } catch (error) {
       if (error instanceof Error) {

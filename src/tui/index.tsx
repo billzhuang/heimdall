@@ -7,7 +7,6 @@ import { App } from './components/App.js';
 export interface TUIOptions {
   kubeconfig?: string;
   verbose?: boolean;
-  transcriptPath?: string;
 }
 
 /**
@@ -28,7 +27,6 @@ export async function runInkTUI(options: TUIOptions = {}): Promise<void> {
     <App
       kubeconfig={kubeconfigPath}
       verbose={options.verbose}
-      transcriptPath={options.transcriptPath}
     />
   );
 

@@ -19,7 +19,6 @@ import {
 export interface AppProps {
   kubeconfig: string;
   verbose?: boolean;
-  transcriptPath?: string;
 }
 
 // Global conversation context
@@ -29,7 +28,7 @@ function generateMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.ReactElement {
+export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
   const { exit } = useApp();
   const [state, actions] = useAppState(kubeconfig);
   const agentControllerRef = useRef<AgentController | null>(null);
@@ -172,7 +171,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     }
 
     const modelId = actions.getModelId();
-    const options = { config, model: modelId, verbose, transcriptPath };
+    const options = { config, model: modelId, verbose };
 
     const callbacks = {
       onMessage: (msg: OutputMessage) => actions.addMessage(msg),
@@ -218,7 +217,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     } catch (error) {
       // Error already handled in callbacks
     }
-  }, [state.context, actions, exit, verbose, transcriptPath]);
+  }, [state.context, actions, exit, verbose]);
 
   // Selector overlays
   if (state.mode === 'selector') {
