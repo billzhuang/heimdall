@@ -63,7 +63,7 @@ export interface AppStateActions {
 }
 
 const DEFAULT_MODEL = 'sonnet';
-const DEFAULT_NAMESPACE = 'all';
+const DEFAULT_NAMESPACE = 'kube-system';
 
 export function createInitialState(kubeconfigPath: string): TUIState {
   return {

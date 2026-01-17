@@ -12,7 +12,7 @@ describe('stateManagement', () => {
       const state = createInitialState('/path/to/kubeconfig');
       
       expect(state.context).toBeNull();
-      expect(state.namespace).toBe('all');
+      expect(state.namespace).toBe('kube-system');
       expect(state.model).toBe('sonnet');
       expect(state.mode).toBe('repl');
       expect(state.activeSelector).toBeNull();
@@ -104,7 +104,7 @@ describe('stateManagement', () => {
 
     it('should have correct default namespace', () => {
       const state = createInitialState('/path');
-      expect(state.namespace).toBe('all');
+      expect(state.namespace).toBe('kube-system');
     });
 
     it('should have null statusHint initially', () => {
