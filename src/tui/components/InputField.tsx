@@ -6,13 +6,11 @@ import { filterSlashCommands } from '../commandParser.js';
 export interface InputFieldProps {
   onSubmit: (input: string) => void;
   disabled?: boolean;
-  placeholder?: string;
 }
 
 export function InputField({
   onSubmit,
   disabled = false,
-  placeholder = 'Type a command or question...',
 }: InputFieldProps): React.ReactElement {
   const [value, setValue] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -50,7 +48,6 @@ export function InputField({
   }, { isActive: showAutocomplete && hasSuggestions });
 
   const handleChange = (newValue: string) => {
-    // Trim trailing space if user backspaces after tab completion
     setValue(newValue);
     setSelectedIndex(0);
     setShowAutocomplete(newValue.startsWith('/') && newValue.length >= 1);
@@ -72,11 +69,9 @@ export function InputField({
 
   if (disabled) {
     return (
-      <Box flexDirection="column">
-        <Box>
-          <Text color="gray">heimdall&gt; </Text>
-          <Text color="yellow">Processing...</Text>
-        </Box>
+      <Box borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text color="cyan" bold>{'>'}</Text>
+        <Text color="yellow"> Processing...</Text>
       </Box>
     );
   }
@@ -91,7 +86,7 @@ export function InputField({
           paddingX={1}
           marginBottom={1}
         >
-          <Text color="gray" dimColor>Slash commands (↑↓ navigate, Enter execute, Tab complete):</Text>
+          <Text color="gray" dimColor>↑↓ navigate · Enter select · Tab complete · Esc cancel</Text>
           {suggestions.map((item, index) => (
             <Box key={item.command}>
               <Text color={index === selectedIndex ? 'cyan' : 'white'}>
@@ -103,13 +98,14 @@ export function InputField({
           ))}
         </Box>
       )}
-      <Box>
-        <Text color="cyan">heimdall&gt; </Text>
+      <Box borderStyle="round" borderColor="cyan" paddingX={1}>
+        <Text color="cyan" bold>{'>'}</Text>
+        <Text> </Text>
         <TextInput
           value={value}
           onChange={handleChange}
           onSubmit={handleSubmit}
-          placeholder={placeholder}
+          placeholder=""
         />
       </Box>
     </Box>

@@ -9,7 +9,8 @@ describe('InputField', () => {
       <InputField onSubmit={() => {}} />
     );
     
-    expect(lastFrame()).toContain('heimdall>');
+    // Claude Code style prompt
+    expect(lastFrame()).toContain('>');
   });
 
   it('should show processing state when disabled', () => {
@@ -26,17 +27,18 @@ describe('InputField', () => {
     );
     
     // Should show prompt but not processing
-    expect(lastFrame()).toContain('heimdall>');
+    expect(lastFrame()).toContain('>');
     expect(lastFrame()).not.toContain('Processing...');
   });
 
-  it('should show placeholder text', () => {
+  it('should render with border', () => {
     const { lastFrame } = render(
-      <InputField onSubmit={() => {}} placeholder="Enter command" />
+      <InputField onSubmit={() => {}} />
     );
     
-    // Placeholder should be visible in the frame
-    expect(lastFrame()).toContain('heimdall>');
+    // Should have border characters (round style uses these)
+    expect(lastFrame()).toContain('╭');
+    expect(lastFrame()).toContain('╯');
   });
 
   it('should not call onSubmit for empty input on enter', () => {
