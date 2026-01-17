@@ -24,10 +24,14 @@ export function InputField({
   const hasSuggestions = suggestions.length > 0;
 
   // Handle keyboard navigation for autocomplete
-  useInput((input, key) => {
+  useInput((_input, key) => {
     if (!showAutocomplete || !hasSuggestions) return;
 
-    if (key.downArrow) {
+    if (key.escape) {
+      // ESC to cancel autocomplete
+      setShowAutocomplete(false);
+      setSelectedIndex(0);
+    } else if (key.downArrow) {
       setSelectedIndex(prev => (prev + 1) % suggestions.length);
     } else if (key.upArrow) {
       setSelectedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);

@@ -62,7 +62,7 @@ On launch, Heimdall automatically:
 
 ### Example Queries
 
-```
+```text
 heimdall> check pdb configuration
 heimdall> why is my pod in CrashLoopBackOff?
 heimdall> list all deployments with less than 2 replicas
@@ -75,7 +75,6 @@ heimdall> explain the network policies in this namespace
 |--------|-------------|---------|
 | `-k, --kubeconfig <path>` | Path to kubeconfig file | `~/.kube/config` |
 | `-v, --verbose` | Show verbose output including tool calls | `false` |
-| `--transcript <path>` | Write session transcript to path (JSONL) | - |
 
 ## Development
 
