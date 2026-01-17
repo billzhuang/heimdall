@@ -2,7 +2,7 @@
 
 import "dotenv/config";
 import { Command } from "commander";
-import { runInteractiveChatMode } from "./interactive.js";
+import { runInkTUI } from "./tui/index.js";
 
 const program = new Command();
 
@@ -26,10 +26,10 @@ program
   )
   .action(async (options) => {
     try {
-      await runInteractiveChatMode({
+      await runInkTUI({
         kubeconfig: options.kubeconfig,
         verbose: options.verbose,
-        interactiveTranscript: options.transcript,
+        transcriptPath: options.transcript,
       });
     } catch (error) {
       if (error instanceof Error) {
