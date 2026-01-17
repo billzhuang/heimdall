@@ -1,7 +1,7 @@
 {
   "name": "heimdall-sre",
   "version": "0.1.0",
-  "description": "AI-powered SRE agent for EKS health checks using Claude Agent SDK",
+  "description": "AI-powered Kubernetes assistant and SRE agent using Claude Agent SDK",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -10,31 +10,43 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "interactive": "tsx src/index.ts check",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "kubernetes",
     "eks",
     "sre",
-    "health-check",
     "ai-agent",
-    "claude"
+    "claude",
+    "k8s",
+    "devops"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.1.76",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.11",
     "commander": "^14.0.0",
     "dotenv": "^17.2.3",
-    "js-yaml": "^4.1.0"
+    "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
+    "js-yaml": "^4.1.0",
+    "react": "^19.2.3"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.1",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.10.2",
+    "@types/node": "^25.0.9",
+    "@types/react": "^19.2.8",
+    "@vitest/coverage-v8": "^4.0.17",
+    "fast-check": "^4.5.3",
+    "ink-testing-library": "^4.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.17"
   },
   "engines": {
     "node": ">=18.0.0"

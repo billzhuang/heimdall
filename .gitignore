@@ -26,3 +26,5 @@ logs.txt
 
 # Test coverage
 coverage/
+
+.kiro/*
