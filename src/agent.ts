@@ -117,13 +117,13 @@ function buildUserPrompt(config: HeimdallConfig, mode?: string): string {
   const namespaceInfo = config.namespace === "all" ? "all namespaces" : `namespace: ${config.namespace}`;
 
   const basePrompt = modeType === "smoke"
-    ? `Perform a quick smoke health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
+    ? `Perform a quick smoke health check on the cluster (context: ${config.context}, ${namespaceInfo}).
 
 Run these essential checks:
 1. Node Health - Check all nodes for NotReady, MemoryPressure, DiskPressure conditions
 2. Critical Pod Failures - Check for CrashLoopBackOff, ImagePullBackOff, Pending pods
 3. Recent Warning Events - Last 20 warning events to spot immediate issues`
-    : `Perform a comprehensive health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
+    : `Perform a comprehensive health check on the cluster (context: ${config.context}, ${namespaceInfo}).
 
 Check the following in order:
 1. Cluster connectivity
@@ -150,9 +150,9 @@ export async function runHealthCheck(options: RunHealthCheckOptions): Promise<vo
   const selectedModel = model || "claude-sonnet-4-5-20250929";
   const userPrompt = buildUserPrompt(config, mode);
 
-  console.log(`\n${colors.cyan}${colors.bright}🔍 Starting health check for cluster: ${config.cluster}${colors.reset}\n`);
+  console.log(`\n${colors.cyan}${colors.bright}🔍 Starting health check${colors.reset}\n`);
+  console.log(`${colors.dim}Context: ${config.context}${colors.reset}`);
   console.log(`${colors.dim}Namespace: ${config.namespace}${colors.reset}`);
-  console.log(`${colors.dim}Context: ${config.context || "default"}${colors.reset}`);
   console.log(`${colors.dim}Mode: ${mode || "smoke"}${colors.reset}`);
   console.log(`${colors.dim}Model: ${selectedModel}${colors.reset}\n`);
   console.log("─".repeat(60));

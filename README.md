@@ -47,7 +47,6 @@ npm start
 
 On launch, you'll be prompted to select:
 - **Kubernetes context** (from your kubeconfig)
-- **Cluster name**
 - **Namespace** to check
 
 ### Chat Commands

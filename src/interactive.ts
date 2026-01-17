@@ -156,32 +156,6 @@ async function promptForManualContext(): Promise<string> {
   }
 }
 
-async function promptForClusterName(): Promise<string> {
-  const rl = createInterface({ input, output });
-
-  try {
-    while (true) {
-      const answer = (
-        await rl.question(
-          `${colors.green}? Enter cluster name:${colors.reset} `,
-        )
-      ).trim();
-
-      if (answer) {
-        rl.close();
-        return answer;
-      }
-
-      console.log(
-        `${colors.yellow}Cluster name is required.${colors.reset}`,
-      );
-    }
-  } catch (error) {
-    rl.close();
-    throw error;
-  }
-}
-
 async function promptForNamespace(
   context?: string,
   kubeconfigPath?: string,
@@ -364,7 +338,6 @@ function displayChatHelp(): void {
 async function promptForInitialSetup(
   options: CLIOptions,
 ): Promise<{
-  cluster: string;
   context: string;
   namespace: string;
   kubeconfig: string;
@@ -399,13 +372,10 @@ async function promptForInitialSetup(
     context = await promptForManualContext();
   }
 
-  // Prompt for cluster name
-  const cluster = await promptForClusterName();
-
   // Prompt for namespace
   const namespace = await promptForNamespace(context, kubeconfigPath);
 
-  return { cluster, context, namespace, kubeconfig: kubeconfigPath };
+  return { context, namespace, kubeconfig: kubeconfigPath };
 }
 
 export async function runInteractiveChatMode(
@@ -416,7 +386,6 @@ export async function runInteractiveChatMode(
 
   // Step 2: Display welcome and help
   console.log(`\n${colors.green}✓ Setup complete!${colors.reset}`);
-  console.log(`${colors.dim}Cluster: ${setupParams.cluster}${colors.reset}`);
   console.log(`${colors.dim}Context: ${setupParams.context}${colors.reset}`);
   console.log(`${colors.dim}Namespace: ${setupParams.namespace}${colors.reset}\n`);
 
@@ -469,7 +438,6 @@ export async function runInteractiveChatMode(
           try {
             // Load config
             const config = loadConfig({
-              cluster: setupParams.cluster,
               kubeconfig: setupParams.kubeconfig,
               context: setupParams.context,
               namespace: setupParams.namespace,

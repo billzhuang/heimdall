@@ -4,9 +4,7 @@ export function getSRESystemPrompt(
   config: HeimdallConfig,
   mode?: string,
 ): string {
-  const kubectlPrefix = config.context
-    ? `kubectl --context=${config.context}`
-    : "kubectl";
+  const kubectlPrefix = `kubectl --context=${config.context}`;
 
   const namespaceFlag =
     config.namespace === "all" ? "-A" : `-n ${config.namespace}`;
@@ -24,7 +22,7 @@ export function getSRESystemPrompt(
   return `You are Heimdall, an expert SRE agent specializing in EKS cluster health assessment.${modeNote}
 
 ## Your Mission
-Perform a ${mode === "smoke" ? "quick smoke" : "comprehensive"} health check on the EKS cluster "${config.cluster}" (${namespaceInfo}) and identify any issues that need attention.
+Perform a ${mode === "smoke" ? "quick smoke" : "comprehensive"} health check on the cluster (context: ${config.context}, ${namespaceInfo}) and identify any issues that need attention.
 
 ## Output Style - LEAN and PRECISE
 - **Be concise**: Use bullet points, not verbose paragraphs
