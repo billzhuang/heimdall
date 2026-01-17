@@ -327,16 +327,7 @@ async function runAgentStream(
             if (block.type === 'tool_use') {
               const inp = block.input as { command?: string; description?: string };
               callbacks.onToolUse(block.name || 'unknown', inp?.command);
-              callbacks.onMessage({
-                id: generateMessageId(),
-                type: 'tool',
-                content: inp?.description || `Running ${block.name}`,
-                timestamp: new Date(),
-                metadata: {
-                  toolName: block.name,
-                  command: inp?.command,
-                },
-              });
+              // Note: onToolUse callback handles adding the message, don't duplicate here
             }
           }
         }

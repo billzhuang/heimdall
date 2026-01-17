@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { filterSlashCommands } from '../commandParser.js';
@@ -17,6 +17,9 @@ export function InputField({
   const [value, setValue] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
+  
+  // Track if we should intercept the next submit
+  const interceptSubmitRef = useRef(false);
 
   // Get filtered commands when input starts with /
   const suggestions = value.startsWith('/') ? filterSlashCommands(value) : [];
@@ -31,19 +34,35 @@ export function InputField({
     } else if (key.upArrow) {
       setSelectedIndex(prev => (prev - 1 + suggestions.length) % suggestions.length);
     } else if (key.tab) {
-      // Tab to autocomplete
-      setValue(suggestions[selectedIndex].command);
+      // Tab to autocomplete - add space at end so cursor is at the end
+      const cmd = suggestions[selectedIndex].command + ' ';
+      setValue(cmd);
       setShowAutocomplete(false);
+    } else if (key.return) {
+      // Enter to execute selected command directly
+      const selectedCmd = suggestions[selectedIndex].command;
+      setValue('');
+      setShowAutocomplete(false);
+      setSelectedIndex(0);
+      onSubmit(selectedCmd);
+      interceptSubmitRef.current = true;
     }
   }, { isActive: showAutocomplete && hasSuggestions });
 
   const handleChange = (newValue: string) => {
+    // Trim trailing space if user backspaces after tab completion
     setValue(newValue);
     setSelectedIndex(0);
     setShowAutocomplete(newValue.startsWith('/') && newValue.length >= 1);
   };
 
   const handleSubmit = (input: string) => {
+    // Skip if we already handled this via autocomplete Enter
+    if (interceptSubmitRef.current) {
+      interceptSubmitRef.current = false;
+      return;
+    }
+    
     if (input.trim()) {
       onSubmit(input.trim());
       setValue('');
@@ -72,7 +91,7 @@ export function InputField({
           paddingX={1}
           marginBottom={1}
         >
-          <Text color="gray" dimColor>Slash commands (↑↓ navigate, Tab complete):</Text>
+          <Text color="gray" dimColor>Slash commands (↑↓ navigate, Enter execute, Tab complete):</Text>
           {suggestions.map((item, index) => (
             <Box key={item.command}>
               <Text color={index === selectedIndex ? 'cyan' : 'white'}>
