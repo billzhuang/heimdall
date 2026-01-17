@@ -51,18 +51,8 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
         
         // Auto-select current context from kubeconfig
         if (data.currentContext) {
-          // Find the context to get its default namespace
-          const ctx = data.contexts.find(c => c.name === data.currentContext);
-          const defaultNs = ctx?.namespace || 'kube-system';
-          
-          // Set context (this will also set namespace via setContext logic)
-          // But we need to set namespace explicitly here since contextDataRef
-          // might not be populated yet
-          actions.setContexts(data.contexts.map(c => c.name));
-          
-          // Manually set both to avoid race condition
+          // setContext will handle namespace reset using contextDataRef
           actions.setContext(data.currentContext);
-          // setContext will handle namespace reset
         } else if (data.contexts.length > 0) {
           // No current-context set, use first available
           actions.setContext(data.contexts[0].name);

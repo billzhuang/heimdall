@@ -162,10 +162,7 @@ describe('kubeconfigParser property tests', () => {
       fc.assert(
         fc.property(fc.string(), (content) => {
           // This should not throw
-          const result = parseKubeconfigContent(content);
-          // Result should be null for random strings (very unlikely to be valid YAML with contexts)
-          // We just verify it doesn't throw
-          expect(result === null || result !== null).toBe(true);
+          expect(() => parseKubeconfigContent(content)).not.toThrow();
         }),
         { numRuns: 100 }
       );
