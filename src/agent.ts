@@ -10,11 +10,9 @@ export interface RunHealthCheckOptions {
   verbose?: boolean;
   model?: string;
   mode?: string;
-  interactive?: boolean;
-  interactiveTranscriptPath?: string;
+  transcriptPath?: string;
 }
 
-// Colors for terminal output
 const colors = {
   reset: "\x1b[0m",
   bright: "\x1b[1m",
@@ -22,8 +20,6 @@ const colors = {
   cyan: "\x1b[36m",
   yellow: "\x1b[33m",
   green: "\x1b[32m",
-  blue: "\x1b[34m",
-  magenta: "\x1b[35m",
   gray: "\x1b[90m",
 };
 
@@ -33,79 +29,51 @@ type TranscriptEntry = {
   timestamp: string;
 };
 
-function formatTranscriptEntry(entry: TranscriptEntry): string {
-  return JSON.stringify(entry);
-}
-
 function recordTranscriptEntry(
   transcript: TranscriptEntry[],
   role: TranscriptEntry["role"],
   content: string,
 ): void {
-  transcript.push({
-    role,
-    content,
-    timestamp: new Date().toISOString(),
-  });
+  transcript.push({ role, content, timestamp: new Date().toISOString() });
 }
 
 async function persistTranscript(
   transcript: TranscriptEntry[],
   transcriptPath?: string,
 ): Promise<void> {
-  if (!transcriptPath) {
-    return;
-  }
-
-  const body = transcript.map(formatTranscriptEntry).join("\n") + "\n";
+  if (!transcriptPath) return;
+  const body = transcript.map((e) => JSON.stringify(e)).join("\n") + "\n";
   await writeFile(transcriptPath, body, "utf8");
 }
 
 type StreamUserMessage = {
   type: "user";
   session_id: string;
-  message: {
-    role: "user";
-    content: Array<{ type: "text"; text: string }>;
-  };
+  message: { role: "user"; content: Array<{ type: "text"; text: string }> };
   parent_tool_use_id: null;
 };
 
 class UserMessageQueue implements AsyncIterable<StreamUserMessage> {
   private closed = false;
   private queue: StreamUserMessage[] = [];
-  private resolvers: Array<
-    (value: IteratorResult<StreamUserMessage>) => void
-  > = [];
+  private resolvers: Array<(value: IteratorResult<StreamUserMessage>) => void> = [];
 
   enqueue(message: StreamUserMessage): void {
-    if (this.closed) {
-      return;
-    }
-
+    if (this.closed) return;
     const resolver = this.resolvers.shift();
     if (resolver) {
       resolver({ value: message, done: false });
-      return;
+    } else {
+      this.queue.push(message);
     }
-
-    this.queue.push(message);
   }
 
   close(): void {
-    if (this.closed) {
-      return;
-    }
-
+    if (this.closed) return;
     this.closed = true;
     while (this.resolvers.length > 0) {
       const resolver = this.resolvers.shift();
-      if (resolver) {
-        resolver({
-          value: undefined as unknown as StreamUserMessage,
-          done: true,
-        });
-      }
+      resolver?.({ value: undefined as unknown as StreamUserMessage, done: true });
     }
   }
 
@@ -113,20 +81,12 @@ class UserMessageQueue implements AsyncIterable<StreamUserMessage> {
     return {
       next: () => {
         if (this.queue.length > 0) {
-          const message = this.queue.shift();
-          return Promise.resolve({ value: message!, done: false });
+          return Promise.resolve({ value: this.queue.shift()!, done: false });
         }
-
         if (this.closed) {
-          return Promise.resolve({
-            value: undefined as unknown as StreamUserMessage,
-            done: true,
-          });
+          return Promise.resolve({ value: undefined as unknown as StreamUserMessage, done: true });
         }
-
-        return new Promise<IteratorResult<StreamUserMessage>>((resolve) => {
-          this.resolvers.push(resolve);
-        });
+        return new Promise((resolve) => this.resolvers.push(resolve));
       },
     };
   }
@@ -136,54 +96,34 @@ function createUserMessage(text: string): StreamUserMessage {
   return {
     type: "user",
     session_id: "",
-    message: {
-      role: "user",
-      content: [{ type: "text", text }],
-    },
+    message: { role: "user", content: [{ type: "text", text }] },
     parent_tool_use_id: null,
   };
 }
 
-type ReadlineInterface = ReturnType<typeof createInterface>;
-
 async function promptForFollowUp(
-  rl: ReadlineInterface,
+  rl: ReturnType<typeof createInterface>,
 ): Promise<string | null> {
   try {
-    const answer = (await rl.question(
-      "Follow-up (empty or 'exit' to quit): ",
-    )).trim();
-    if (!answer || answer.toLowerCase() === "exit") {
-      return null;
-    }
-
-    return answer;
+    const answer = (await rl.question("Follow-up (empty or 'exit' to quit): ")).trim();
+    return !answer || answer.toLowerCase() === "exit" ? null : answer;
   } catch {
     return null;
   }
 }
 
-function buildUserPrompt(
-  config: HeimdallConfig,
-  mode?: string,
-  interactive?: boolean,
-): string {
+function buildUserPrompt(config: HeimdallConfig, mode?: string): string {
   const modeType = mode || "smoke";
-  const namespaceInfo = config.namespace === "all"
-    ? "all namespaces"
-    : `namespace: ${config.namespace}`;
+  const namespaceInfo = config.namespace === "all" ? "all namespaces" : `namespace: ${config.namespace}`;
 
-  let basePrompt: string;
-
-  if (modeType === "smoke") {
-    basePrompt = `Perform a quick smoke health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
+  const basePrompt = modeType === "smoke"
+    ? `Perform a quick smoke health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
 
 Run these essential checks:
 1. Node Health - Check all nodes for NotReady, MemoryPressure, DiskPressure conditions
 2. Critical Pod Failures - Check for CrashLoopBackOff, ImagePullBackOff, Pending pods
-3. Recent Warning Events - Last 20 warning events to spot immediate issues`;
-  } else {
-    basePrompt = `Perform a comprehensive health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
+3. Recent Warning Events - Last 20 warning events to spot immediate issues`
+    : `Perform a comprehensive health check on the EKS cluster "${config.cluster}" (${namespaceInfo}).
 
 Check the following in order:
 1. Cluster connectivity
@@ -197,250 +137,138 @@ Check the following in order:
 9. ConfigMaps & Secrets
 10. Storage (PVC/PV)
 11. Jobs & CronJobs`;
-  }
-
-  if (!interactive) {
-    return basePrompt;
-  }
 
   return `${basePrompt}
 
 After the summary, be ready to answer follow-up questions about this run. Do not re-run the full checklist unless asked.`;
 }
 
-export async function runHealthCheck(
-  options: RunHealthCheckOptions,
-): Promise<void> {
-  const { config, verbose, model, mode, interactive, interactiveTranscriptPath } =
-    options;
+export async function runHealthCheck(options: RunHealthCheckOptions): Promise<void> {
+  const { config, verbose, model, mode, transcriptPath } = options;
 
   const systemPrompt = getSRESystemPrompt(config, mode);
-
-  // Default to Sonnet for cost efficiency (Opus is ~10x more expensive)
   const selectedModel = model || "claude-sonnet-4-5-20250929";
+  const userPrompt = buildUserPrompt(config, mode);
 
-  const userPrompt = buildUserPrompt(config, mode, interactive);
-
-  console.log(
-    `\n${colors.cyan}${colors.bright}🔍 Starting health check for cluster: ${config.cluster}${colors.reset}\n`,
-  );
+  console.log(`\n${colors.cyan}${colors.bright}🔍 Starting health check for cluster: ${config.cluster}${colors.reset}\n`);
   console.log(`${colors.dim}Namespace: ${config.namespace}${colors.reset}`);
-  console.log(
-    `${colors.dim}Context: ${config.context || "default"}${colors.reset}`,
-  );
+  console.log(`${colors.dim}Context: ${config.context || "default"}${colors.reset}`);
   console.log(`${colors.dim}Mode: ${mode || "smoke"}${colors.reset}`);
   console.log(`${colors.dim}Model: ${selectedModel}${colors.reset}\n`);
   console.log("─".repeat(60));
 
   const transcript: TranscriptEntry[] = [];
-  const shouldRecordTranscript = Boolean(
-    interactive || interactiveTranscriptPath,
-  );
-
-  if (shouldRecordTranscript) {
-    recordTranscriptEntry(transcript, "system", systemPrompt);
-    recordTranscriptEntry(transcript, "user", userPrompt);
-    await persistTranscript(transcript, interactiveTranscriptPath);
-  }
+  recordTranscriptEntry(transcript, "system", systemPrompt);
+  recordTranscriptEntry(transcript, "user", userPrompt);
+  await persistTranscript(transcript, transcriptPath);
 
   const queryOptions = {
     allowedTools: ["Bash"],
     systemPrompt,
     permissionMode: "bypassPermissions" as const,
     model: selectedModel,
-    ...(interactive || interactiveTranscriptPath
-      ? { persistSession: false }
-      : {}),
+    persistSession: false,
   };
 
-  const messageQueue = interactive ? new UserMessageQueue() : null;
-  const rl = interactive ? createInterface({ input, output }) : null;
-
-  if (interactive && messageQueue) {
-    messageQueue.enqueue(createUserMessage(userPrompt));
-  }
+  const messageQueue = new UserMessageQueue();
+  const rl = createInterface({ input, output });
+  messageQueue.enqueue(createUserMessage(userPrompt));
 
   let assistantBuffer = "";
   let shouldExit = false;
 
   try {
-    const queryStream = query({
-      prompt: interactive && messageQueue ? messageQueue : userPrompt,
-      options: queryOptions,
-    });
+    const queryStream = query({ prompt: messageQueue, options: queryOptions });
 
     for await (const message of queryStream) {
-      // Handle different message types
-      if (shouldExit) {
-        break;
-      }
+      if (shouldExit) break;
 
       if ("type" in message) {
         const msg = message as Record<string, unknown>;
 
-        // System init message
         if (msg.type === "system" && msg.subtype === "init") {
           console.log(`${colors.green}✓ Agent initialized${colors.reset}`);
           console.log(`${colors.dim}  Model: ${msg.model}${colors.reset}`);
-          console.log(
-            `${colors.dim}  Tools: ${(msg.tools as string[])?.join(", ")}${colors.reset}\n`,
-          );
+          console.log(`${colors.dim}  Tools: ${(msg.tools as string[])?.join(", ")}${colors.reset}\n`);
         }
 
-        // Assistant messages (thinking/text)
         if (msg.type === "assistant") {
-          const content = msg.message as {
-            content?: Array<{
-              type: string;
-              text?: string;
-              name?: string;
-              input?: unknown;
-            }>;
-          };
-          if (content?.content) {
-            for (const block of content.content) {
-              // Text output from assistant
-              if (block.type === "text" && block.text) {
-                console.log(block.text);
-                assistantBuffer += block.text + "\n";
-              }
-              // Tool use - show what command is being run
-              if (block.type === "tool_use") {
-                const input = block.input as {
-                  command?: string;
-                  description?: string;
-                };
-                console.log(
-                  `\n${colors.yellow}${colors.bright}🔧 Running: ${block.name}${colors.reset}`,
-                );
-                if (input?.description) {
-                  console.log(
-                    `${colors.dim}   ${input.description}${colors.reset}`,
-                  );
-                }
-                if (input?.command && verbose) {
-                  console.log(
-                    `${colors.gray}   $ ${input.command}${colors.reset}`,
-                  );
-                } else if (input?.command) {
-                  // Show truncated command
-                  const cmd =
-                    input.command.length > 80
-                      ? input.command.substring(0, 80) + "..."
-                      : input.command;
-                  console.log(`${colors.gray}   $ ${cmd}${colors.reset}`);
-                }
+          const content = msg.message as { content?: Array<{ type: string; text?: string; name?: string; input?: unknown }> };
+          for (const block of content?.content || []) {
+            if (block.type === "text" && block.text) {
+              console.log(block.text);
+              assistantBuffer += block.text + "\n";
+            }
+            if (block.type === "tool_use") {
+              const inp = block.input as { command?: string; description?: string };
+              console.log(`\n${colors.yellow}${colors.bright}🔧 Running: ${block.name}${colors.reset}`);
+              if (inp?.description) console.log(`${colors.dim}   ${inp.description}${colors.reset}`);
+              if (inp?.command) {
+                const cmd = verbose ? inp.command : (inp.command.length > 80 ? inp.command.substring(0, 80) + "..." : inp.command);
+                console.log(`${colors.gray}   $ ${cmd}${colors.reset}`);
               }
             }
           }
         }
 
-        // User messages (tool results)
         if (msg.type === "user" && verbose) {
-          const content = msg.message as {
-            content?: Array<{ type: string; content?: string }>;
-          };
-          if (content?.content) {
-            for (const block of content.content) {
-              if (block.type === "tool_result" && block.content) {
-                // Show first few lines of output in verbose mode
-                const lines = block.content.split("\n").slice(0, 10);
-                console.log(`${colors.dim}${lines.join("\n")}${colors.reset}`);
-                if (block.content.split("\n").length > 10) {
-                  console.log(
-                    `${colors.dim}   ... (${block.content.split("\n").length - 10} more lines)${colors.reset}`,
-                  );
-                }
+          const content = msg.message as { content?: Array<{ type: string; content?: string }> };
+          for (const block of content?.content || []) {
+            if (block.type === "tool_result" && block.content) {
+              const lines = block.content.split("\n").slice(0, 10);
+              console.log(`${colors.dim}${lines.join("\n")}${colors.reset}`);
+              if (block.content.split("\n").length > 10) {
+                console.log(`${colors.dim}   ... (${block.content.split("\n").length - 10} more lines)${colors.reset}`);
               }
             }
           }
         }
 
-        // Final result
         if (msg.type === "result") {
           console.log("\n" + "─".repeat(60));
-          if (msg.subtype === "success") {
-            console.log(
-              `${colors.green}${colors.bright}✅ Health check complete${colors.reset}\n`,
-            );
-            // Note: Don't print msg.result here - it was already streamed in real-time
-          } else {
-            console.log(
-              `${colors.yellow}⚠️  Health check finished with status: ${msg.subtype}${colors.reset}\n`,
-            );
-          }
+          console.log(msg.subtype === "success"
+            ? `${colors.green}${colors.bright}✅ Health check complete${colors.reset}\n`
+            : `${colors.yellow}⚠️  Health check finished with status: ${msg.subtype}${colors.reset}\n`);
 
-          // Show usage stats
           if (msg.total_cost_usd !== undefined) {
-            console.log(
-              `\n${colors.dim}Cost: $${(msg.total_cost_usd as number).toFixed(4)}${colors.reset}`,
-            );
+            console.log(`\n${colors.dim}Cost: ${(msg.total_cost_usd as number).toFixed(4)}${colors.reset}`);
           }
           if (msg.duration_ms !== undefined) {
-            console.log(
-              `${colors.dim}Duration: ${((msg.duration_ms as number) / 1000).toFixed(1)}s${colors.reset}`,
-            );
+            console.log(`${colors.dim}Duration: ${((msg.duration_ms as number) / 1000).toFixed(1)}s${colors.reset}`);
           }
 
-          if (assistantBuffer.trim().length > 0 && shouldRecordTranscript) {
-            recordTranscriptEntry(
-              transcript,
-              "assistant",
-              assistantBuffer.trim(),
-            );
+          if (assistantBuffer.trim()) {
+            recordTranscriptEntry(transcript, "assistant", assistantBuffer.trim());
             assistantBuffer = "";
           }
+          await persistTranscript(transcript, transcriptPath);
 
-          if (shouldRecordTranscript) {
-            await persistTranscript(transcript, interactiveTranscriptPath);
-          }
+          console.log(`\n${colors.cyan}${colors.bright}💬 Interactive Mode - Follow-up Questions${colors.reset}`);
+          console.log(`${colors.dim}You can now ask follow-up questions about this health check.${colors.reset}`);
+          console.log(`${colors.dim}Press Enter or type 'exit' to return to main menu.${colors.reset}\n`);
 
-          if (interactive && messageQueue && rl) {
-            // Inform user they're in interactive mode with better formatting
-            console.log(
-              `\n${colors.cyan}${colors.bright}💬 Interactive Mode - Follow-up Questions${colors.reset}`
-            );
-            console.log(
-              `${colors.dim}You can now ask follow-up questions about this health check.${colors.reset}`
-            );
-            console.log(
-              `${colors.dim}Press Enter or type 'exit' to return to main menu.${colors.reset}\n`
-            );
-
-            const followUp = await promptForFollowUp(rl);
-            if (!followUp) {
-              rl.close();
-              messageQueue.close();
-              shouldExit = true;
-              await queryStream.interrupt();
-            } else {
-              recordTranscriptEntry(transcript, "user", followUp);
-              await persistTranscript(transcript, interactiveTranscriptPath);
-              messageQueue.enqueue(createUserMessage(followUp));
-            }
+          const followUp = await promptForFollowUp(rl);
+          if (!followUp) {
+            rl.close();
+            messageQueue.close();
+            shouldExit = true;
+            await queryStream.interrupt();
+          } else {
+            recordTranscriptEntry(transcript, "user", followUp);
+            await persistTranscript(transcript, transcriptPath);
+            messageQueue.enqueue(createUserMessage(followUp));
           }
         }
-
       }
     }
   } catch (error) {
+    rl.close();
     if (error instanceof Error) {
-      console.error(
-        `\n${colors.bright}❌ Error running health check: ${error.message}${colors.reset}`,
-      );
-      if (verbose) {
-        console.error(error.stack);
-      }
+      console.error(`\n${colors.bright}❌ Error running health check: ${error.message}${colors.reset}`);
+      if (verbose) console.error(error.stack);
     } else {
       console.error("\n❌ An unknown error occurred");
     }
-    if (rl) {
-      rl.close();
-    }
-    // Only exit process in non-interactive mode
-    // In interactive mode, let the error propagate to be handled by runInteractiveChatMode
-    if (!interactive) {
-      process.exit(1);
-    }
+    throw error;
   }
 }

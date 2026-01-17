@@ -33,12 +33,7 @@ interface KubeconfigData {
 }
 
 export interface CLIOptions {
-  cluster?: string;
-  context?: string;
-  namespace?: string;
   kubeconfig?: string;
-  model?: string;
-  mode?: string;
   verbose?: boolean;
   interactiveTranscript?: string;
 }
@@ -299,104 +294,6 @@ async function promptForNamespace(
   }
 }
 
-async function promptForMode(): Promise<string> {
-  const rl = createInterface({ input, output });
-
-  const modes = [
-    {
-      value: "smoke",
-      label: "Smoke - Quick health check",
-      description:
-        "Node health, critical pod failures, recent warning events (~30s)",
-    },
-    {
-      value: "all",
-      label: "All - Comprehensive check",
-      description:
-        "All 10 categories: nodes, pods, deployments, services, events, helm, configs, storage, jobs (~2-3min)",
-    },
-  ];
-
-  try {
-    console.log(`${colors.cyan}\nHealth check mode:${colors.reset}`);
-    modes.forEach((mode, index) => {
-      console.log(`${colors.dim}  ${index + 1}. ${mode.label}${colors.reset}`);
-      console.log(`${colors.dim}     ${mode.description}${colors.reset}`);
-    });
-
-    while (true) {
-      const answer = (
-        await rl.question(
-          `${colors.green}? Select mode (1-${modes.length}):${colors.reset} [1] `,
-        )
-      ).trim();
-
-      // Default to smoke (option 1)
-      if (!answer) {
-        rl.close();
-        return "smoke";
-      }
-
-      const choice = parseInt(answer, 10);
-      if (choice >= 1 && choice <= modes.length) {
-        rl.close();
-        return modes[choice - 1].value;
-      }
-
-      console.log(
-        `${colors.yellow}Invalid choice. Please enter 1 or 2.${colors.reset}`,
-      );
-    }
-  } catch (error) {
-    rl.close();
-    throw error;
-  }
-}
-
-async function promptForModel(): Promise<string> {
-  const rl = createInterface({ input, output });
-
-  const models = Object.keys(MODEL_MAP).map((key) => ({
-    shorthand: key,
-    label: MODEL_MAP[key].label,
-    id: MODEL_MAP[key].id,
-  }));
-
-  try {
-    console.log(`${colors.cyan}\nAvailable models:${colors.reset}`);
-    models.forEach((model, index) => {
-      console.log(`${colors.dim}  ${index + 1}. ${model.label}${colors.reset}`);
-    });
-
-    while (true) {
-      const answer = (
-        await rl.question(
-          `${colors.green}? Select model (1-${models.length}):${colors.reset} [1] `,
-        )
-      ).trim();
-
-      // Default to sonnet (option 1)
-      if (!answer) {
-        rl.close();
-        return "sonnet";
-      }
-
-      const choice = parseInt(answer, 10);
-      if (choice >= 1 && choice <= models.length) {
-        rl.close();
-        return models[choice - 1].shorthand;
-      }
-
-      console.log(
-        `${colors.yellow}Invalid choice. Please enter a number between 1 and ${models.length}.${colors.reset}`,
-      );
-    }
-  } catch (error) {
-    rl.close();
-    throw error;
-  }
-}
-
 export interface ParsedCommand {
   action: 'check' | 'help' | 'exit' | 'unknown';
   mode?: 'smoke' | 'all';
@@ -474,15 +371,11 @@ async function promptForInitialSetup(
 }> {
   // Check if we're in a TTY environment
   if (!process.stdin.isTTY) {
-    throw new Error(
-      "Interactive mode requires a terminal. Please provide --cluster, --context, and other required flags.",
-    );
+    throw new Error("Interactive mode requires a terminal.");
   }
 
   console.log(`${colors.cyan}${colors.bright}Welcome to Heimdall - Interactive Health Check${colors.reset}\n`);
 
-  const finalOptions: Partial<CLIOptions> = { ...options };
-
   // Determine kubeconfig path
   const kubeconfigPath = options.kubeconfig ||
     process.env.KUBECONFIG ||
@@ -490,114 +383,29 @@ async function promptForInitialSetup(
 
   console.log(`${colors.dim}📁 Kubeconfig: ${kubeconfigPath}${colors.reset}`);
 
-  // Prompt for context if not provided
-  if (!finalOptions.context) {
-    const kubeconfigData = await parseKubeconfig(kubeconfigPath);
+  // Prompt for context
+  let context: string;
+  const kubeconfigData = await parseKubeconfig(kubeconfigPath);
 
-    if (kubeconfigData && kubeconfigData.contexts.length > 0) {
-      const contextNames = kubeconfigData.contexts.map((ctx) => ctx.name);
-      const currentContext = kubeconfigData["current-context"];
-
-      finalOptions.context = await promptForContext(contextNames, currentContext);
-    } else {
-      console.log(
-        `${colors.yellow}⚠️  Could not parse kubeconfig at ${kubeconfigPath}${colors.reset}`,
-      );
-      console.log(`${colors.dim}   Falling back to manual context entry.${colors.reset}\n`);
-
-      finalOptions.context = await promptForManualContext();
-    }
-  }
-
-  // Prompt for cluster name if not provided
-  if (!finalOptions.cluster) {
-    finalOptions.cluster = await promptForClusterName();
-  }
-
-  // Prompt for namespace if not provided
-  if (!finalOptions.namespace) {
-    finalOptions.namespace = await promptForNamespace(
-      finalOptions.context,
-      kubeconfigPath,
+  if (kubeconfigData && kubeconfigData.contexts.length > 0) {
+    const contextNames = kubeconfigData.contexts.map((ctx) => ctx.name);
+    const currentContext = kubeconfigData["current-context"];
+    context = await promptForContext(contextNames, currentContext);
+  } else {
+    console.log(
+      `${colors.yellow}⚠️  Could not parse kubeconfig at ${kubeconfigPath}${colors.reset}`,
     );
+    console.log(`${colors.dim}   Falling back to manual context entry.${colors.reset}\n`);
+    context = await promptForManualContext();
   }
 
-  return {
-    cluster: finalOptions.cluster!,
-    context: finalOptions.context!,
-    namespace: finalOptions.namespace!,
-    kubeconfig: kubeconfigPath,
-  };
-}
+  // Prompt for cluster name
+  const cluster = await promptForClusterName();
 
-export async function promptForMissingParams(
-  options: CLIOptions,
-): Promise<CLIOptions> {
-  // Check if we're in a TTY environment
-  // isTTY is true when running in an interactive terminal, false/undefined otherwise
-  if (!process.stdin.isTTY) {
-    throw new Error(
-      "Interactive mode requires a terminal. Please provide --cluster, --context, and other required flags.",
-    );
-  }
+  // Prompt for namespace
+  const namespace = await promptForNamespace(context, kubeconfigPath);
 
-  console.log(`${colors.cyan}${colors.bright}Welcome to Heimdall - EKS Health Check Agent${colors.reset}\n`);
-  console.log("No cluster specified. Let's configure your health check interactively.\n");
-
-  const finalOptions: CLIOptions = { ...options };
-
-  // Determine kubeconfig path
-  const kubeconfigPath = options.kubeconfig ||
-    process.env.KUBECONFIG ||
-    resolve(homedir(), ".kube/config");
-
-  console.log(`${colors.dim}📁 Kubeconfig: ${kubeconfigPath}${colors.reset}`);
-
-  // Prompt for context if not provided
-  if (!finalOptions.context) {
-    const kubeconfigData = await parseKubeconfig(kubeconfigPath);
-
-    if (kubeconfigData && kubeconfigData.contexts.length > 0) {
-      const contextNames = kubeconfigData.contexts.map((ctx) => ctx.name);
-      const currentContext = kubeconfigData["current-context"];
-
-      finalOptions.context = await promptForContext(contextNames, currentContext);
-    } else {
-      console.log(
-        `${colors.yellow}⚠️  Could not parse kubeconfig at ${kubeconfigPath}${colors.reset}`,
-      );
-      console.log(`${colors.dim}   Falling back to manual context entry.${colors.reset}\n`);
-
-      finalOptions.context = await promptForManualContext();
-    }
-  }
-
-  // Prompt for cluster name if not provided
-  if (!finalOptions.cluster) {
-    finalOptions.cluster = await promptForClusterName();
-  }
-
-  // Prompt for namespace if not provided
-  if (!finalOptions.namespace) {
-    finalOptions.namespace = await promptForNamespace(
-      finalOptions.context,
-      kubeconfigPath,
-    );
-  }
-
-  // Prompt for mode if not provided
-  if (!finalOptions.mode) {
-    finalOptions.mode = await promptForMode();
-  }
-
-  // Prompt for model if not provided
-  if (!finalOptions.model) {
-    finalOptions.model = await promptForModel();
-  }
-
-  console.log(); // Empty line for spacing
-
-  return finalOptions;
+  return { cluster, context, namespace, kubeconfig: kubeconfigPath };
 }
 
 export async function runInteractiveChatMode(
@@ -673,14 +481,13 @@ export async function runInteractiveChatMode(
 
             console.log(`\n${colors.dim}Running ${parsed.mode} check with ${parsed.model}...${colors.reset}\n`);
 
-            // Run health check (creates its own readline for follow-up)
+            // Run health check
             await runHealthCheck({
               config,
               verbose: options.verbose || false,
               model: modelId,
               mode: parsed.mode,
-              interactive: true,
-              interactiveTranscriptPath: options.interactiveTranscript,
+              transcriptPath: options.interactiveTranscript,
             });
 
             // After runHealthCheck returns, display help
