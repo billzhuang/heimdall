@@ -8,9 +8,8 @@ import { NamespaceSelector } from './NamespaceSelector.js';
 import { ModelSelector } from './ModelSelector.js';
 import { useAppState } from '../useAppState.js';
 import { parseKubeconfig } from '../kubeconfigParser.js';
-import { parseCommand, isSlashCommand, isQuickCheck, isQuery } from '../commandParser.js';
+import { parseCommand, isSlashCommand, isQuery } from '../commandParser.js';
 import {
-  runQuickCheck,
   runAgentQuery,
   ConversationContext,
   type OutputMessage,
@@ -180,11 +179,11 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     actions.setRunning(true);
 
     try {
-      if (isQuickCheck(cmd)) {
-        await runQuickCheck(cmd.mode, options, callbacks, conversationContext);
-      } else if (isQuery(cmd)) {
-        await runAgentQuery(cmd.text, options, callbacks, conversationContext);
-      }
+      // All queries go through runAgentQuery - LLM decides what to check
+      const queryText = cmd.type === 'quickCheck' 
+        ? `${cmd.mode === 'all' ? 'comprehensive' : 'quick'} health check`
+        : (cmd as { text: string }).text;
+      await runAgentQuery(queryText, options, callbacks, conversationContext);
     } catch (error) {
       // Error already handled in callbacks
     }

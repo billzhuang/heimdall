@@ -1,6 +1,5 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { HeimdallConfig } from '../config.js';
-import { getSRESystemPrompt } from '../prompts.js';
 
 export interface OutputMessage {
   id: string;
@@ -34,6 +33,46 @@ export interface AgentRunnerCallbacks {
   onToolUse: (toolName: string, command?: string) => void;
   onComplete: (cost?: number, duration?: number) => void;
   onError: (error: Error) => void;
+}
+
+/**
+ * Build the unified system prompt for Heimdall
+ */
+function buildSystemPrompt(config: HeimdallConfig): string {
+  const namespaceScope = config.namespace === 'all' 
+    ? 'all namespaces' 
+    : `namespace: ${config.namespace}`;
+  
+  const namespaceFlag = config.namespace === 'all' ? '-A' : `-n ${config.namespace}`;
+
+  return `You are Heimdall, an expert Kubernetes assistant and SRE agent.
+
+## Current Connection
+- Cluster context: ${config.context}
+- Namespace scope: ${namespaceScope}
+
+## CRITICAL SAFETY RULES
+You are in READ-ONLY mode. You must NEVER execute commands that modify the cluster:
+- FORBIDDEN: kubectl create, apply, delete, patch, edit, replace, scale, rollout, drain, cordon, taint
+- FORBIDDEN: helm install, upgrade, uninstall, rollback
+- FORBIDDEN: Any command that creates, updates, or deletes resources
+
+If the user asks to fix something, provide the command as a SUGGESTION they can run manually.
+Example: "To fix this, you could run: \`kubectl delete pod xyz\` (run this manually if you want to proceed)"
+
+## Allowed Commands (READ-ONLY)
+- kubectl get, describe, logs, top, explain, api-resources, version
+- helm list, status, get, history
+- Any command that only reads data
+
+## Guidelines
+Always use: kubectl --context=${config.context} for all commands.
+For namespace-scoped resources, use: ${namespaceFlag}
+- Be concise and actionable
+- Summarize findings clearly and highlight issues
+- When fixes are needed, suggest commands but DO NOT execute them
+
+You have read access to all K8s resources: pods, deployments, services, ingress, nodes, events, configmaps, secrets, PVCs, jobs, cronjobs, helm releases, etc.`;
 }
 
 // Conversation context manager
@@ -188,57 +227,9 @@ function generateMessageId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function buildUserPrompt(config: HeimdallConfig, mode: 'smoke' | 'all'): string {
-  const namespaceInfo = config.namespace === 'all' ? 'all namespaces' : `namespace: ${config.namespace}`;
-
-  const basePrompt = mode === 'smoke'
-    ? `Perform a quick smoke health check on the cluster (context: ${config.context}, ${namespaceInfo}).
-
-Run these essential checks:
-1. Node Health - Check all nodes for NotReady, MemoryPressure, DiskPressure conditions
-2. Critical Pod Failures - Check for CrashLoopBackOff, ImagePullBackOff, Pending pods
-3. Recent Warning Events - Last 20 warning events to spot immediate issues`
-    : `Perform a comprehensive health check on the cluster (context: ${config.context}, ${namespaceInfo}).
-
-Check the following in order:
-1. Cluster connectivity
-2. Node health (all nodes)
-3. Pod health (${namespaceInfo})
-4. Deployment health
-5. Service health
-6. Ingress health (Traefik/ALB routing)
-7. Recent warning events
-8. Helm releases
-9. ConfigMaps & Secrets
-10. Storage (PVC/PV)
-11. Jobs & CronJobs`;
-
-  return `${basePrompt}
-
-After the summary, be ready to answer follow-up questions about this run. Do not re-run the full checklist unless asked.`;
-}
-
 /**
- * Run a quick health check (smoke or comprehensive)
- */
-export async function runQuickCheck(
-  mode: 'smoke' | 'all',
-  options: AgentRunnerOptions,
-  callbacks: AgentRunnerCallbacks,
-  context?: ConversationContext
-): Promise<void> {
-  const { config, model, verbose } = options;
-  const systemPrompt = getSRESystemPrompt(config, mode);
-  const userPrompt = buildUserPrompt(config, mode);
-
-  // Add to conversation context if provided
-  context?.addTurn('user', `[Quick Check - ${mode}]`);
-
-  await runAgentStream(userPrompt, systemPrompt, model, verbose, callbacks, context);
-}
-
-/**
- * Run a general K8s query through the agent
+ * Run any K8s query through the agent
+ * The LLM decides what to check based on the user's request
  */
 export async function runAgentQuery(
   queryText: string,
@@ -247,18 +238,7 @@ export async function runAgentQuery(
   context?: ConversationContext
 ): Promise<void> {
   const { config, model, verbose } = options;
-  
-  // Build system prompt for general queries
-  const systemPrompt = `You are Heimdall, an expert SRE agent for Kubernetes clusters.
-You are connected to cluster context: ${config.context}
-Namespace scope: ${config.namespace === 'all' ? 'all namespaces' : config.namespace}
-
-You can run kubectl commands to investigate and answer questions about the cluster.
-Use kubectl --context=${config.context} for all commands.
-${config.namespace !== 'all' ? `Use -n ${config.namespace} for namespace-scoped resources.` : 'Use -A for namespace-scoped resources.'}
-
-Be concise and actionable in your responses.
-Only run read-only commands (get, describe, logs) - do not modify the cluster.`;
+  const systemPrompt = buildSystemPrompt(config);
 
   // Include conversation history for follow-ups
   let fullQuery = queryText;
