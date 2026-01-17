@@ -14,13 +14,12 @@ describe('stateManagement', () => {
       expect(state.context).toBeNull();
       expect(state.namespace).toBe('all');
       expect(state.model).toBe('sonnet');
-      expect(state.mode).toBe('setup');
-      expect(state.setupStep).toBe('context');
+      expect(state.mode).toBe('repl');
       expect(state.activeSelector).toBeNull();
       expect(state.messages).toEqual([]);
       expect(state.kubeconfigPath).toBe('/path/to/kubeconfig');
       expect(state.contexts).toEqual([]);
-      expect(state.currentContext).toBeNull();
+      expect(state.statusHint).toBeNull();
       expect(state.isRunning).toBe(false);
       expect(state.error).toBeNull();
     });
@@ -51,6 +50,13 @@ describe('stateManagement', () => {
       
       expect(config).not.toBeNull();
       expect(config?.namespace).toBe('all');
+    });
+
+    it('should handle "kube-system" namespace', () => {
+      const config = buildConfigFromState('my-context', 'kube-system', '/path/to/kubeconfig');
+      
+      expect(config).not.toBeNull();
+      expect(config?.namespace).toBe('kube-system');
     });
   });
 
@@ -85,12 +91,10 @@ describe('stateManagement', () => {
     });
   });
 
-  describe('state transitions', () => {
-    it('initial state should be in setup mode with context step', () => {
+  describe('state defaults', () => {
+    it('initial state should be in repl mode', () => {
       const state = createInitialState('/path');
-      
-      expect(state.mode).toBe('setup');
-      expect(state.setupStep).toBe('context');
+      expect(state.mode).toBe('repl');
     });
 
     it('should have correct default model', () => {
@@ -101,6 +105,11 @@ describe('stateManagement', () => {
     it('should have correct default namespace', () => {
       const state = createInitialState('/path');
       expect(state.namespace).toBe('all');
+    });
+
+    it('should have null statusHint initially', () => {
+      const state = createInitialState('/path');
+      expect(state.statusHint).toBeNull();
     });
   });
 });

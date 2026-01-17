@@ -54,4 +54,20 @@ describe('StatusBar', () => {
     expect(frame).toContain('production');
     expect(frame).toContain('haiku');
   });
+
+  it('should render hint when provided', () => {
+    const { lastFrame } = render(
+      <StatusBar context="my-cluster" namespace="default" model="sonnet" hint="No default context found" />
+    );
+    
+    expect(lastFrame()).toContain('No default context found');
+  });
+
+  it('should not render hint when null', () => {
+    const { lastFrame } = render(
+      <StatusBar context="my-cluster" namespace="default" model="sonnet" hint={null} />
+    );
+    
+    expect(lastFrame()).not.toContain('⚠️');
+  });
 });

@@ -32,15 +32,39 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
   const { exit } = useApp();
   const [state, actions] = useAppState(kubeconfig);
 
-  // Load kubeconfig on mount
+  // Load kubeconfig on mount and auto-select defaults
   useEffect(() => {
-    async function loadContexts() {
+    async function loadDefaults() {
       const data = await parseKubeconfig(kubeconfig);
       if (data) {
-        actions.setContexts(data.contexts.map(c => c.name), data.currentContext);
+        // Store all contexts for later selection
+        actions.setContexts(data.contexts.map(c => c.name));
+        
+        // Auto-select current context from kubeconfig
+        if (data.currentContext) {
+          actions.setContext(data.currentContext);
+          
+          // Find the context to get its default namespace
+          const ctx = data.contexts.find(c => c.name === data.currentContext);
+          if (ctx?.namespace) {
+            actions.setNamespace(ctx.namespace);
+          } else {
+            // No default namespace, use kube-system as safe default
+            actions.setNamespace('kube-system');
+          }
+        } else if (data.contexts.length > 0) {
+          // No current-context set, use first available
+          actions.setContext(data.contexts[0].name);
+          actions.setNamespace('kube-system');
+          actions.setStatusHint('No default context in kubeconfig, using first available');
+        } else {
+          actions.setStatusHint('No contexts found in kubeconfig');
+        }
+      } else {
+        actions.setStatusHint('Failed to load kubeconfig');
       }
     }
-    loadContexts();
+    loadDefaults();
   }, [kubeconfig, actions]);
 
   // Handle Ctrl+C
@@ -124,7 +148,7 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
       actions.addMessage({
         id: generateMessageId(),
         type: 'error',
-        content: 'No context selected. Use /ctx to select a Kubernetes context.',
+        content: 'No context available. Check your kubeconfig at ~/.kube/config',
         timestamp: new Date(),
       });
       return;
@@ -146,13 +170,13 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
 
     const callbacks = {
       onMessage: (msg: OutputMessage) => actions.addMessage(msg),
-      onToolUse: (toolName: string, command?: string) => {
+      onToolUse: (toolName: string, details?: string) => {
         actions.addMessage({
           id: generateMessageId(),
           type: 'tool',
-          content: `Running ${toolName}`,
+          content: details ? `Running ${toolName}: ${details}` : `Running ${toolName}`,
           timestamp: new Date(),
-          metadata: { toolName, command },
+          metadata: { toolName, command: details },
         });
       },
       onComplete: (cost?: number, duration?: number) => {
@@ -189,56 +213,25 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
     }
   }, [state.context, actions, exit, verbose, transcriptPath]);
 
-  // Setup mode - show context selector first
-  if (state.mode === 'setup' && state.setupStep === 'context') {
-    return (
-      <Box flexDirection="column" padding={1}>
-        <Text bold color="cyan">Welcome to Heimdall - Interactive Health Check</Text>
-        <Text color="gray">📁 Kubeconfig: {kubeconfig}</Text>
-        <Box marginTop={1}>
-          {state.contexts.length > 0 ? (
-            <ContextSelector
-              contexts={state.contexts}
-              currentContext={state.currentContext}
-              selectedContext={state.context}
-              onSelect={actions.setContext}
-              onCancel={() => exit()}
-            />
-          ) : (
-            <Text color="yellow">Loading contexts...</Text>
-          )}
-        </Box>
-      </Box>
-    );
-  }
-
-  // Setup mode - show namespace selector
-  if (state.mode === 'setup' && state.setupStep === 'namespace' && state.context) {
-    return (
-      <Box flexDirection="column" padding={1}>
-        <StatusBar context={state.context} namespace={state.namespace} model={state.model} />
-        <NamespaceSelector
-          context={state.context}
-          kubeconfigPath={kubeconfig}
-          selectedNamespace={state.namespace}
-          onSelect={actions.setNamespace}
-          onCancel={() => actions.setSetupStep('context')}
-        />
-      </Box>
-    );
-  }
-
-  // Selector mode overlays
+  // Selector overlays
   if (state.mode === 'selector') {
     return (
       <Box flexDirection="column" padding={1}>
-        <StatusBar context={state.context} namespace={state.namespace} model={state.model} />
+        <StatusBar 
+          context={state.context} 
+          namespace={state.namespace} 
+          model={state.model}
+          hint={state.statusHint}
+        />
         {state.activeSelector === 'context' && (
           <ContextSelector
             contexts={state.contexts}
-            currentContext={state.currentContext}
+            currentContext={state.context}
             selectedContext={state.context}
-            onSelect={actions.setContext}
+            onSelect={(ctx) => {
+              actions.setContext(ctx);
+              actions.closeSelector();
+            }}
             onCancel={actions.closeSelector}
           />
         )}
@@ -247,7 +240,10 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
             context={state.context}
             kubeconfigPath={kubeconfig}
             selectedNamespace={state.namespace}
-            onSelect={actions.setNamespace}
+            onSelect={(ns) => {
+              actions.setNamespace(ns);
+              actions.closeSelector();
+            }}
             onCancel={actions.closeSelector}
           />
         )}
@@ -265,7 +261,12 @@ export function App({ kubeconfig, verbose, transcriptPath }: AppProps): React.Re
   // Main REPL mode
   return (
     <Box flexDirection="column" padding={1}>
-      <StatusBar context={state.context} namespace={state.namespace} model={state.model} />
+      <StatusBar 
+        context={state.context} 
+        namespace={state.namespace} 
+        model={state.model}
+        hint={state.statusHint}
+      />
       <OutputArea messages={state.messages} />
       <InputField
         onSubmit={handleCommand}
@@ -287,6 +288,7 @@ Available Commands:
   /compact  - Compact conversation context
   /help     - Show this help
   /exit     - Exit Heimdall
+  /quit     - Exit Heimdall
 
 Quick Checks:
   "quick check"         - Run smoke test

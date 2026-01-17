@@ -28,6 +28,11 @@ describe('commandParser', () => {
       expect(result).toEqual({ type: 'exit' });
     });
 
+    it('should parse /quit as exit command', () => {
+      const result = parseCommand('/quit');
+      expect(result).toEqual({ type: 'exit' });
+    });
+
     it('should parse /clear as clear command', () => {
       const result = parseCommand('/clear');
       expect(result).toEqual({ type: 'clear' });
@@ -181,6 +186,7 @@ describe('commandParser', () => {
       expect(commands).toContain('/model');
       expect(commands).toContain('/help');
       expect(commands).toContain('/exit');
+      expect(commands).toContain('/quit');
       expect(commands).toContain('/clear');
       expect(commands).toContain('/new');
       expect(commands).toContain('/compact');

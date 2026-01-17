@@ -30,7 +30,7 @@ export interface AgentRunnerOptions {
 
 export interface AgentRunnerCallbacks {
   onMessage: (message: OutputMessage) => void;
-  onToolUse: (toolName: string, command?: string) => void;
+  onToolUse: (toolName: string, details?: string) => void;
   onComplete: (cost?: number, duration?: number) => void;
   onError: (error: Error) => void;
 }
@@ -72,7 +72,19 @@ For namespace-scoped resources, use: ${namespaceFlag}
 - Summarize findings clearly and highlight issues
 - When fixes are needed, suggest commands but DO NOT execute them
 
-You have read access to all K8s resources: pods, deployments, services, ingress, nodes, events, configmaps, secrets, PVCs, jobs, cronjobs, helm releases, etc.`;
+You have read access to all K8s resources: pods, deployments, services, ingress, nodes, events, configmaps, secrets, PVCs, jobs, cronjobs, helm releases, etc.
+
+## Web Search Capabilities
+You have access to web search tools for enhanced diagnostics:
+- **WebSearch**: Search for error messages, known issues, CVEs, or best practices
+- **WebFetch**: Fetch official Kubernetes docs, GitHub issues, or release notes
+
+Use web search when:
+- You encounter unfamiliar error messages or codes
+- Checking for known issues or CVEs related to specific versions
+- Looking up deprecated APIs or migration guides
+- Finding solutions to obscure K8s problems
+- Verifying best practices or recommended configurations`;
 }
 
 // Conversation context manager
@@ -264,7 +276,7 @@ async function runAgentStream(
   context?: ConversationContext
 ): Promise<void> {
   const queryOptions = {
-    allowedTools: ['Bash'],
+    allowedTools: ['Bash', 'WebSearch', 'WebFetch'],
     systemPrompt,
     permissionMode: 'bypassPermissions' as const,
     model,
@@ -305,8 +317,17 @@ async function runAgentStream(
               assistantBuffer += block.text + '\n';
             }
             if (block.type === 'tool_use') {
-              const inp = block.input as { command?: string; description?: string };
-              callbacks.onToolUse(block.name || 'unknown', inp?.command);
+              const inp = block.input as { command?: string; description?: string; query?: string; url?: string };
+              // Build details string based on tool type
+              let details: string | undefined;
+              if (inp?.command) {
+                details = `$ ${inp.command}`;
+              } else if (inp?.query) {
+                details = `🔍 "${inp.query}"`;
+              } else if (inp?.url) {
+                details = `🌐 ${inp.url}`;
+              }
+              callbacks.onToolUse(block.name || 'unknown', details);
               // Note: onToolUse callback handles adding the message, don't duplicate here
             }
           }

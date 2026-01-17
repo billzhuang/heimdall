@@ -163,7 +163,7 @@ export async function runHealthCheck(options: RunHealthCheckOptions): Promise<vo
   await persistTranscript(transcript, transcriptPath);
 
   const queryOptions = {
-    allowedTools: ["Bash"],
+    allowedTools: ["Bash", "WebSearch", "WebFetch"],
     systemPrompt,
     permissionMode: "bypassPermissions" as const,
     model: selectedModel,
@@ -200,12 +200,19 @@ export async function runHealthCheck(options: RunHealthCheckOptions): Promise<vo
               assistantBuffer += block.text + "\n";
             }
             if (block.type === "tool_use") {
-              const inp = block.input as { command?: string; description?: string };
+              const inp = block.input as { command?: string; description?: string; query?: string; url?: string };
               console.log(`\n${colors.yellow}${colors.bright}🔧 Running: ${block.name}${colors.reset}`);
               if (inp?.description) console.log(`${colors.dim}   ${inp.description}${colors.reset}`);
               if (inp?.command) {
                 const cmd = verbose ? inp.command : (inp.command.length > 80 ? inp.command.substring(0, 80) + "..." : inp.command);
                 console.log(`${colors.gray}   $ ${cmd}${colors.reset}`);
+              }
+              if (inp?.query) {
+                console.log(`${colors.gray}   🔍 "${inp.query}"${colors.reset}`);
+              }
+              if (inp?.url) {
+                const url = verbose ? inp.url : (inp.url.length > 80 ? inp.url.substring(0, 80) + "..." : inp.url);
+                console.log(`${colors.gray}   🌐 ${url}${colors.reset}`);
               }
             }
           }

@@ -274,6 +274,18 @@ Or apply this manifest:
 - **CRITICAL**: Affects service availability (pods down, nodes not ready, no endpoints)
 - **WARNING**: Potential issues or degraded state (high restarts, resource pressure, stuck rollouts)
 
+## Web Search Capabilities
+You have access to web search tools for enhanced diagnostics:
+- **WebSearch**: Search for error messages, known issues, CVEs, or best practices
+- **WebFetch**: Fetch official Kubernetes docs, GitHub issues, or release notes
+
+Use web search when:
+- You encounter unfamiliar error messages or codes
+- Checking for known issues or CVEs related to specific versions
+- Looking up deprecated APIs or migration guides
+- Finding solutions to obscure K8s problems
+- Verifying best practices or recommended configurations
+
 ## At the End
 Provide a summary:
 - Total issues found (X critical, Y warnings)

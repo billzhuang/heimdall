@@ -1,10 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
-import type { OutputMessage, ConversationContext } from './agentRunner.js';
+import type { OutputMessage } from './agentRunner.js';
 import { MODEL_MAP, getModelId } from '../constants.js';
 import type { HeimdallConfig } from '../config.js';
 
-export type AppMode = 'setup' | 'repl' | 'selector' | 'running';
-export type SetupStep = 'context' | 'namespace' | 'done';
+export type AppMode = 'repl' | 'selector' | 'running';
 export type SelectorType = 'context' | 'namespace' | 'model';
 
 export interface TUIState {
@@ -15,14 +14,15 @@ export interface TUIState {
   
   // UI State
   mode: AppMode;
-  setupStep: SetupStep;
   activeSelector: SelectorType | null;
   
   // Data
   messages: OutputMessage[];
   kubeconfigPath: string;
   contexts: string[];
-  currentContext: string | null;
+  
+  // Status hints
+  statusHint: string | null;
   
   // Runtime
   isRunning: boolean;
@@ -32,7 +32,6 @@ export interface TUIState {
 export interface AppStateActions {
   // Mode transitions
   setMode: (mode: AppMode) => void;
-  setSetupStep: (step: SetupStep) => void;
   openSelector: (selector: SelectorType) => void;
   closeSelector: () => void;
   
@@ -42,8 +41,9 @@ export interface AppStateActions {
   setModel: (model: string) => void;
   
   // Data updates
-  setContexts: (contexts: string[], currentContext: string | null) => void;
   setKubeconfigPath: (path: string) => void;
+  setContexts: (contexts: string[]) => void;
+  setStatusHint: (hint: string | null) => void;
   
   // Message management
   addMessage: (message: OutputMessage) => void;
@@ -66,13 +66,12 @@ export function createInitialState(kubeconfigPath: string): TUIState {
     context: null,
     namespace: DEFAULT_NAMESPACE,
     model: DEFAULT_MODEL,
-    mode: 'setup',
-    setupStep: 'context',
+    mode: 'repl',
     activeSelector: null,
     messages: [],
     kubeconfigPath,
     contexts: [],
-    currentContext: null,
+    statusHint: null,
     isRunning: false,
     error: null,
   };
@@ -87,10 +86,6 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     setState(prev => ({ ...prev, mode }));
   }, []);
 
-  const setSetupStep = useCallback((setupStep: SetupStep) => {
-    setState(prev => ({ ...prev, setupStep }));
-  }, []);
-
   const openSelector = useCallback((selector: SelectorType) => {
     setState(prev => ({ 
       ...prev, 
@@ -102,62 +97,42 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
   const closeSelector = useCallback(() => {
     setState(prev => ({ 
       ...prev, 
-      mode: prev.setupStep === 'done' ? 'repl' : 'setup',
+      mode: 'repl',
       activeSelector: null 
     }));
   }, []);
 
   const setContext = useCallback((context: string) => {
-    setState(prev => {
-      const newState = { ...prev, context };
-      // If in setup mode, advance to namespace step
-      if (prev.mode === 'setup' || prev.mode === 'selector') {
-        if (prev.setupStep === 'context') {
-          newState.setupStep = 'namespace';
-          newState.mode = 'setup';
-          newState.activeSelector = null;
-        } else {
-          newState.mode = prev.setupStep === 'done' ? 'repl' : 'setup';
-          newState.activeSelector = null;
-        }
-      }
-      return newState;
-    });
+    setState(prev => ({ 
+      ...prev, 
+      context,
+      statusHint: null, // Clear hint when context is set
+    }));
   }, []);
 
   const setNamespace = useCallback((namespace: string) => {
-    setState(prev => {
-      const newState = { ...prev, namespace };
-      // If in setup mode, advance to done
-      if (prev.mode === 'setup' || prev.mode === 'selector') {
-        if (prev.setupStep === 'namespace') {
-          newState.setupStep = 'done';
-          newState.mode = 'repl';
-          newState.activeSelector = null;
-        } else {
-          newState.mode = prev.setupStep === 'done' ? 'repl' : 'setup';
-          newState.activeSelector = null;
-        }
-      }
-      return newState;
-    });
+    setState(prev => ({ ...prev, namespace }));
   }, []);
 
   const setModel = useCallback((model: string) => {
     setState(prev => ({ 
       ...prev, 
       model,
-      mode: prev.setupStep === 'done' ? 'repl' : 'setup',
+      mode: 'repl',
       activeSelector: null,
     }));
   }, []);
 
-  const setContexts = useCallback((contexts: string[], currentContext: string | null) => {
-    setState(prev => ({ ...prev, contexts, currentContext }));
-  }, []);
-
   const setKubeconfigPath = useCallback((kubeconfigPath: string) => {
     setState(prev => ({ ...prev, kubeconfigPath }));
+  }, []);
+
+  const setContexts = useCallback((contexts: string[]) => {
+    setState(prev => ({ ...prev, contexts }));
+  }, []);
+
+  const setStatusHint = useCallback((statusHint: string | null) => {
+    setState(prev => ({ ...prev, statusHint }));
   }, []);
 
   const addMessage = useCallback((message: OutputMessage) => {
@@ -175,7 +150,7 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     setState(prev => ({ 
       ...prev, 
       isRunning,
-      mode: isRunning ? 'running' : (prev.setupStep === 'done' ? 'repl' : 'setup'),
+      mode: isRunning ? 'running' : 'repl',
     }));
   }, []);
 
@@ -198,14 +173,14 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
 
   const actions: AppStateActions = useMemo(() => ({
     setMode,
-    setSetupStep,
     openSelector,
     closeSelector,
     setContext,
     setNamespace,
     setModel,
-    setContexts,
     setKubeconfigPath,
+    setContexts,
+    setStatusHint,
     addMessage,
     clearMessages,
     setRunning,
@@ -213,9 +188,9 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     buildConfig,
     getModelId: getModelIdFn,
   }), [
-    setMode, setSetupStep, openSelector, closeSelector,
-    setContext, setNamespace, setModel, setContexts,
-    setKubeconfigPath, addMessage, clearMessages,
+    setMode, openSelector, closeSelector,
+    setContext, setNamespace, setModel,
+    setKubeconfigPath, setContexts, setStatusHint, addMessage, clearMessages,
     setRunning, setError, buildConfig, getModelIdFn,
   ]);
 

@@ -45,6 +45,7 @@ export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; descri
   '/new': { type: 'new', description: 'Start new conversation' },
   '/compact': { type: 'compact', description: 'Compact conversation context' },
   '/exit': { type: 'exit', description: 'Exit Heimdall' },
+  '/quit': { type: 'exit', description: 'Exit Heimdall' },
 };
 
 // Control command aliases
@@ -53,7 +54,6 @@ const EXIT_ALIASES = ['exit', 'quit', 'q'];
 
 // Quick check keywords
 const COMPREHENSIVE_KEYWORDS = ['all', 'comprehensive', 'full', 'complete', 'thorough', 'deep'];
-const SMOKE_KEYWORDS = ['smoke', 'quick', 'fast', 'rapid', 'brief'];
 const CHECK_KEYWORDS = ['check', 'run', 'test', 'scan', 'analyze', 'health'];
 
 /**
