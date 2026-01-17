@@ -1,8 +1,11 @@
 import { readFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { load as parseYAML } from 'js-yaml';
 import { homedir } from 'os';
 import { resolve } from 'path';
+
+const execFileAsync = promisify(execFile);
 
 export interface KubeconfigContext {
   name: string;
@@ -152,35 +155,33 @@ export function mergeKubeconfigs(configs: (ParsedKubeconfig | null)[]): ParsedKu
 
 /**
  * Fetch namespaces from cluster using kubectl
- * Uses execFileSync with argument array to prevent shell injection
+ * Uses async execFile with argument array to prevent shell injection
+ * and keep the UI responsive
  */
 export async function fetchNamespaces(
   context: string,
   kubeconfigPath: string
 ): Promise<string[]> {
-  try {
-    const args = ['get', 'namespaces', '-o', 'jsonpath={.items[*].metadata.name}'];
-    
-    // Add context flag if provided
-    if (context) {
-      args.unshift(`--context=${context}`);
-    }
-
-    const env = { ...process.env };
-    if (kubeconfigPath) {
-      env.KUBECONFIG = kubeconfigPath;
-    }
-
-    const output = execFileSync('kubectl', args, { 
-      encoding: 'utf8', 
-      env, 
-      timeout: 10000 
-    });
-    const namespaces = output.trim().split(/\s+/).filter(Boolean);
-    return namespaces;
-  } catch {
-    return [];
+  const args = ['get', 'namespaces', '-o', 'jsonpath={.items[*].metadata.name}'];
+  
+  // Add context flag if provided
+  if (context) {
+    args.unshift(`--context=${context}`);
   }
+
+  const env = { ...process.env };
+  if (kubeconfigPath) {
+    env.KUBECONFIG = kubeconfigPath;
+  }
+
+  const { stdout } = await execFileAsync('kubectl', args, { 
+    encoding: 'utf8', 
+    env, 
+    timeout: 10000 
+  });
+  
+  const namespaces = stdout.trim().split(/\s+/).filter(Boolean);
+  return namespaces;
 }
 
 /**
