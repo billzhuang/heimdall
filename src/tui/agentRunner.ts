@@ -181,6 +181,19 @@ function generateMessageId(): string {
 }
 
 /**
+ * Options passed to the Claude Agent SDK query function.
+ * Defines the structure for type safety instead of Record<string, unknown>.
+ */
+interface SDKQueryOptions {
+  allowedTools: string[];
+  systemPrompt: string;
+  permissionMode: 'bypassPermissions' | 'default';
+  model: string;
+  persistSession: boolean;
+  resume?: string;
+}
+
+/**
  * Run any K8s query through the agent
  * The LLM decides what to check based on the user's request
  * Returns a controller that can be used to cancel the query
@@ -209,12 +222,12 @@ async function runAgentStream(
   resumeSessionId?: string
 ): Promise<AgentController> {
   // Build query options with SDK session persistence
-  const queryOptions: Record<string, unknown> = {
+  const queryOptions: SDKQueryOptions = {
     allowedTools: ['Bash', 'WebSearch', 'WebFetch'],
     systemPrompt,
-    permissionMode: 'bypassPermissions' as const,
+    permissionMode: 'bypassPermissions',
     model,
-    persistSession: true,  // Enable SDK session persistence
+    persistSession: true,
   };
 
   // Resume specific session if provided

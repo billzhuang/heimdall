@@ -102,9 +102,8 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
         actions.setNamespace(session.namespace);
       }
     }
-    if (session.name) {
-      setSessionName(session.name);
-    }
+    // Always update session name - clear it if the resumed session has no name
+    setSessionName(session.name || null);
     actions.closeSelector();
     const displayName = session.name || session.firstMessage;
     const ctxInfo = session.context ? ` [${session.context}/${session.namespace || 'default'}]` : '';
@@ -115,6 +114,125 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
       timestamp: new Date(),
     });
   }, [actions]);
+
+  // Session command handlers - extracted for readability
+  const handleContinueCommand = useCallback(async () => {
+    try {
+      const recentId = await getMostRecentSessionId();
+      if (recentId) {
+        setResumeSessionId(recentId);
+        const metadata = await readSessionMetadata(recentId);
+        if (metadata) {
+          // Only restore context/namespace if they're non-empty
+          // (renameSession can create metadata with empty values)
+          if (metadata.context) {
+            actions.setContext(metadata.context);
+          }
+          if (metadata.namespace) {
+            actions.setNamespace(metadata.namespace);
+          }
+          if (metadata.name) {
+            setSessionName(metadata.name);
+          }
+        }
+        const displayName = metadata?.name || recentId.slice(0, 8) + '...';
+        actions.addMessage({
+          id: generateMessageId(),
+          type: 'system',
+          content: metadata?.context 
+            ? `Will resume "${displayName}" [${metadata.context}/${metadata.namespace}] on next query.`
+            : `Will resume "${displayName}" on next query.`,
+          timestamp: new Date(),
+        });
+      } else {
+        actions.addMessage({
+          id: generateMessageId(),
+          type: 'system',
+          content: 'No previous sessions found.',
+          timestamp: new Date(),
+        });
+      }
+    } catch (error) {
+      actions.addMessage({
+        id: generateMessageId(),
+        type: 'error',
+        content: `Failed to load sessions: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      });
+    }
+  }, [actions]);
+
+  const handleResumeCommand = useCallback(async (query: string) => {
+    try {
+      const session = await findSession(query);
+      if (session) {
+        handleSessionSelect(session);
+      } else {
+        actions.addMessage({
+          id: generateMessageId(),
+          type: 'error',
+          content: `Session not found: ${query}. Use /resume to browse sessions.`,
+          timestamp: new Date(),
+        });
+      }
+    } catch (error) {
+      actions.addMessage({
+        id: generateMessageId(),
+        type: 'error',
+        content: `Failed to find session: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      });
+    }
+  }, [actions, handleSessionSelect]);
+
+  const handleRenameCommand = useCallback(async (name: string | undefined) => {
+    try {
+      if (name) {
+        const targetId = resumeSessionId || sessionId || getCurrentSessionId();
+        if (targetId) {
+          const success = await renameSession(targetId, name);
+          if (success) {
+            setSessionName(name);
+            actions.addMessage({
+              id: generateMessageId(),
+              type: 'system',
+              content: `Session renamed to "${name}"`,
+              timestamp: new Date(),
+            });
+          } else {
+            actions.addMessage({
+              id: generateMessageId(),
+              type: 'error',
+              content: 'Failed to rename session.',
+              timestamp: new Date(),
+            });
+          }
+        } else {
+          actions.addMessage({
+            id: generateMessageId(),
+            type: 'error',
+            content: 'No active session to rename. Run a query first.',
+            timestamp: new Date(),
+          });
+        }
+      } else {
+        const currentName = sessionName ? `Current: "${sessionName}"` : 'No name set';
+        actions.addMessage({
+          id: generateMessageId(),
+          type: 'system',
+          content: `${currentName}\nUsage: /rename My Session Name`,
+          timestamp: new Date(),
+        });
+      }
+    } catch (error) {
+      actions.addMessage({
+        id: generateMessageId(),
+        type: 'error',
+        content: `Failed to rename session: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: new Date(),
+      });
+    }
+  }, [actions, resumeSessionId, sessionId, sessionName]);
 
   const handleCommand = useCallback(async (input: string) => {
     const cmd = parseCommand(input);
@@ -172,104 +290,20 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
           });
           break;
         case 'continue':
-          // Get most recent session and set it for resume
-          getMostRecentSessionId().then(async recentId => {
-            if (recentId) {
-              setResumeSessionId(recentId);
-              // Restore context/namespace and name from metadata
-              const metadata = await readSessionMetadata(recentId);
-              if (metadata) {
-                actions.setContext(metadata.context);
-                actions.setNamespace(metadata.namespace);
-                if (metadata.name) {
-                  setSessionName(metadata.name);
-                }
-              }
-              const displayName = metadata?.name || recentId.slice(0, 8) + '...';
-              actions.addMessage({
-                id: generateMessageId(),
-                type: 'system',
-                content: metadata?.context 
-                  ? `Will resume "${displayName}" [${metadata.context}/${metadata.namespace}] on next query.`
-                  : `Will resume "${displayName}" on next query.`,
-                timestamp: new Date(),
-              });
-            } else {
-              actions.addMessage({
-                id: generateMessageId(),
-                type: 'system',
-                content: 'No previous sessions found.',
-                timestamp: new Date(),
-              });
-            }
-          });
-          break;
-        case 'sessions':
-          // Open session selector (same as /resume without args)
-          actions.openSelector('session');
+          await handleContinueCommand();
           break;
         case 'resume':
           if (cmd.query) {
-            findSession(cmd.query).then(async session => {
-              if (session) {
-                handleSessionSelect(session);
-              } else {
-                actions.addMessage({
-                  id: generateMessageId(),
-                  type: 'error',
-                  content: `Session not found: ${cmd.query}. Use /resume to browse sessions.`,
-                  timestamp: new Date(),
-                });
-              }
-            });
+            await handleResumeCommand(cmd.query);
           } else {
-            // Open session selector
             actions.openSelector('session');
           }
           break;
         case 'context':
-          showSessionContext(actions.addMessage, sessionId, resumeSessionId, state.context, state.namespace, sessionName);
+          await showSessionContext(actions.addMessage, sessionId, resumeSessionId, state.context, state.namespace, sessionName);
           break;
         case 'rename':
-          if (cmd.name) {
-            const targetId = resumeSessionId || sessionId || getCurrentSessionId();
-            if (targetId) {
-              renameSession(targetId, cmd.name).then(success => {
-                if (success) {
-                  setSessionName(cmd.name!);
-                  actions.addMessage({
-                    id: generateMessageId(),
-                    type: 'system',
-                    content: `Session renamed to "${cmd.name}"`,
-                    timestamp: new Date(),
-                  });
-                } else {
-                  actions.addMessage({
-                    id: generateMessageId(),
-                    type: 'error',
-                    content: 'Failed to rename session.',
-                    timestamp: new Date(),
-                  });
-                }
-              });
-            } else {
-              actions.addMessage({
-                id: generateMessageId(),
-                type: 'error',
-                content: 'No active session to rename. Run a query first.',
-                timestamp: new Date(),
-              });
-            }
-          } else {
-            // Show current name and usage
-            const currentName = sessionName ? `Current: "${sessionName}"` : 'No name set';
-            actions.addMessage({
-              id: generateMessageId(),
-              type: 'system',
-              content: `${currentName}\nUsage: /rename My Session Name`,
-              timestamp: new Date(),
-            });
-          }
+          await handleRenameCommand(cmd.name);
           break;
       }
       return;
@@ -375,7 +409,7 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
     } catch (error) {
       // Error already handled in callbacks
     }
-  }, [state.context, state.namespace, state.hasInteracted, actions, exit, verbose, resumeSessionId, sessionId]);
+  }, [state.context, state.namespace, state.hasInteracted, actions, exit, verbose, resumeSessionId, sessionId, sessionName, handleContinueCommand, handleResumeCommand, handleRenameCommand]);
 
   // Welcome screen - show when user hasn't interacted yet and not in selector mode
   if (!state.hasInteracted && state.mode !== 'selector') {
@@ -490,6 +524,14 @@ General Queries:
   });
 }
 
+/**
+ * FRAGILE: This function parses the internal .jsonl session file format used by
+ * the Claude Agent SDK. It makes assumptions about entry.type, entry.message.content
+ * structure, and which entry types to skip. Any change to the SDK's logging format
+ * could break this display.
+ *
+ * TODO: Replace with a stable SDK API for session history if one becomes available.
+ */
 async function showSessionContext(
   addMessage: (msg: OutputMessage) => void,
   sessionId: string | null,

@@ -48,11 +48,6 @@ describe('commandParser', () => {
       expect(result).toEqual({ type: 'continue' });
     });
 
-    it('should parse /sessions as sessions command', () => {
-      const result = parseCommand('/sessions');
-      expect(result).toEqual({ type: 'sessions' });
-    });
-
     it('should parse /resume with query', () => {
       const result = parseCommand('/resume 1');
       expect(result).toEqual({ type: 'resume', query: '1' });
@@ -195,7 +190,6 @@ describe('commandParser', () => {
       expect(commands).toContain('/clear');
       expect(commands).toContain('/new');
       expect(commands).toContain('/continue');
-      expect(commands).toContain('/sessions');
       expect(commands).toContain('/resume');
     });
   });

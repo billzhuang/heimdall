@@ -59,7 +59,7 @@ export function SessionSelector({
     });
   }, [currentSessionId]);
 
-  useInput((input, key) => {
+  useInput((_input, key) => {
     if (key.escape) {
       onCancel();
       return;

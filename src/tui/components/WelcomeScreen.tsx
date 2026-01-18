@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { InputField } from './InputField.js';
-import { HEIMDALL_ASCII_ART, HEIMDALL_VERSION, WELCOME_TIPS } from '../constants.js';
+import { HEIMDALL_ASCII_ART, WELCOME_TIPS } from '../constants.js';
 
 /**
  * Props for the WelcomeScreen component
@@ -44,7 +44,7 @@ export function WelcomeScreen({
         {/* ASCII art logo in cyan for branding */}
         <Text color="cyan">{HEIMDALL_ASCII_ART}</Text>
         {/* Version string formatted as "Heimdall vX.Y.Z" */}
-        <Text>Heimdall v{HEIMDALL_VERSION}</Text>
+        <Text>Heimdall v{version}</Text>
         {/* Welcome greeting message */}
         <Text>Welcome!</Text>
       </Box>

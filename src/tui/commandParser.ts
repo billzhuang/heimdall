@@ -10,7 +10,6 @@ export type SlashCommand =
   | { type: 'clear' }
   | { type: 'new' }
   | { type: 'continue' }
-  | { type: 'sessions' }
   | { type: 'resume'; query?: string }
   | { type: 'rename'; name?: string }
   | { type: 'context' };
@@ -37,8 +36,7 @@ export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; descri
   '/model': { type: 'model', description: 'Select LLM model' },
   '/context': { type: 'context', description: 'Show current session info' },
   '/continue': { type: 'continue', description: 'Continue most recent session' },
-  '/sessions': { type: 'sessions', description: 'List saved sessions' },
-  '/resume': { type: 'resume', description: 'Resume a specific session' },
+  '/resume': { type: 'resume', description: 'Browse and resume saved sessions' },
   '/rename': { type: 'rename', description: 'Rename current session' },
   '/help': { type: 'help', description: 'Show available commands' },
   '/clear': { type: 'clear', description: 'Clear output (keeps session)' },
@@ -120,7 +118,7 @@ function extractModel(input: string): string | undefined {
  * Check if a command is a slash command
  */
 export function isSlashCommand(cmd: ParsedCommand): cmd is SlashCommand {
-  return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'continue', 'sessions', 'resume', 'rename', 'context'].includes(cmd.type);
+  return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'continue', 'resume', 'rename', 'context'].includes(cmd.type);
 }
 
 /**

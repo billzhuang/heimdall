@@ -28,12 +28,23 @@ interface MetadataStore {
 const MAX_METADATA_ENTRIES = 50;
 
 /**
+ * DANGER: This function relies on the internal, undocumented storage path of the
+ * Claude Agent SDK. It assumes sessions are stored in a directory derived from
+ * the current working directory by replacing '/' with '-'. This is extremely
+ * brittle and may break with any update to the SDK.
+ *
+ * TODO: Replace this with a stable SDK API for session management if one becomes available.
+ *
  * Get the Claude projects directory for the current working directory
  */
 function getProjectDir(): string {
   const cwd = process.cwd();
   // Claude uses path with dashes instead of slashes
-  const projectHash = cwd.replace(/\//g, '-');
+  // Normalize both forward slashes and backslashes (Windows) to dashes
+  // Also strip Windows drive letter colon (e.g., C:\Users -> C-Users)
+  const projectHash = cwd
+    .replace(/:/g, '')      // Remove drive letter colon (Windows)
+    .replace(/[\\/]/g, '-'); // Normalize slashes to dashes
   return join(homedir(), '.claude', 'projects', projectHash);
 }
 
@@ -99,10 +110,23 @@ async function pruneMetadataStore(store: MetadataStore): Promise<MetadataStore> 
 }
 
 /**
+ * Validate that a session ID contains only safe characters.
+ * This prevents path traversal via "..", slashes, or absolute paths.
+ */
+function validateSessionId(sessionId: string): string {
+  // Allow only alphanumeric characters, hyphens, and underscores
+  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    throw new Error(`Invalid session ID: ${sessionId}`);
+  }
+  return sessionId;
+}
+
+/**
  * Get the file path for a session
  */
 export function getSessionFilePath(sessionId: string): string {
-  return join(getProjectDir(), `${sessionId}.jsonl`);
+  const safeSessionId = validateSessionId(sessionId);
+  return join(getProjectDir(), `${safeSessionId}.jsonl`);
 }
 
 /**
@@ -127,13 +151,14 @@ export async function saveSessionMetadata(
   namespace: string
 ): Promise<void> {
   try {
+    const safeSessionId = validateSessionId(sessionId);
     let store = await loadMetadataStore();
     
     // Preserve existing name if present
-    const existingName = store[sessionId]?.name;
+    const existingName = store[safeSessionId]?.name;
     
     // Add/update this session's metadata
-    store[sessionId] = {
+    store[safeSessionId] = {
       context,
       namespace,
       updatedAt: new Date().toISOString(),
@@ -157,19 +182,20 @@ export async function saveSessionMetadata(
  */
 export async function renameSession(sessionId: string, name: string): Promise<boolean> {
   try {
+    const safeSessionId = validateSessionId(sessionId);
     const store = await loadMetadataStore();
     
-    if (!store[sessionId]) {
+    if (!store[safeSessionId]) {
       // Create minimal entry if doesn't exist
-      store[sessionId] = {
+      store[safeSessionId] = {
         context: '',
         namespace: '',
         updatedAt: new Date().toISOString(),
         name,
       };
     } else {
-      store[sessionId].name = name;
-      store[sessionId].updatedAt = new Date().toISOString();
+      store[safeSessionId].name = name;
+      store[safeSessionId].updatedAt = new Date().toISOString();
     }
     
     await saveMetadataStore(store);
@@ -183,6 +209,11 @@ export async function renameSession(sessionId: string, name: string): Promise<bo
  * Get session name
  */
 export async function getSessionName(sessionId: string): Promise<string | null> {
+  try {
+    validateSessionId(sessionId);
+  } catch {
+    return null;
+  }
   const metadata = await readSessionMetadata(sessionId);
   return metadata?.name || null;
 }
@@ -192,8 +223,9 @@ export async function getSessionName(sessionId: string): Promise<string | null> 
  */
 export async function readSessionMetadata(sessionId: string): Promise<SessionMetadata | null> {
   try {
+    const safeSessionId = validateSessionId(sessionId);
     const store = await loadMetadataStore();
-    return store[sessionId] || null;
+    return store[safeSessionId] || null;
   } catch {
     return null;
   }
@@ -284,6 +316,16 @@ export async function getMostRecentSessionId(): Promise<string | null> {
 }
 
 /**
+ * Sanitize text for terminal display by removing control characters
+ * and escape sequences that could cause UI glitches or injection.
+ */
+function sanitizeDisplayText(text: string): string {
+  // Remove ANSI escape sequences and control characters (except space)
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/[\x00-\x1F\x7F]|\x1B\[[0-9;]*[A-Za-z]/g, '');
+}
+
+/**
  * Format session list for display
  */
 export function formatSessionList(sessions: SessionInfo[]): string {
@@ -296,7 +338,8 @@ export function formatSessionList(sessions: SessionInfo[]): string {
   for (let i = 0; i < sessions.length; i++) {
     const s = sessions[i];
     const timeStr = formatRelativeTime(s.timestamp);
-    const displayName = s.name || s.firstMessage.replace(/\n/g, ' ');
+    const rawDisplayName = s.name || s.firstMessage.replace(/\n/g, ' ');
+    const displayName = sanitizeDisplayText(rawDisplayName);
     const ctxInfo = s.context ? ` [${s.context}/${s.namespace || 'default'}]` : '';
     const nameTag = s.name ? '📌 ' : '';
     lines.push(`${i + 1}. ${nameTag}[${timeStr}]${ctxInfo} ${displayName}`);

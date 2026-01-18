@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { buildConfigFromState, getModelOptions, createInitialState, TUIState } from '../useAppState.js';
+import { buildConfigFromState, getModelOptions, TUIState } from '../useAppState.js';
 import { MODEL_MAP, getModelId } from '../constants.js';
 
 /**
