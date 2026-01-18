@@ -16,6 +16,7 @@ export interface TUIState {
   // UI State
   mode: AppMode;
   activeSelector: SelectorType | null;
+  hasInteracted: boolean;  // Tracks if user has submitted first query (shows welcome when false)
   
   // Data
   messages: OutputMessage[];
@@ -35,6 +36,7 @@ export interface AppStateActions {
   setMode: (mode: AppMode) => void;
   openSelector: (selector: SelectorType) => void;
   closeSelector: () => void;
+  setHasInteracted: (value: boolean) => void;  // Mark user has interacted (dismisses welcome)
   
   // Selection updates
   setContext: (context: string) => void;
@@ -72,6 +74,7 @@ export function createInitialState(kubeconfigPath: string): TUIState {
     model: DEFAULT_MODEL,
     mode: 'repl',
     activeSelector: null,
+    hasInteracted: false,
     messages: [],
     kubeconfigPath,
     contexts: [],
@@ -109,6 +112,10 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     }));
   }, []);
 
+  const setHasInteracted = useCallback((value: boolean) => {
+    setState(prev => ({ ...prev, hasInteracted: value }));
+  }, []);
+
   const setContext = useCallback((context: string) => {
     // When context changes, reset namespace to context's default or kube-system
     const ctxData = contextDataRef.current.find(c => c.name === context);
@@ -119,7 +126,7 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
       context,
       namespace: defaultNs,
       statusHint: null,
-      mode: 'repl',
+      mode: prev.activeSelector ? 'repl' : prev.mode,
       activeSelector: null,
     }));
   }, []);
@@ -128,7 +135,7 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     setState(prev => ({ 
       ...prev, 
       namespace,
-      mode: 'repl',
+      mode: prev.activeSelector ? 'repl' : prev.mode,
       activeSelector: null,
     }));
   }, []);
@@ -141,7 +148,7 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     setState(prev => ({ 
       ...prev, 
       model,
-      mode: 'repl',
+      mode: prev.activeSelector ? 'repl' : prev.mode,
       activeSelector: null,
     }));
   }, []);
@@ -198,6 +205,7 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     setMode,
     openSelector,
     closeSelector,
+    setHasInteracted,
     setContext,
     setNamespace,
     setModel,
@@ -212,7 +220,7 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
     getModelId: getModelIdFn,
     setContextData,
   }), [
-    setMode, openSelector, closeSelector,
+    setMode, openSelector, closeSelector, setHasInteracted,
     setContext, setNamespace, setModel,
     setKubeconfigPath, setContexts, setStatusHint, addMessage, clearMessages,
     setRunning, setError, buildConfig, getModelIdFn, setContextData,

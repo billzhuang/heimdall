@@ -6,9 +6,11 @@ import { InputField } from './InputField.js';
 import { ContextSelector } from './ContextSelector.js';
 import { NamespaceSelector } from './NamespaceSelector.js';
 import { ModelSelector } from './ModelSelector.js';
+import { WelcomeScreen } from './WelcomeScreen.js';
 import { useAppState } from '../useAppState.js';
 import { parseKubeconfig } from '../kubeconfigParser.js';
 import { parseCommand, isSlashCommand } from '../commandParser.js';
+import { HEIMDALL_VERSION } from '../constants.js';
 import {
   runAgentQuery,
   ConversationContext,
@@ -207,6 +209,11 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
       },
     };
 
+    // Dismiss welcome screen on first query (transition to REPL mode)
+    if (!state.hasInteracted) {
+      actions.setHasInteracted(true);
+    }
+
     actions.setRunning(true);
 
     try {
@@ -217,7 +224,22 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
     } catch (error) {
       // Error already handled in callbacks
     }
-  }, [state.context, actions, exit, verbose]);
+  }, [state.context, state.hasInteracted, actions, exit, verbose]);
+
+  // Welcome screen - show when user hasn't interacted yet and not in selector mode
+  if (!state.hasInteracted && state.mode !== 'selector') {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <WelcomeScreen
+          version={HEIMDALL_VERSION}
+          context={state.context}
+          namespace={state.namespace}
+          onSubmit={handleCommand}
+          disabled={state.isRunning}
+        />
+      </Box>
+    );
+  }
 
   // Selector overlays
   if (state.mode === 'selector') {

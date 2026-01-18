@@ -16,6 +16,7 @@ describe('stateManagement', () => {
       expect(state.model).toBe('sonnet');
       expect(state.mode).toBe('repl');
       expect(state.activeSelector).toBeNull();
+      expect(state.hasInteracted).toBe(false);
       expect(state.messages).toEqual([]);
       expect(state.kubeconfigPath).toBe('/path/to/kubeconfig');
       expect(state.contexts).toEqual([]);
@@ -92,9 +93,10 @@ describe('stateManagement', () => {
   });
 
   describe('state defaults', () => {
-    it('initial state should be in repl mode', () => {
+    it('initial state should be in repl mode with hasInteracted false', () => {
       const state = createInitialState('/path');
       expect(state.mode).toBe('repl');
+      expect(state.hasInteracted).toBe(false);
     });
 
     it('should have correct default model', () => {
@@ -110,6 +112,11 @@ describe('stateManagement', () => {
     it('should have null statusHint initially', () => {
       const state = createInitialState('/path');
       expect(state.statusHint).toBeNull();
+    });
+
+    it('should have hasInteracted set to false initially', () => {
+      const state = createInitialState('/path');
+      expect(state.hasInteracted).toBe(false);
     });
   });
 });
