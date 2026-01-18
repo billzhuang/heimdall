@@ -1,5 +1,13 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { HeimdallConfig } from './types.js';
+import {
+  createPreToolUseHook,
+  createPreCompactHook,
+  DEFAULT_MAX_TURNS,
+  type OnCommandBlockedCallback,
+  type OnCompactionCallback,
+  type HookOutput,
+} from './safetyHooks.js';
 
 export interface OutputMessage {
   id: string;
@@ -21,6 +29,10 @@ export interface AgentRunnerOptions {
   verbose?: boolean;
   /** Resume a specific session by ID */
   resumeSessionId?: string;
+  /** Maximum turns before termination (default: 15, 0 or negative = unlimited) */
+  maxTurns?: number;
+  /** Enable safety hooks for blocking destructive commands (default: true) */
+  enableSafetyHooks?: boolean;
 }
 
 export interface AgentRunnerCallbacks {
@@ -29,6 +41,12 @@ export interface AgentRunnerCallbacks {
   onComplete: (cost?: number, duration?: number, sessionId?: string) => void;
   onError: (error: Error) => void;
   onSessionId?: (sessionId: string) => void;
+  /** Called when a destructive command is blocked */
+  onCommandBlocked?: (command: string, reason: string) => void;
+  /** Called when context compaction occurs */
+  onCompaction?: (trigger: 'auto' | 'manual') => void;
+  /** Called on each turn with current count and max */
+  onTurnCount?: (turnCount: number, maxTurns: number) => void;
 }
 
 /**
@@ -116,7 +134,17 @@ You have access to web search tools for enhanced diagnostics:
 Use web search when:
 - You encounter unfamiliar error messages or codes
 - Checking for known issues or CVEs related to specific versions
-- Looking up deprecated APIs or migration guides`;
+- Looking up deprecated APIs or migration guides
+
+## Specialized Subagents
+You can delegate complex tasks to specialized subagents using the Task tool:
+- **log-analyzer**: Deep log analysis, error correlation, pattern detection
+- **resource-analyzer**: CPU/memory analysis, capacity planning, resource optimization
+- **network-debugger**: DNS, services, ingress, connectivity troubleshooting
+- **security-auditor**: RBAC, secrets, security contexts, policy review
+- **web-researcher**: CVE lookup, documentation search, best practices
+
+Delegate when the task requires deep specialized analysis. The subagent will return findings to you.`;
 }
 
 // Stream user message type for the SDK
@@ -191,6 +219,248 @@ interface SDKQueryOptions {
   model: string;
   persistSession: boolean;
   resume?: string;
+  maxTurns?: number;
+  agents?: Record<string, AgentDefinition>;
+  hooks?: {
+    PreToolUse?: Array<{
+      matcher?: string;
+      hooks: Array<(input: unknown, toolUseId: string | undefined, options: { signal: AbortSignal }) => Promise<HookOutput>>;
+      timeout?: number;
+    }>;
+    PreCompact?: Array<{
+      matcher?: string;
+      hooks: Array<(input: unknown, toolUseId: string | undefined, options: { signal: AbortSignal }) => Promise<HookOutput>>;
+      timeout?: number;
+    }>;
+  };
+}
+
+/**
+ * Agent definition for SDK's built-in subagent support
+ */
+interface AgentDefinition {
+  description: string;
+  prompt: string;
+  tools?: string[];
+  disallowedTools?: string[];
+  model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
+  maxTurns?: number;
+}
+
+/**
+ * Build specialized subagent definitions for Heimdall
+ * Claude will automatically delegate to these when appropriate
+ */
+function buildAgentDefinitions(config: HeimdallConfig): Record<string, AgentDefinition> {
+  const namespaceFlag = config.namespace === 'all' ? '-A' : `-n ${config.namespace}`;
+  
+  return {
+    'log-analyzer': {
+      description: 'Specialized in analyzing pod logs, finding errors, correlating timestamps, and identifying patterns in log output',
+      prompt: `You are a log analysis specialist for Kubernetes.
+
+## Your Focus
+- Analyze pod logs for errors, warnings, and anomalies
+- Correlate timestamps across multiple pods
+- Identify patterns and recurring issues
+- Extract relevant stack traces and error messages
+
+## Command Format
+Always use: kubectl --context=${config.context} ${namespaceFlag}
+
+## CRITICAL: READ-ONLY MODE
+- ONLY use: kubectl logs, kubectl get events
+- NEVER use: kubectl apply, delete, patch, create
+
+## Response Style
+- Highlight critical errors first
+- Group related log entries
+- Provide timeline of events when relevant`,
+      tools: ['Bash'],
+      model: 'inherit',
+      maxTurns: 10,
+    },
+    
+    'resource-analyzer': {
+      description: 'Specialized in analyzing resource usage, requests/limits, capacity planning, and identifying resource bottlenecks',
+      prompt: `You are a Kubernetes resource analysis specialist.
+
+## Your Focus
+- Analyze CPU and memory requests/limits
+- Identify over-provisioned or under-provisioned workloads
+- Check node capacity and utilization
+- Find resource quota issues
+
+## Command Format
+Always use: kubectl --context=${config.context} ${namespaceFlag}
+
+## CRITICAL: READ-ONLY MODE
+- ONLY use: kubectl top, kubectl describe, kubectl get
+- NEVER use: kubectl apply, delete, patch, create, scale
+
+## Response Style
+- Present resource data in clear format
+- Highlight misconfigurations
+- Suggest optimal resource values`,
+      tools: ['Bash'],
+      model: 'inherit',
+      maxTurns: 10,
+    },
+    
+    'network-debugger': {
+      description: 'Specialized in debugging network issues including DNS, services, endpoints, ingress, and connectivity problems',
+      prompt: `You are a Kubernetes network debugging specialist.
+
+## Your Focus
+- Debug DNS resolution issues
+- Check service endpoints and selectors
+- Analyze ingress configurations
+- Verify network policies
+- Test connectivity between pods
+
+## Command Format
+Always use: kubectl --context=${config.context} ${namespaceFlag}
+
+## CRITICAL: READ-ONLY MODE
+- ONLY use: kubectl get, describe, logs
+- NEVER use: kubectl apply, delete, patch, create
+
+## Response Style
+- Trace network path step by step
+- Identify where connectivity breaks
+- Explain DNS resolution chain`,
+      tools: ['Bash'],
+      model: 'inherit',
+      maxTurns: 10,
+    },
+    
+    'security-auditor': {
+      description: 'Specialized in auditing RBAC, secrets, security contexts, network policies, and identifying security misconfigurations',
+      prompt: `You are a Kubernetes security audit specialist.
+
+## Your Focus
+- Audit RBAC roles and bindings
+- Check for overly permissive service accounts
+- Review security contexts and pod security
+- Analyze network policies
+- Identify exposed secrets or sensitive data
+
+## Command Format
+Always use: kubectl --context=${config.context} ${namespaceFlag}
+
+## CRITICAL: READ-ONLY MODE
+- ONLY use: kubectl get, describe, auth can-i
+- NEVER use: kubectl apply, delete, patch, create
+- NEVER expose actual secret values
+
+## Response Style
+- List security findings by severity
+- Explain the risk of each finding
+- Suggest remediation steps (but don't execute)`,
+      tools: ['Bash'],
+      model: 'inherit',
+      maxTurns: 10,
+    },
+    
+    'web-researcher': {
+      description: 'Specialized in searching for CVEs, known issues, best practices, and official documentation for Kubernetes problems',
+      prompt: `You are a Kubernetes research specialist.
+
+## Your Focus
+- Search for CVEs related to specific versions
+- Find known issues and workarounds
+- Look up official documentation
+- Research best practices and recommendations
+
+## Tools Available
+- WebSearch: Search for information
+- WebFetch: Fetch specific documentation pages
+
+## Response Style
+- Cite sources for all findings
+- Prioritize official documentation
+- Note version-specific information`,
+      tools: ['WebSearch', 'WebFetch'],
+      model: 'inherit',
+      maxTurns: 8,
+    },
+  };
+}
+
+/**
+ * Build hooks configuration for SDK query
+ */
+function buildHooksConfig(
+  enableSafetyHooks: boolean,
+  onCommandBlocked?: OnCommandBlockedCallback,
+  onCompaction?: OnCompactionCallback
+): SDKQueryOptions['hooks'] {
+  const hooks: SDKQueryOptions['hooks'] = {};
+
+  if (enableSafetyHooks) {
+    hooks.PreToolUse = [
+      {
+        matcher: 'Bash',
+        hooks: [createPreToolUseHook(onCommandBlocked)],
+      },
+    ];
+  }
+
+  if (onCompaction) {
+    hooks.PreCompact = [
+      {
+        hooks: [createPreCompactHook(onCompaction)],
+      },
+    ];
+  }
+
+  return Object.keys(hooks).length > 0 ? hooks : undefined;
+}
+
+/**
+ * Build complete SDK query options
+ */
+function buildQueryOptions(
+  systemPrompt: string,
+  model: string,
+  options: AgentRunnerOptions,
+  callbacks: AgentRunnerCallbacks
+): SDKQueryOptions {
+  const enableSafetyHooks = options.enableSafetyHooks !== false; // Default true
+  const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
+
+  const queryOptions: SDKQueryOptions = {
+    allowedTools: ['Bash', 'WebSearch', 'WebFetch', 'Task'], // Task tool enables subagent delegation
+    systemPrompt,
+    permissionMode: 'bypassPermissions',
+    model,
+    persistSession: true,
+    agents: buildAgentDefinitions(options.config),
+  };
+
+  // Add maxTurns if positive
+  if (maxTurns > 0) {
+    queryOptions.maxTurns = maxTurns;
+  }
+
+  // Add hooks
+  const hooks = buildHooksConfig(
+    enableSafetyHooks,
+    callbacks.onCommandBlocked
+      ? (cmd, reason, _suggested) => callbacks.onCommandBlocked!(cmd, reason)
+      : undefined,
+    callbacks.onCompaction
+  );
+  if (hooks) {
+    queryOptions.hooks = hooks;
+  }
+
+  // Resume specific session if provided
+  if (options.resumeSessionId) {
+    queryOptions.resume = options.resumeSessionId;
+  }
+
+  return queryOptions;
 }
 
 /**
@@ -203,10 +473,10 @@ export async function runAgentQuery(
   options: AgentRunnerOptions,
   callbacks: AgentRunnerCallbacks
 ): Promise<AgentController> {
-  const { config, model, verbose, resumeSessionId } = options;
+  const { config, model, verbose } = options;
   const systemPrompt = buildSystemPrompt(config);
 
-  return runAgentStream(queryText, systemPrompt, model, verbose, callbacks, resumeSessionId);
+  return runAgentStream(queryText, systemPrompt, model, verbose, callbacks, options);
 }
 
 /**
@@ -219,27 +489,18 @@ async function runAgentStream(
   model: string,
   verbose: boolean | undefined,
   callbacks: AgentRunnerCallbacks,
-  resumeSessionId?: string
+  options: AgentRunnerOptions
 ): Promise<AgentController> {
-  // Build query options with SDK session persistence
-  const queryOptions: SDKQueryOptions = {
-    allowedTools: ['Bash', 'WebSearch', 'WebFetch'],
-    systemPrompt,
-    permissionMode: 'bypassPermissions',
-    model,
-    persistSession: true,
-  };
-
-  // Resume specific session if provided
-  if (resumeSessionId) {
-    queryOptions.resume = resumeSessionId;
-  }
+  // Build query options with all enhancements
+  const queryOptions = buildQueryOptions(systemPrompt, model, options, callbacks);
+  const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS;
 
   const messageQueue = new UserMessageQueue();
   messageQueue.enqueue(createUserMessage(userPrompt));
 
   let assistantBuffer = '';
   let cancelled = false;
+  let turnCount = 0;
   let queryStream: ReturnType<typeof query> | null = null;
 
   // Start the query in the background
@@ -295,6 +556,12 @@ async function runAgentStream(
                   details = `🌐 ${inp.url}`;
                 }
                 callbacks.onToolUse(block.name || 'unknown', details);
+                
+                // Track turns (each tool use is a turn)
+                turnCount++;
+                if (maxTurns > 0) {
+                  callbacks.onTurnCount?.(turnCount, maxTurns);
+                }
               }
             }
           }
