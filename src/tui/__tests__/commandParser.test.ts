@@ -43,9 +43,24 @@ describe('commandParser', () => {
       expect(result).toEqual({ type: 'new' });
     });
 
-    it('should parse /compact as compact command', () => {
-      const result = parseCommand('/compact');
-      expect(result).toEqual({ type: 'compact' });
+    it('should parse /continue as continue command', () => {
+      const result = parseCommand('/continue');
+      expect(result).toEqual({ type: 'continue' });
+    });
+
+    it('should parse /resume with query', () => {
+      const result = parseCommand('/resume 1');
+      expect(result).toEqual({ type: 'resume', query: '1' });
+    });
+
+    it('should parse /resume with session ID', () => {
+      const result = parseCommand('/resume abc123');
+      expect(result).toEqual({ type: 'resume', query: 'abc123' });
+    });
+
+    it('should parse /resume without query', () => {
+      const result = parseCommand('/resume');
+      expect(result).toEqual({ type: 'resume' });
     });
 
     it('should handle slash commands with trailing text', () => {
@@ -174,7 +189,8 @@ describe('commandParser', () => {
       expect(commands).toContain('/quit');
       expect(commands).toContain('/clear');
       expect(commands).toContain('/new');
-      expect(commands).toContain('/compact');
+      expect(commands).toContain('/continue');
+      expect(commands).toContain('/resume');
     });
   });
 });

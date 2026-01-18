@@ -12,12 +12,12 @@ describe('StatusBar', () => {
     expect(lastFrame()).toContain('my-cluster');
   });
 
-  it('should render "not set" when context is null', () => {
+  it('should render "no-context" when context is null', () => {
     const { lastFrame } = render(
       <StatusBar context={null} namespace="default" model="sonnet" />
     );
     
-    expect(lastFrame()).toContain('not set');
+    expect(lastFrame()).toContain('no-context');
   });
 
   it('should render namespace value', () => {

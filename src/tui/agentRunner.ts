@@ -11,27 +11,24 @@ export interface OutputMessage {
     command?: string;
     cost?: number;
     duration?: number;
+    sessionId?: string;
   };
-}
-
-export interface ConversationTurn {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
 }
 
 export interface AgentRunnerOptions {
   config: HeimdallConfig;
   model: string;
   verbose?: boolean;
+  /** Resume a specific session by ID */
+  resumeSessionId?: string;
 }
 
 export interface AgentRunnerCallbacks {
   onMessage: (message: OutputMessage) => void;
   onToolUse: (toolName: string, details?: string) => void;
-  onComplete: (cost?: number, duration?: number) => void;
+  onComplete: (cost?: number, duration?: number, sessionId?: string) => void;
   onError: (error: Error) => void;
+  onSessionId?: (sessionId: string) => void;
 }
 
 /**
@@ -39,6 +36,32 @@ export interface AgentRunnerCallbacks {
  */
 export interface AgentController {
   cancel: () => void;
+}
+
+/**
+ * Session info for display
+ */
+export interface SessionInfo {
+  sessionId: string;
+  startTime: Date;
+  turnCount: number;
+}
+
+// Current session ID (managed by SDK)
+let currentSessionId: string | null = null;
+
+/**
+ * Get current session ID
+ */
+export function getCurrentSessionId(): string | null {
+  return currentSessionId;
+}
+
+/**
+ * Clear current session (for /new command)
+ */
+export function clearCurrentSession(): void {
+  currentSessionId = null;
 }
 
 /**
@@ -94,97 +117,6 @@ Use web search when:
 - You encounter unfamiliar error messages or codes
 - Checking for known issues or CVEs related to specific versions
 - Looking up deprecated APIs or migration guides`;
-}
-
-// Conversation context manager
-export class ConversationContext {
-  private turns: ConversationTurn[] = [];
-  private sessionId: string;
-
-  constructor() {
-    this.sessionId = this.generateId();
-  }
-
-  private generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  }
-
-  addTurn(role: 'user' | 'assistant', content: string): ConversationTurn {
-    const turn: ConversationTurn = {
-      id: this.generateId(),
-      role,
-      content,
-      timestamp: new Date(),
-    };
-    this.turns.push(turn);
-    return turn;
-  }
-
-  getTurns(): ConversationTurn[] {
-    return [...this.turns];
-  }
-
-  getHistory(): string {
-    return this.turns
-      .map(t => `${t.role === 'user' ? 'User' : 'Assistant'}: ${t.content}`)
-      .join('\n\n');
-  }
-
-  clear(): void {
-    this.turns = [];
-    this.sessionId = this.generateId();
-  }
-
-  getSessionId(): string {
-    return this.sessionId;
-  }
-
-  isEmpty(): boolean {
-    return this.turns.length === 0;
-  }
-
-  compact(): string {
-    // Return a summary of the conversation for context reduction
-    if (this.turns.length === 0) return '';
-    
-    const summary = `Previous conversation summary (${this.turns.length} turns):\n` +
-      this.turns.slice(-4).map(t => 
-        `${t.role}: ${t.content.slice(0, 200)}${t.content.length > 200 ? '...' : ''}`
-      ).join('\n');
-    
-    return summary;
-  }
-
-  /**
-   * Get memory/context statistics
-   */
-  getStats(): {
-    turnCount: number;
-    userTurns: number;
-    assistantTurns: number;
-    totalChars: number;
-    estimatedTokens: number;
-    sessionId: string;
-    oldestTurn: Date | null;
-    newestTurn: Date | null;
-  } {
-    const userTurns = this.turns.filter(t => t.role === 'user').length;
-    const assistantTurns = this.turns.filter(t => t.role === 'assistant').length;
-    const totalChars = this.turns.reduce((sum, t) => sum + t.content.length, 0);
-    // Rough estimate: ~4 chars per token
-    const estimatedTokens = Math.ceil(totalChars / 4);
-    
-    return {
-      turnCount: this.turns.length,
-      userTurns,
-      assistantTurns,
-      totalChars,
-      estimatedTokens,
-      sessionId: this.sessionId,
-      oldestTurn: this.turns.length > 0 ? this.turns[0].timestamp : null,
-      newestTurn: this.turns.length > 0 ? this.turns[this.turns.length - 1].timestamp : null,
-    };
-  }
 }
 
 // Stream user message type for the SDK
@@ -249,6 +181,19 @@ function generateMessageId(): string {
 }
 
 /**
+ * Options passed to the Claude Agent SDK query function.
+ * Defines the structure for type safety instead of Record<string, unknown>.
+ */
+interface SDKQueryOptions {
+  allowedTools: string[];
+  systemPrompt: string;
+  permissionMode: 'bypassPermissions' | 'default';
+  model: string;
+  persistSession: boolean;
+  resume?: string;
+}
+
+/**
  * Run any K8s query through the agent
  * The LLM decides what to check based on the user's request
  * Returns a controller that can be used to cancel the query
@@ -256,22 +201,12 @@ function generateMessageId(): string {
 export async function runAgentQuery(
   queryText: string,
   options: AgentRunnerOptions,
-  callbacks: AgentRunnerCallbacks,
-  context?: ConversationContext
+  callbacks: AgentRunnerCallbacks
 ): Promise<AgentController> {
-  const { config, model, verbose } = options;
+  const { config, model, verbose, resumeSessionId } = options;
   const systemPrompt = buildSystemPrompt(config);
 
-  // Include conversation history for follow-ups
-  let fullQuery = queryText;
-  if (context && !context.isEmpty()) {
-    const history = context.getHistory();
-    fullQuery = `Previous conversation:\n${history}\n\nNew question: ${queryText}`;
-  }
-
-  context?.addTurn('user', queryText);
-
-  return runAgentStream(fullQuery, systemPrompt, model, verbose, callbacks, context);
+  return runAgentStream(queryText, systemPrompt, model, verbose, callbacks, resumeSessionId);
 }
 
 /**
@@ -284,15 +219,21 @@ async function runAgentStream(
   model: string,
   verbose: boolean | undefined,
   callbacks: AgentRunnerCallbacks,
-  context?: ConversationContext
+  resumeSessionId?: string
 ): Promise<AgentController> {
-  const queryOptions = {
+  // Build query options with SDK session persistence
+  const queryOptions: SDKQueryOptions = {
     allowedTools: ['Bash', 'WebSearch', 'WebFetch'],
     systemPrompt,
-    permissionMode: 'bypassPermissions' as const,
+    permissionMode: 'bypassPermissions',
     model,
-    persistSession: false,
+    persistSession: true,
   };
+
+  // Resume specific session if provided
+  if (resumeSessionId) {
+    queryOptions.resume = resumeSessionId;
+  }
 
   const messageQueue = new UserMessageQueue();
   messageQueue.enqueue(createUserMessage(userPrompt));
@@ -314,12 +255,19 @@ async function runAgentStream(
         if ('type' in message) {
           const msg = message as Record<string, unknown>;
 
+          // Capture session ID from init message
           if (msg.type === 'system' && msg.subtype === 'init') {
+            const sessionId = msg.session_id as string | undefined;
+            if (sessionId) {
+              currentSessionId = sessionId;
+              callbacks.onSessionId?.(sessionId);
+            }
             callbacks.onMessage({
               id: generateMessageId(),
               type: 'system',
               content: `Agent initialized with model: ${msg.model}`,
               timestamp: new Date(),
+              metadata: { sessionId },
             });
           }
 
@@ -369,12 +317,7 @@ async function runAgentStream(
             const cost = msg.total_cost_usd as number | undefined;
             const duration = msg.duration_ms as number | undefined;
 
-            // Add assistant response to context
-            if (assistantBuffer.trim() && context) {
-              context.addTurn('assistant', assistantBuffer.trim());
-            }
-
-            callbacks.onComplete(cost, duration);
+            callbacks.onComplete(cost, duration, currentSessionId || undefined);
             messageQueue.close();
             break;
           }

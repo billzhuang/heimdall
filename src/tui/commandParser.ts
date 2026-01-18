@@ -9,7 +9,9 @@ export type SlashCommand =
   | { type: 'exit' }
   | { type: 'clear' }
   | { type: 'new' }
-  | { type: 'compact' }
+  | { type: 'continue' }
+  | { type: 'resume'; query?: string }
+  | { type: 'rename'; name?: string }
   | { type: 'context' };
 
 // General query command - all user queries go to LLM
@@ -32,11 +34,13 @@ export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; descri
   '/ctx': { type: 'ctx', description: 'Select Kubernetes context' },
   '/ns': { type: 'ns', description: 'Select namespace' },
   '/model': { type: 'model', description: 'Select LLM model' },
-  '/context': { type: 'context', description: 'Show conversation memory stats' },
+  '/context': { type: 'context', description: 'Show current session info' },
+  '/continue': { type: 'continue', description: 'Continue most recent session' },
+  '/resume': { type: 'resume', description: 'Browse and resume saved sessions' },
+  '/rename': { type: 'rename', description: 'Rename current session' },
   '/help': { type: 'help', description: 'Show available commands' },
-  '/clear': { type: 'clear', description: 'Clear conversation history' },
-  '/new': { type: 'new', description: 'Start new conversation' },
-  '/compact': { type: 'compact', description: 'Compact conversation context' },
+  '/clear': { type: 'clear', description: 'Clear output (keeps session)' },
+  '/new': { type: 'new', description: 'Start new session' },
   '/exit': { type: 'exit', description: 'Exit Heimdall' },
   '/quit': { type: 'exit', description: 'Exit Heimdall' },
 };
@@ -61,9 +65,19 @@ export function parseCommand(input: string): ParsedCommand {
 
   // Check for slash commands first
   if (trimmed.startsWith('/')) {
-    const slashCmd = trimmed.split(/\s/)[0].toLowerCase();
+    const parts = trimmed.split(/\s+/);
+    const slashCmd = parts[0].toLowerCase();
     const cmdInfo = SLASH_COMMANDS[slashCmd];
     if (cmdInfo) {
+      // Handle /resume with query
+      if (cmdInfo.type === 'resume' && parts.length > 1) {
+        return { type: 'resume', query: parts[1] } as SlashCommand;
+      }
+      // Handle /rename with name (rest of the line after /rename)
+      if (cmdInfo.type === 'rename') {
+        const name = trimmed.slice('/rename'.length).trim();
+        return { type: 'rename', name: name || undefined } as SlashCommand;
+      }
       return { type: cmdInfo.type } as SlashCommand;
     }
     // Unknown slash command
@@ -104,7 +118,7 @@ function extractModel(input: string): string | undefined {
  * Check if a command is a slash command
  */
 export function isSlashCommand(cmd: ParsedCommand): cmd is SlashCommand {
-  return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'compact', 'context'].includes(cmd.type);
+  return ['ctx', 'ns', 'model', 'help', 'exit', 'clear', 'new', 'continue', 'resume', 'rename', 'context'].includes(cmd.type);
 }
 
 /**

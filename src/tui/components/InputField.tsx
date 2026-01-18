@@ -18,6 +18,9 @@ export function InputField({
   
   // Track if we should intercept the next submit
   const interceptSubmitRef = useRef(false);
+  
+  // Force re-render key to reset TextInput cursor position
+  const [inputKey, setInputKey] = useState(0);
 
   // Get filtered commands when input starts with /
   const suggestions = value.startsWith('/') ? filterSlashCommands(value) : [];
@@ -40,6 +43,8 @@ export function InputField({
       const cmd = suggestions[selectedIndex].command + ' ';
       setValue(cmd);
       setShowAutocomplete(false);
+      // Force TextInput to remount so cursor goes to end
+      setInputKey(prev => prev + 1);
     } else if (key.return) {
       // Enter to execute selected command directly
       const selectedCmd = suggestions[selectedIndex].command;
@@ -106,6 +111,7 @@ export function InputField({
         <Text color="cyan" bold>{'>'}</Text>
         <Text> </Text>
         <TextInput
+          key={inputKey}
           value={value}
           onChange={handleChange}
           onSubmit={handleSubmit}
