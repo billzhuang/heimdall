@@ -134,7 +134,12 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
           });
           break;
         case 'context':
-          showContextStats(actions.addMessage, conversationContext);
+          showContextStats(
+            actions.addMessage, 
+            conversationContext, 
+            cmd.subcommand, 
+            { context: state.context || 'N/A', namespace: state.namespace }
+          );
           break;
       }
       return;
@@ -333,7 +338,12 @@ General Queries:
   });
 }
 
-function showContextStats(addMessage: (msg: OutputMessage) => void, context: ConversationContext): void {
+function showContextStats(
+  addMessage: (msg: OutputMessage) => void, 
+  context: ConversationContext,
+  subcommand?: 'full' | 'raw',
+  config?: { context: string; namespace: string }
+): void {
   const stats = context.getStats();
   
   const formatDate = (date: Date | null) => {
@@ -341,6 +351,56 @@ function showContextStats(addMessage: (msg: OutputMessage) => void, context: Con
     return date.toLocaleTimeString();
   };
 
+  // Handle /context full - show all turns
+  if (subcommand === 'full') {
+    const turnsText = `
+📜 Full Conversation History
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+${context.getFullTurns()}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+`;
+    addMessage({
+      id: generateMessageId(),
+      type: 'system',
+      content: turnsText,
+      timestamp: new Date(),
+    });
+    return;
+  }
+
+  // Handle /context raw - show what gets sent to Claude
+  if (subcommand === 'raw') {
+    const history = context.getHistory();
+    const namespaceScope = config?.namespace === 'all' 
+      ? 'all namespaces' 
+      : `namespace: ${config?.namespace || 'default'}`;
+    
+    const rawText = `
+🔧 Raw Context (what gets sent to Claude)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 System Prompt Summary:
+  • Context: ${config?.context || 'N/A'}
+  • Namespace: ${namespaceScope}
+  • Mode: READ-ONLY
+  • Tools: Bash, WebSearch, WebFetch
+
+📝 Conversation History (${stats.turnCount} turns, ~${stats.estimatedTokens} tokens):
+${history || '(empty)'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 This history is prepended to each new query for context continuity.
+`;
+    addMessage({
+      id: generateMessageId(),
+      type: 'system',
+      content: rawText,
+      timestamp: new Date(),
+    });
+    return;
+  }
+
+  // Default: show stats
   const statsText = `
 📊 Conversation Memory Stats
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -353,7 +413,7 @@ Est. Tokens:      ~${stats.estimatedTokens.toLocaleString()}
 First Message:    ${formatDate(stats.oldestTurn)}
 Last Message:     ${formatDate(stats.newestTurn)}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-${stats.turnCount === 0 ? '💡 Tip: Start a conversation to build context for follow-up questions.' : '💡 Tip: Use /compact to reduce context size, or /clear to start fresh.'}
+${stats.turnCount === 0 ? '💡 Tip: Start a conversation to build context for follow-up questions.' : '💡 Tip: Use /context full to see turns, /context raw to see prompt.'}
 `;
 
   addMessage({

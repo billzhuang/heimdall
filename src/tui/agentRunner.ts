@@ -185,6 +185,23 @@ export class ConversationContext {
       newestTurn: this.turns.length > 0 ? this.turns[this.turns.length - 1].timestamp : null,
     };
   }
+
+  /**
+   * Get full conversation turns for debugging
+   */
+  getFullTurns(): string {
+    if (this.turns.length === 0) {
+      return '(no conversation history)';
+    }
+    return this.turns.map((t, i) => {
+      const time = t.timestamp.toLocaleTimeString();
+      const role = t.role === 'user' ? '👤 User' : '🤖 Assistant';
+      const preview = t.content.length > 500 
+        ? t.content.slice(0, 500) + `... [${t.content.length - 500} more chars]`
+        : t.content;
+      return `[${i + 1}] ${role} (${time}):\n${preview}`;
+    }).join('\n\n---\n\n');
+  }
 }
 
 // Stream user message type for the SDK

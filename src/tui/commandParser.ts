@@ -10,7 +10,7 @@ export type SlashCommand =
   | { type: 'clear' }
   | { type: 'new' }
   | { type: 'compact' }
-  | { type: 'context' };
+  | { type: 'context'; subcommand?: 'full' | 'raw' };
 
 // General query command - all user queries go to LLM
 export interface QueryCommand {
@@ -32,7 +32,7 @@ export const SLASH_COMMANDS: Record<string, { type: SlashCommand['type']; descri
   '/ctx': { type: 'ctx', description: 'Select Kubernetes context' },
   '/ns': { type: 'ns', description: 'Select namespace' },
   '/model': { type: 'model', description: 'Select LLM model' },
-  '/context': { type: 'context', description: 'Show conversation memory stats' },
+  '/context': { type: 'context', description: 'Show conversation memory stats (/context full for turns, /context raw for prompt)' },
   '/help': { type: 'help', description: 'Show available commands' },
   '/clear': { type: 'clear', description: 'Clear conversation history' },
   '/new': { type: 'new', description: 'Start new conversation' },
@@ -61,9 +61,17 @@ export function parseCommand(input: string): ParsedCommand {
 
   // Check for slash commands first
   if (trimmed.startsWith('/')) {
-    const slashCmd = trimmed.split(/\s/)[0].toLowerCase();
+    const parts = trimmed.split(/\s+/);
+    const slashCmd = parts[0].toLowerCase();
     const cmdInfo = SLASH_COMMANDS[slashCmd];
     if (cmdInfo) {
+      // Handle /context subcommands
+      if (cmdInfo.type === 'context' && parts.length > 1) {
+        const sub = parts[1].toLowerCase();
+        if (sub === 'full' || sub === 'raw') {
+          return { type: 'context', subcommand: sub } as SlashCommand;
+        }
+      }
       return { type: cmdInfo.type } as SlashCommand;
     }
     // Unknown slash command
