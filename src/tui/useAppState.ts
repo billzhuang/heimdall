@@ -5,7 +5,7 @@ import type { HeimdallConfig } from './types.js';
 import type { KubeconfigContext } from './kubeconfigParser.js';
 
 export type AppMode = 'repl' | 'selector' | 'running';
-export type SelectorType = 'context' | 'namespace' | 'model';
+export type SelectorType = 'context' | 'namespace' | 'model' | 'session';
 
 export interface TUIState {
   // Configuration

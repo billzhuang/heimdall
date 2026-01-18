@@ -1,162 +1,68 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
-import { ConversationContext } from '../agentRunner.js';
+import { getCurrentSessionId, clearCurrentSession } from '../agentRunner.js';
 
 /**
- * Property-based tests for agent runner conversation context
+ * Property-based tests for agent runner session management
+ * 
+ * Note: The SDK now handles conversation context internally with persistSession: true.
+ * These tests verify the session state management functions.
  */
 describe('agentRunner property tests', () => {
+  beforeEach(() => {
+    clearCurrentSession();
+  });
+
   /**
-   * Property 10: Conversation History Preservation
-   * For any sequence of user queries and assistant responses, the conversation
-   * history SHALL contain all turns in chronological order.
-   * 
-   * **Validates: Requirements 8.1, 8.2**
+   * Property: Session state consistency
+   * After clearing a session, getCurrentSessionId should always return null.
    */
-  describe('Property 10: Conversation history preservation', () => {
-    // Arbitrary for generating conversation content
-    const contentArb = fc.string({ minLength: 1, maxLength: 500 });
-    const roleArb = fc.constantFrom<'user' | 'assistant'>('user', 'assistant');
-
-    it('should preserve all turns in order', () => {
+  describe('Property: Session state consistency', () => {
+    it('should always return null after clearCurrentSession', () => {
       fc.assert(
         fc.property(
-          fc.array(fc.tuple(roleArb, contentArb), { minLength: 1, maxLength: 20 }),
-          (turns) => {
-            const context = new ConversationContext();
-            
-            // Add all turns
-            for (const [role, content] of turns) {
-              context.addTurn(role, content);
+          fc.integer({ min: 1, max: 10 }),
+          (clearCount) => {
+            // Clear multiple times
+            for (let i = 0; i < clearCount; i++) {
+              clearCurrentSession();
             }
             
-            // Verify all turns are preserved
-            const history = context.getTurns();
-            expect(history.length).toBe(turns.length);
-            
-            // Verify order and content
-            for (let i = 0; i < turns.length; i++) {
-              expect(history[i].role).toBe(turns[i][0]);
-              expect(history[i].content).toBe(turns[i][1]);
-            }
+            // Should always be null after clearing
+            expect(getCurrentSessionId()).toBeNull();
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 50 }
       );
     });
+  });
 
-    it('should maintain chronological order of timestamps', () => {
+  /**
+   * Property: Clear operation is idempotent
+   * Calling clearCurrentSession multiple times should have the same effect as calling it once.
+   */
+  describe('Property: Clear operation idempotency', () => {
+    it('should be idempotent', () => {
       fc.assert(
         fc.property(
-          fc.array(fc.tuple(roleArb, contentArb), { minLength: 2, maxLength: 10 }),
-          (turns) => {
-            const context = new ConversationContext();
+          fc.integer({ min: 1, max: 100 }),
+          (times) => {
+            // Clear once
+            clearCurrentSession();
+            const afterOne = getCurrentSessionId();
             
-            for (const [role, content] of turns) {
-              context.addTurn(role, content);
+            // Clear many more times
+            for (let i = 0; i < times; i++) {
+              clearCurrentSession();
             }
+            const afterMany = getCurrentSessionId();
             
-            const history = context.getTurns();
-            
-            // Verify timestamps are in order
-            for (let i = 1; i < history.length; i++) {
-              expect(history[i].timestamp.getTime()).toBeGreaterThanOrEqual(
-                history[i - 1].timestamp.getTime()
-              );
-            }
+            // Result should be the same
+            expect(afterMany).toBe(afterOne);
+            expect(afterMany).toBeNull();
           }
         ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should generate unique IDs for each turn', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.tuple(roleArb, contentArb), { minLength: 2, maxLength: 20 }),
-          (turns) => {
-            const context = new ConversationContext();
-            
-            for (const [role, content] of turns) {
-              context.addTurn(role, content);
-            }
-            
-            const history = context.getTurns();
-            const ids = history.map(t => t.id);
-            const uniqueIds = new Set(ids);
-            
-            expect(uniqueIds.size).toBe(ids.length);
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should clear all turns when clear() is called', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.tuple(roleArb, contentArb), { minLength: 1, maxLength: 10 }),
-          (turns) => {
-            const context = new ConversationContext();
-            
-            for (const [role, content] of turns) {
-              context.addTurn(role, content);
-            }
-            
-            expect(context.isEmpty()).toBe(false);
-            
-            context.clear();
-            
-            expect(context.isEmpty()).toBe(true);
-            expect(context.getTurns().length).toBe(0);
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should generate new session ID after clear()', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.tuple(roleArb, contentArb), { minLength: 1, maxLength: 5 }),
-          (turns) => {
-            const context = new ConversationContext();
-            const originalSessionId = context.getSessionId();
-            
-            for (const [role, content] of turns) {
-              context.addTurn(role, content);
-            }
-            
-            context.clear();
-            const newSessionId = context.getSessionId();
-            
-            expect(newSessionId).not.toBe(originalSessionId);
-          }
-        ),
-        { numRuns: 100 }
-      );
-    });
-
-    it('should include all turns in getHistory() output', () => {
-      fc.assert(
-        fc.property(
-          fc.array(fc.tuple(roleArb, contentArb), { minLength: 1, maxLength: 10 }),
-          (turns) => {
-            const context = new ConversationContext();
-            
-            for (const [role, content] of turns) {
-              context.addTurn(role, content);
-            }
-            
-            const history = context.getHistory();
-            
-            // Each turn's content should appear in the history string
-            for (const [, content] of turns) {
-              expect(history).toContain(content);
-            }
-          }
-        ),
-        { numRuns: 100 }
+        { numRuns: 50 }
       );
     });
   });

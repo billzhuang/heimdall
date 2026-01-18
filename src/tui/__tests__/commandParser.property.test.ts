@@ -16,7 +16,7 @@ describe('commandParser property tests', () => {
    * **Validates: Requirements 3.1, 4.1, 5.1, 8.3, 8.4**
    */
   describe('Property 1: Slash command parsing', () => {
-    const validSlashCommands = ['/ctx', '/ns', '/model', '/help', '/exit', '/clear', '/new', '/compact'];
+    const validSlashCommands = ['/ctx', '/ns', '/model', '/help', '/exit', '/clear', '/new', '/continue', '/sessions', '/resume', '/context'];
     const expectedTypes: Record<string, string> = {
       '/ctx': 'ctx',
       '/ns': 'ns',
@@ -25,7 +25,10 @@ describe('commandParser property tests', () => {
       '/exit': 'exit',
       '/clear': 'clear',
       '/new': 'new',
-      '/compact': 'compact',
+      '/continue': 'continue',
+      '/sessions': 'sessions',
+      '/resume': 'resume',
+      '/context': 'context',
     };
 
     it('should return correct type for any valid slash command with optional trailing text', () => {
