@@ -252,6 +252,12 @@ interface AgentDefinition {
  * Claude will automatically delegate to these when appropriate
  */
 function buildAgentDefinitions(config: HeimdallConfig): Record<string, AgentDefinition> {
+  // NOTE: Using -A for "all namespaces" is standard kubectl behavior.
+  // This matches user expectations when they select "all" in the namespace selector.
+  // Considerations for future enhancement:
+  // - Some clusters may have RBAC policies restricting cluster-wide queries
+  // - Very large clusters could experience performance issues with -A
+  // - Could make this configurable if needed
   const namespaceFlag = config.namespace === 'all' ? '-A' : `-n ${config.namespace}`;
   
   return {

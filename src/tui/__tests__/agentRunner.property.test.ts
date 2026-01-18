@@ -282,7 +282,6 @@ describe('Property: MaxTurns Configuration', () => {
   it('should return default for undefined', () => {
     const result = getEffectiveMaxTurns(undefined);
     expect(result).toBe(DEFAULT_MAX_TURNS);
-    expect(result).toBe(15);
   });
 
   it('should always return positive number or undefined', () => {

@@ -314,6 +314,58 @@ describe('parseKubectlCommand', () => {
     expect(result.isKubectl).toBe(true);
     expect(result.subcommand).toBeNull();
   });
+
+  // Security: Test for bypass vulnerability with global options that take values
+  describe('global options bypass prevention', () => {
+    it('should correctly parse kubectl --v 5 delete pods (verbosity bypass attempt)', () => {
+      const result = parseKubectlCommand('kubectl --v 5 delete pods');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pods']);
+    });
+
+    it('should correctly parse kubectl -v 5 delete pods (short verbosity bypass attempt)', () => {
+      const result = parseKubectlCommand('kubectl -v 5 delete pods');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pods']);
+    });
+
+    it('should correctly parse kubectl --context prod delete pod (space-separated context)', () => {
+      const result = parseKubectlCommand('kubectl --context prod delete pod');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pod']);
+    });
+
+    it('should correctly parse kubectl --as admin delete pods (impersonation bypass attempt)', () => {
+      const result = parseKubectlCommand('kubectl --as admin delete pods');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pods']);
+    });
+
+    it('should correctly parse kubectl --token abc123 delete pods (token bypass attempt)', () => {
+      const result = parseKubectlCommand('kubectl --token abc123 delete pods');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pods']);
+    });
+
+    it('should correctly parse kubectl --server https://k8s.io delete pods (server bypass attempt)', () => {
+      const result = parseKubectlCommand('kubectl --server https://k8s.io delete pods');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pods']);
+    });
+
+    it('should correctly parse kubectl -s https://k8s.io delete pods (short server bypass attempt)', () => {
+      const result = parseKubectlCommand('kubectl -s https://k8s.io delete pods');
+      expect(result.isKubectl).toBe(true);
+      expect(result.subcommand).toBe('delete');
+      expect(result.args).toEqual(['pods']);
+    });
+  });
 });
 
 // =============================================================================
@@ -334,7 +386,28 @@ describe('isDestructiveCommand', () => {
       'kubectl edit deployment my-deploy',
       'kubectl replace -f deployment.yaml',
       'kubectl rollout restart deployment my-deploy',
+      // Commands that can execute arbitrary code or exfiltrate data
+      'kubectl exec -it my-pod -- /bin/bash',
+      'kubectl port-forward svc/my-service 8080:80',
+      'kubectl attach my-pod -c my-container',
+      'kubectl cp my-pod:/path/to/file /local/path',
+      'kubectl debug my-pod --image=busybox',
     ])('should detect "%s" as destructive', (command) => {
+      expect(isDestructiveCommand(command)).toBe(true);
+    });
+  });
+
+  describe('destructive commands with global option bypass attempts', () => {
+    it.each([
+      'kubectl --v 5 delete pods',
+      'kubectl -v 5 delete pods',
+      'kubectl --as admin delete pods',
+      'kubectl --token abc123 delete pods',
+      'kubectl --server https://k8s.io delete pods',
+      'kubectl -s https://k8s.io apply -f test.yaml',
+      'kubectl --kubeconfig /tmp/config delete namespace test',
+      'kubectl --user admin --cluster prod delete pods',
+    ])('should detect "%s" as destructive (bypass attempt)', (command) => {
       expect(isDestructiveCommand(command)).toBe(true);
     });
   });
@@ -427,10 +500,16 @@ describe('validateCommand', () => {
       expect(result.reason).toContain('without subcommand');
     });
 
-    it('should allow unknown kubectl subcommand', () => {
+    it('should block unknown kubectl subcommand (default-deny)', () => {
       const result = validateCommand('kubectl unknown-command');
-      expect(result.allowed).toBe(true);
-      expect(result.reason).toContain('Unknown subcommand');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('Unknown kubectl subcommand');
+    });
+
+    it('should block kubectl proxy (not in allowlist)', () => {
+      const result = validateCommand('kubectl proxy');
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('Unknown kubectl subcommand');
     });
   });
 });
@@ -597,6 +676,11 @@ describe('Safety hook constants', () => {
     expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('drain');
     expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('cordon');
     expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('taint');
+    // Commands that can execute arbitrary code or exfiltrate data
+    expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('exec');
+    expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('port-forward');
+    expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('attach');
+    expect(DESTRUCTIVE_KUBECTL_COMMANDS).toContain('cp');
   });
 
   it('should have all expected allowed commands', () => {

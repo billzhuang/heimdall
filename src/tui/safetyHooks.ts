@@ -19,6 +19,12 @@ export const DESTRUCTIVE_KUBECTL_COMMANDS = [
   'uncordon',
   'taint',
   'rollout',
+  // Commands that can execute arbitrary code or exfiltrate data
+  'exec',
+  'port-forward',
+  'attach',
+  'cp',
+  'debug',
 ] as const;
 
 /**
@@ -97,7 +103,39 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
   result.isKubectl = true;
 
   // Options that take a value as the next argument
-  const optionsWithValue = new Set(['-n', '--namespace', '-c', '--container', '-l', '--selector', '-f', '--filename', '-o', '--output']);
+  // CRITICAL: This must include ALL kubectl global options that take values
+  // to prevent bypass attacks like: kubectl --v 5 delete pods
+  const optionsWithValue = new Set([
+    // Common options
+    '-n', '--namespace',
+    '-c', '--container',
+    '-l', '--selector',
+    '-f', '--filename',
+    '-o', '--output',
+    // Global options from `kubectl options`
+    '--as',
+    '--as-group',
+    '--as-uid',
+    '--cache-dir',
+    '--certificate-authority',
+    '--client-certificate',
+    '--client-key',
+    '--cluster',
+    '--context',
+    '--kubeconfig',
+    '--log-flush-frequency',
+    '--password',
+    '--profile',
+    '--profile-output',
+    '--request-timeout',
+    '--server', '-s',
+    '--tls-server-name',
+    '--token',
+    '--user',
+    '--username',
+    '--v', '-v',  // verbosity level
+    '--vmodule',
+  ]);
 
   // Find the subcommand (first non-option argument after kubectl)
   let skipNext = false;
@@ -183,7 +221,7 @@ export function validateCommand(command: string): CommandValidationResult {
     };
   }
 
-  // Check if explicitly allowed
+  // Check if explicitly allowed (default-deny policy for kubectl commands)
   if (ALLOWED_KUBECTL_COMMANDS.includes(parsed.subcommand as AllowedCommand)) {
     return {
       allowed: true,
@@ -193,10 +231,11 @@ export function validateCommand(command: string): CommandValidationResult {
     };
   }
 
-  // Unknown subcommand - allow (conservative approach)
+  // Unknown subcommand - block by default (security: default-deny policy)
+  // This prevents unknown commands like 'proxy' from bypassing safety checks
   return {
-    allowed: true,
-    reason: `Unknown subcommand '${parsed.subcommand}' - allowing`,
+    allowed: false,
+    reason: `Unknown kubectl subcommand '${parsed.subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
     command: parsed.rawCommand,
     subcommand: parsed.subcommand,
   };
