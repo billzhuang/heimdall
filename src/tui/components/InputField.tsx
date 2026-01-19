@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { filterSlashCommands } from '../commandParser.js';
@@ -21,6 +21,14 @@ export function InputField({
   
   // Force re-render key to reset TextInput cursor position
   const [inputKey, setInputKey] = useState(0);
+  
+  // Guard against input during mount - prevents phantom keystrokes from selector transitions
+  const [isReady, setIsReady] = useState(false);
+  useEffect(() => {
+    // Small delay to let any buffered input from selector close drain
+    const timer = setTimeout(() => setIsReady(true), 50);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Get filtered commands when input starts with /
   const suggestions = value.startsWith('/') ? filterSlashCommands(value) : [];
@@ -57,6 +65,9 @@ export function InputField({
   }, { isActive: showAutocomplete && hasSuggestions });
 
   const handleChange = (newValue: string) => {
+    // Ignore input during mount guard period
+    if (!isReady) return;
+    
     setValue(newValue);
     setSelectedIndex(0);
     setShowAutocomplete(newValue.startsWith('/') && newValue.length >= 1);
@@ -68,6 +79,9 @@ export function InputField({
       interceptSubmitRef.current = false;
       return;
     }
+    
+    // Ignore input during mount guard period
+    if (!isReady) return;
     
     if (input.trim()) {
       onSubmit(input.trim());

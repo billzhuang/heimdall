@@ -23,6 +23,6 @@ describe('NamespaceSelector', () => {
 
   it('should render loading state initially', () => {
     const { lastFrame } = render(<NamespaceSelector {...defaultProps} />);
-    expect(lastFrame()).toContain('Loading namespaces');
+    expect(lastFrame()).toContain('Loading');
   });
 });

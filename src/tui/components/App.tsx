@@ -427,18 +427,13 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
   }
 
   // Selector overlays
-  if (state.mode === 'selector') {
-    return (
-      <Box flexDirection="column" padding={1}>
-        <StatusBar 
-          key={`${state.context}-${state.namespace}-${state.model}-${sessionName}`}
-          context={state.context} 
-          namespace={state.namespace} 
-          model={state.model}
-          hint={state.statusHint}
-          sessionName={sessionName}
-        />
-        {state.activeSelector === 'context' && (
+  if (state.mode === 'selector' && state.activeSelector) {
+    // Render the appropriate selector based on activeSelector
+    let selectorContent: React.ReactNode = null;
+    
+    switch (state.activeSelector) {
+      case 'context':
+        selectorContent = (
           <ContextSelector
             contexts={state.contexts}
             currentContext={state.context}
@@ -446,39 +441,63 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
             onSelect={actions.setContext}
             onCancel={actions.closeSelector}
           />
-        )}
-        {state.activeSelector === 'namespace' && state.context && (
-          <NamespaceSelector
-            context={state.context}
-            kubeconfigPath={kubeconfig}
-            selectedNamespace={state.namespace}
-            onSelect={actions.setNamespace}
-            onCancel={actions.closeSelector}
-          />
-        )}
-        {state.activeSelector === 'model' && (
+        );
+        break;
+      case 'namespace':
+        if (state.context) {
+          selectorContent = (
+            <NamespaceSelector
+              context={state.context}
+              kubeconfigPath={kubeconfig}
+              selectedNamespace={state.namespace}
+              onSelect={actions.setNamespace}
+              onCancel={actions.closeSelector}
+            />
+          );
+        }
+        break;
+      case 'model':
+        selectorContent = (
           <ModelSelector
             selectedModel={state.model}
             onSelect={actions.setModel}
             onCancel={actions.closeSelector}
           />
-        )}
-        {state.activeSelector === 'session' && (
+        );
+        break;
+      case 'session':
+        selectorContent = (
           <SessionSelector
             onSelect={handleSessionSelect}
             onCancel={actions.closeSelector}
             currentSessionId={resumeSessionId || sessionId}
           />
-        )}
-      </Box>
-    );
+        );
+        break;
+    }
+    
+    // Only render selector mode if we have valid content
+    if (selectorContent) {
+      return (
+        <Box flexDirection="column" padding={1}>
+          <StatusBar 
+            context={state.context} 
+            namespace={state.namespace} 
+            model={state.model}
+            hint={state.statusHint}
+            sessionName={sessionName}
+          />
+          {selectorContent}
+        </Box>
+      );
+    }
+    // Fall through to REPL mode if no valid selector content
   }
 
   // Main REPL mode
   return (
     <Box flexDirection="column" padding={1}>
       <StatusBar 
-        key={`${state.context}-${state.namespace}-${state.model}-${sessionName}`}
         context={state.context} 
         namespace={state.namespace} 
         model={state.model}
