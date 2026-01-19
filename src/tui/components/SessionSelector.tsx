@@ -45,6 +45,8 @@ export function SessionSelector({
   const mountedRef = useRef(true);
 
   // Defer loading to avoid race conditions during rapid selector switching
+  // Empty deps is intentional - sessions are loaded once when selector opens
+  // (currentSessionId only affects highlighting, not the data fetch)
   useEffect(() => {
     mountedRef.current = true;
     

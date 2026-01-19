@@ -27,8 +27,12 @@ export function NamespaceSelector({
   const mountedRef = useRef(true);
 
   // Defer loading to avoid race conditions during rapid selector switching
+  // Reset loadState when context/kubeconfigPath changes
   useEffect(() => {
     mountedRef.current = true;
+    setLoadState('init');
+    setNamespaces([]);
+    setSelectedIndex(0);
     
     // Small delay before starting load to let component stabilize
     const initTimer = setTimeout(() => {
@@ -40,7 +44,7 @@ export function NamespaceSelector({
       mountedRef.current = false;
       clearTimeout(initTimer);
     };
-  }, []);
+  }, [context, kubeconfigPath]);
 
   // Separate effect for actual loading
   useEffect(() => {

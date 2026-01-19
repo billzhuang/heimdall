@@ -97,11 +97,32 @@ export function useAppState(initialKubeconfigPath: string): [TUIState, AppStateA
   }, []);
 
   const openSelector = useCallback((selector: SelectorType) => {
-    setState(prev => ({ 
-      ...prev, 
-      mode: 'selector',
-      activeSelector: selector 
-    }));
+    setState(prev => {
+      // If switching selectors, first close the current one
+      // The component will re-render with null selector, then open the new one
+      if (prev.activeSelector && prev.activeSelector !== selector) {
+        // Schedule opening the new selector after current one unmounts
+        setTimeout(() => {
+          setState(p => ({ 
+            ...p, 
+            mode: 'selector',
+            activeSelector: selector 
+          }));
+        }, 32); // Two frames to let previous selector fully unmount
+        
+        return { 
+          ...prev, 
+          mode: 'repl',
+          activeSelector: null 
+        };
+      }
+      
+      return { 
+        ...prev, 
+        mode: 'selector',
+        activeSelector: selector 
+      };
+    });
   }, []);
 
   const closeSelector = useCallback(() => {

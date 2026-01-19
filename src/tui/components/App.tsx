@@ -481,7 +481,6 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
       return (
         <Box flexDirection="column" padding={1}>
           <StatusBar 
-            key={`${state.context}-${state.namespace}-${state.model}-${sessionName}`}
             context={state.context} 
             namespace={state.namespace} 
             model={state.model}
@@ -499,7 +498,6 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
   return (
     <Box flexDirection="column" padding={1}>
       <StatusBar 
-        key={`${state.context}-${state.namespace}-${state.model}-${sessionName}`}
         context={state.context} 
         namespace={state.namespace} 
         model={state.model}
