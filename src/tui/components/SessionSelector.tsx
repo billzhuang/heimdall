@@ -32,20 +32,43 @@ function sanitizeText(text: string, maxLen: number): string {
   return clean.slice(0, maxLen) + '...';
 }
 
+type LoadState = 'init' | 'loading' | 'loaded' | 'error';
+
 export function SessionSelector({
   onSelect,
   onCancel,
   currentSessionId,
 }: SessionSelectorProps): React.ReactElement {
-  const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const hasLoaded = useRef(false);
+  const [loadState, setLoadState] = useState<LoadState>('init');
+  const mountedRef = useRef(true);
 
+  // Defer loading to avoid race conditions during rapid selector switching
   useEffect(() => {
-    if (hasLoaded.current) return;
-    hasLoaded.current = true;
+    mountedRef.current = true;
+    
+    // Small delay before starting load to let component stabilize
+    const initTimer = setTimeout(() => {
+      if (!mountedRef.current) return;
+      setLoadState('loading');
+    }, 16); // One frame
+    
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(initTimer);
+    };
+  }, []);
+  
+  // Separate effect for actual loading - only runs when loadState becomes 'loading'
+  useEffect(() => {
+    if (loadState !== 'loading') return;
+    
+    let cancelled = false;
     
     listSessions(15).then(result => {
+      if (cancelled || !mountedRef.current) return;
+      
       // Pre-select current session if it exists in the list
       if (currentSessionId && result.length > 0) {
         const currentIndex = result.findIndex(s => s.sessionId === currentSessionId);
@@ -54,18 +77,35 @@ export function SessionSelector({
         }
       }
       setSessions(result);
+      setLoadState('loaded');
     }).catch(() => {
-      setSessions([]);
+      if (!cancelled && mountedRef.current) {
+        setSessions([]);
+        setLoadState('error');
+      }
     });
-  }, [currentSessionId]);
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [loadState, currentSessionId]);
 
   useInput((_input, key) => {
+    // Guard against input after unmount or during loading
+    if (!mountedRef.current || loadState !== 'loaded') {
+      // Still allow escape during loading
+      if (key.escape) {
+        onCancel();
+      }
+      return;
+    }
+    
     if (key.escape) {
       onCancel();
       return;
     }
 
-    if (sessions && sessions.length > 0) {
+    if (sessions.length > 0) {
       if (key.return) {
         onSelect(sessions[selectedIndex]);
         return;
@@ -83,19 +123,22 @@ export function SessionSelector({
     }
   });
 
-  // Loading state - sessions is null until loaded
-  if (sessions === null) {
+  // Init/Loading state
+  if (loadState === 'init' || loadState === 'loading') {
     return (
-      <Box flexDirection="column" paddingX={1} paddingY={1}>
-        <Text color="yellow">Loading sessions...</Text>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1}>
+        <Text bold color="cyan">Sessions</Text>
+        <Text color="yellow">Loading...</Text>
+        <Text color="gray">Press Esc to cancel</Text>
       </Box>
     );
   }
 
-  // Empty state
-  if (sessions.length === 0) {
+  // Error or empty state
+  if (loadState === 'error' || sessions.length === 0) {
     return (
-      <Box flexDirection="column" paddingX={1} paddingY={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1}>
+        <Text bold color="cyan">Sessions</Text>
         <Text color="yellow">No saved sessions found.</Text>
         <Text color="gray">Press Esc to go back</Text>
       </Box>
@@ -104,7 +147,7 @@ export function SessionSelector({
 
   // Session list
   return (
-    <Box flexDirection="column" paddingX={1} paddingY={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} paddingY={1}>
       <Text bold color="cyan">Select Session to Resume</Text>
       <Text> </Text>
       {sessions.map((session, index) => {
