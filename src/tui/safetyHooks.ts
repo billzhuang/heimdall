@@ -2,6 +2,9 @@
  * Safety hooks for Heimdall agent - provides programmatic defense-in-depth
  * by blocking destructive kubectl commands at the SDK level.
  */
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
 
 /**
  * List of destructive kubectl subcommands that should be blocked
@@ -241,6 +244,100 @@ export function validateCommand(command: string): CommandValidationResult {
   };
 }
 
+const DEFAULT_CACHE_TTL_SECONDS = 30;
+const CACHE_DIR_NAME = 'heimdall-kubectl-cache';
+
+function isCacheEnabled(): boolean {
+  return process.env.HEIMDALL_KUBECTL_CACHE !== '0';
+}
+
+function getCacheTtlSeconds(): number {
+  const raw = process.env.HEIMDALL_KUBECTL_CACHE_TTL;
+  if (!raw) return DEFAULT_CACHE_TTL_SECONDS;
+  const ttl = Number.parseInt(raw, 10);
+  return Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_CACHE_TTL_SECONDS;
+}
+
+function getCacheDir(): string {
+  const baseDir = process.env.HEIMDALL_KUBECTL_CACHE_DIR || tmpdir();
+  return joinPath(baseDir, CACHE_DIR_NAME);
+}
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, ' ');
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+function splitByFirstPipe(command: string): { head: string; tail: string } {
+  const pipeIndex = command.indexOf('|');
+  if (pipeIndex === -1) {
+    return { head: command, tail: '' };
+  }
+  return {
+    head: command.slice(0, pipeIndex).trimEnd(),
+    tail: command.slice(pipeIndex),
+  };
+}
+
+function isJsonOutput(command: string): boolean {
+  return /(?:^|\s)(-o|--output)(?:=|\s+)json(?:\s|$)/i.test(command);
+}
+
+function buildCachedKubectlCommand(command: string): string | null {
+  if (!isCacheEnabled()) return null;
+  if (!isJsonOutput(command)) return null;
+
+  const { head, tail } = splitByFirstPipe(command);
+  const headTrimmed = head.trim();
+
+  if (!headTrimmed.startsWith('kubectl ')) {
+    return null;
+  }
+
+  const parsed = parseKubectlCommand(headTrimmed);
+  if (!parsed.isKubectl || parsed.subcommand !== 'get') {
+    return null;
+  }
+
+  // Avoid double-wrapping if the command was already rewritten.
+  if (command.includes(CACHE_DIR_NAME)) {
+    return null;
+  }
+
+  const normalizedHead = normalizeCommand(headTrimmed);
+  const hash = createHash('sha1').update(normalizedHead).digest('hex');
+  const cacheDir = getCacheDir();
+  const cacheFile = joinPath(cacheDir, `${hash}.json`);
+  const ttlSeconds = getCacheTtlSeconds();
+
+  const cacheDirQuoted = shellQuote(cacheDir);
+  const cacheFileQuoted = shellQuote(cacheFile);
+  const ttlQuoted = shellQuote(String(ttlSeconds));
+
+  const cachePrefix = [
+    `CACHE_DIR=${cacheDirQuoted};`,
+    `CACHE_FILE=${cacheFileQuoted};`,
+    `TTL=${ttlQuoted};`,
+    'mkdir -p "$CACHE_DIR";',
+    'if [ -f "$CACHE_FILE" ]; then',
+    '  ts=$(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0);',
+    '  now=$(date +%s);',
+    '  if [ $((now - ts)) -lt "$TTL" ]; then',
+    '    cat "$CACHE_FILE";',
+    '  else',
+    `    ${headTrimmed} | tee "$CACHE_FILE";`,
+    '  fi;',
+    'else',
+    `  ${headTrimmed} | tee "$CACHE_FILE";`,
+    'fi',
+  ].join(' ');
+
+  return tail ? `${cachePrefix} ${tail}` : cachePrefix;
+}
+
 
 /**
  * Hook input structure from SDK - using the SDK's HookInput union type
@@ -309,6 +406,16 @@ export function createPreToolUseHook(
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
         permissionDecisionReason: validation.reason,
+      };
+    }
+    const cachedCommand = buildCachedKubectlCommand(command);
+    if (cachedCommand) {
+      return {
+        continue: true,
+        updatedInput: {
+          ...(toolInput || {}),
+          command: cachedCommand,
+        },
       };
     }
 

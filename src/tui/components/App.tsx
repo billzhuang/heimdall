@@ -342,11 +342,13 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
     }
 
     const modelId = actions.getModelId();
+    const activeResumeId = resumeSessionId || sessionId || getCurrentSessionId() || undefined;
     const options = { 
       config, 
       model: modelId, 
       verbose,
-      resumeSessionId: resumeSessionId || undefined,
+      // Continue the active session unless user explicitly started a new one.
+      resumeSessionId: activeResumeId,
     };
     
     // Reset resume session ID after use
