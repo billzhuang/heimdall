@@ -23,7 +23,8 @@ src/
 │   │   ├── Selector.tsx  # Generic selector component
 │   │   ├── ContextSelector.tsx
 │   │   ├── NamespaceSelector.tsx
-│   │   └── ModelSelector.tsx
+│   │   ├── ModelSelector.tsx
+│   │   └── SessionSelector.tsx
 │   ├── useAppState.ts    # Centralized state management hook
 │   ├── commandParser.ts  # Parse user input into commands
 │   ├── agentRunner.ts    # Claude Agent SDK integration
@@ -128,6 +129,12 @@ The agent runs kubectl commands. System prompt enforces READ-ONLY mode:
 - ✅ Allowed: `kubectl get`, `describe`, `logs`, `top`
 - ❌ Forbidden: `kubectl apply`, `delete`, `patch`, `create`
 
+### 6. Response Format
+All agent responses must include:
+- `Thinking Summary` (2-5 bullets, high-level reasoning)
+- `Answer` (full response)
+Never reveal hidden chain-of-thought or internal scratch work.
+
 ## 🧪 Testing Strategy
 
 ### Unit Tests
@@ -168,6 +175,15 @@ import { render } from 'ink-testing-library';
 it('should render status bar', () => {
   const { lastFrame } = render(<StatusBar context="prod" ... />);
   expect(lastFrame()).toContain('prod');
+});
+```
+
+### Safety Hook Tests
+Location: `src/tui/__tests__/safetyHooks.test.ts`
+
+```typescript
+it('rewrites kubectl get -o json to use cache', async () => {
+  // see tests for details
 });
 ```
 
@@ -238,6 +254,12 @@ Usually caused by rendering invalid state. Check:
 2. Verify model ID in constants.ts
 3. Check network connectivity
 
+### Kubectl Cache Behavior
+If API calls repeat too frequently, check cache env vars:
+- `HEIMDALL_KUBECTL_CACHE=0` disables cache
+- `HEIMDALL_KUBECTL_CACHE_TTL=30` sets TTL (seconds)
+- `HEIMDALL_KUBECTL_CACHE_DIR=/tmp` overrides cache directory
+
 ## 📁 Key Files Reference
 
 | File | Purpose |
@@ -245,6 +267,8 @@ Usually caused by rendering invalid state. Check:
 | `useAppState.ts` | All app state, single source of truth |
 | `commandParser.ts` | User input → structured commands |
 | `agentRunner.ts` | Claude SDK integration, system prompt |
+| `safetyHooks.ts` | Command safety + kubectl JSON cache wrapper |
+| `sessionManager.ts` | Session metadata and history helpers |
 | `kubeconfigParser.ts` | Parse kubeconfig, fetch namespaces |
 | `App.tsx` | Main component, orchestrates everything |
 | `constants.ts` | Model IDs and labels |
@@ -264,7 +288,7 @@ Usually caused by rendering invalid state. Check:
 3. **Ink is React** - Same patterns apply (hooks, components, props)
 4. **State flows down** - App.tsx owns state, passes to children
 5. **Commands flow up** - Children call action callbacks
-6. **Agent is stateless** - Each query is independent (context managed separately)
+6. **Sessions persist** - Queries resume the active session unless `/new` is used
 
 ## 🚫 Anti-Patterns to Avoid
 

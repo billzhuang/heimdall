@@ -359,12 +359,21 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
     const callbacks = {
       onMessage: (msg: OutputMessage) => actions.addMessage(msg),
       onToolUse: (toolName: string, details?: string) => {
+        const isBash = toolName === 'Bash';
+        const command = isBash && details
+          ? details.startsWith('$ ') ? details.slice(2) : details
+          : undefined;
+        const content = isBash
+          ? 'Running Bash'
+          : details
+            ? `Running ${toolName}: ${details}`
+            : `Running ${toolName}`;
         actions.addMessage({
           id: generateMessageId(),
           type: 'tool',
-          content: details ? `Running ${toolName}: ${details}` : `Running ${toolName}`,
+          content,
           timestamp: new Date(),
-          metadata: { toolName, command: details },
+          metadata: { toolName, command },
         });
       },
       onComplete: (cost?: number, duration?: number, newSessionId?: string) => {

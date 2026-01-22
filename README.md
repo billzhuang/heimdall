@@ -11,6 +11,8 @@ Heimdall is an interactive TUI for Kubernetes diagnostics - ask questions in nat
 - **Multi-Model Support** - Claude Sonnet/Opus/Haiku, GPT, Gemini
 - **Web Search** - Search for error messages, CVEs, deprecated APIs
 - **Cancellable Queries** - Press ESC to cancel running queries
+- **Thinking Summary** - Each response includes a brief high-level reasoning summary
+- **Kubectl JSON Cache** - Short TTL cache reduces repeated `kubectl get -o json` calls
 
 ## Prerequisites
 
@@ -56,9 +58,14 @@ On launch, Heimdall automatically:
 | `/ctx` | Switch Kubernetes context |
 | `/ns` | Switch namespace |
 | `/model` | Change AI model |
+| `/resume` | Browse and resume saved sessions |
+| `/continue` | Continue most recent session |
+| `/rename <name>` | Name current session |
+| `/context` | Show current session info |
+| `/new` | Start a new session |
 | `/clear` | Clear conversation history |
 | `/help` | Show available commands |
-| `/exit` or `/quit` | Exit Heimdall |
+| `/exit` | Exit Heimdall |
 
 ### Example Queries
 
@@ -75,6 +82,24 @@ heimdall> explain the network policies in this namespace
 |--------|-------------|---------|
 | `-k, --kubeconfig <path>` | Path to kubeconfig file | `~/.kube/config` |
 | `-v, --verbose` | Show verbose output including tool calls | `false` |
+
+### Session Memory
+
+Heimdall resumes the active session by default, so short follow-ups like "3" keep context.
+Use `/new` to start fresh, or `/resume`/`/continue` to switch sessions.
+
+### Kubectl Cache
+
+By default, Heimdall caches `kubectl get ... -o json` outputs for 30 seconds to reduce
+repeat API calls in tight tool loops.
+
+Environment variables:
+
+```bash
+HEIMDALL_KUBECTL_CACHE=0        # disable cache
+HEIMDALL_KUBECTL_CACHE_TTL=30   # TTL in seconds (default: 30)
+HEIMDALL_KUBECTL_CACHE_DIR=/tmp # override cache directory
+```
 
 ## Development
 
