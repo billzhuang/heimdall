@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Box, Text, useInput } from 'ink';
-import TextInput from 'ink-text-input';
 import { filterSlashCommands } from '../commandParser.js';
+import { PromptInput } from './PromptInput.js';
 
 export interface InputFieldProps {
   onSubmit: (input: string) => void;
@@ -62,7 +62,7 @@ export function InputField({
       onSubmit(selectedCmd);
       interceptSubmitRef.current = true;
     }
-  }, { isActive: showAutocomplete && hasSuggestions });
+  }, { isActive: isReady && showAutocomplete && hasSuggestions });
 
   const handleChange = (newValue: string) => {
     // Ignore input during mount guard period
@@ -100,7 +100,7 @@ export function InputField({
   }
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" width="100%">
       {showAutocomplete && hasSuggestions && (
         <Box
           flexDirection="column"
@@ -108,6 +108,7 @@ export function InputField({
           borderColor="gray"
           paddingX={1}
           marginBottom={1}
+          width="100%"
         >
           <Text color="gray" dimColor>↑↓ navigate · Enter select · Tab complete · Esc cancel</Text>
           {suggestions.map((item, index) => (
@@ -121,16 +122,21 @@ export function InputField({
           ))}
         </Box>
       )}
-      <Box borderStyle="round" borderColor="cyan" paddingX={1}>
+      <Box borderStyle="round" borderColor="cyan" paddingX={1} width="100%">
         <Text color="cyan" bold>{'>'}</Text>
         <Text> </Text>
-        <TextInput
-          key={inputKey}
-          value={value}
-          onChange={handleChange}
-          onSubmit={handleSubmit}
-          placeholder=""
-        />
+        <Box flexGrow={1} flexShrink={1} minWidth={0}>
+          <PromptInput
+            key={inputKey}
+            value={value}
+            onChange={handleChange}
+            onSubmit={handleSubmit}
+            placeholder=""
+            isActive={isReady}
+            suppressSubmit={showAutocomplete && hasSuggestions}
+            suppressAutocompleteKeys={showAutocomplete && hasSuggestions}
+          />
+        </Box>
       </Box>
     </Box>
   );
