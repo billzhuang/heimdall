@@ -68,7 +68,16 @@ export function PromptInput({
       return;
     }
 
-    if (key.tab || (key.shift && key.tab) || (key.ctrl && input === 'c')) {
+    if (key.tab || (key.shift && key.tab)) {
+      return;
+    }
+
+    // Ctrl+C: clear input if there's content, otherwise let it pass through to exit
+    if (key.ctrl && input === 'c') {
+      if (value.length > 0) {
+        onChange('');
+        setCursorOffset(0);
+      }
       return;
     }
 
