@@ -20,17 +20,19 @@ export function InputField({
   
   // Track if we should intercept the next submit
   const interceptSubmitRef = useRef(false);
-  
+
   // Force re-render key to reset TextInput cursor position
   const [inputKey, setInputKey] = useState(0);
-  
+
   // Guard against input during mount - prevents phantom keystrokes from selector transitions
   const [isReady, setIsReady] = useState(false);
   useEffect(() => {
     // Small delay to let any buffered input from selector close drain
-    const timer = setTimeout(() => setIsReady(true), 50);
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 50);
     return () => clearTimeout(timer);
-  }, []);
+  }, [onQuit]);
 
   // Get filtered commands when input starts with /
   const suggestions = value.startsWith('/') ? filterSlashCommands(value) : [];
@@ -69,17 +71,11 @@ export function InputField({
   // Handle Ctrl+C: clear input if there's content, otherwise quit
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
-      // Debug: log the state when Ctrl+C is pressed
-      process.stderr.write(`[DEBUG] Ctrl+C pressed: value.length=${value.length}, onQuit=${!!onQuit}\n`);
       if (value.length > 0) {
-        process.stderr.write(`[DEBUG] Clearing input\n`);
         setValue('');
         setShowAutocomplete(false);
       } else if (onQuit) {
-        process.stderr.write(`[DEBUG] Calling onQuit()\n`);
         onQuit();
-      } else {
-        process.stderr.write(`[DEBUG] No action taken - onQuit is undefined\n`);
       }
     }
   }, { isActive: isReady });

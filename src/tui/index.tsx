@@ -27,7 +27,8 @@ export async function runInkTUI(options: TUIOptions = {}): Promise<void> {
     <App
       kubeconfig={kubeconfigPath}
       verbose={options.verbose}
-    />
+    />,
+    { exitOnCtrlC: false }
   );
 
   await waitUntilExit();
