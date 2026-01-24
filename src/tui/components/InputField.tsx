@@ -5,11 +5,13 @@ import { PromptInput } from './PromptInput.js';
 
 export interface InputFieldProps {
   onSubmit: (input: string) => void;
+  onQuit?: () => void;
   disabled?: boolean;
 }
 
 export function InputField({
   onSubmit,
+  onQuit,
   disabled = false,
 }: InputFieldProps): React.ReactElement {
   const [value, setValue] = useState('');
@@ -18,15 +20,17 @@ export function InputField({
   
   // Track if we should intercept the next submit
   const interceptSubmitRef = useRef(false);
-  
+
   // Force re-render key to reset TextInput cursor position
   const [inputKey, setInputKey] = useState(0);
-  
+
   // Guard against input during mount - prevents phantom keystrokes from selector transitions
   const [isReady, setIsReady] = useState(false);
   useEffect(() => {
     // Small delay to let any buffered input from selector close drain
-    const timer = setTimeout(() => setIsReady(true), 50);
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 50);
     return () => clearTimeout(timer);
   }, []);
 
@@ -63,6 +67,18 @@ export function InputField({
       interceptSubmitRef.current = true;
     }
   }, { isActive: isReady && showAutocomplete && hasSuggestions });
+
+  // Handle Ctrl+C: clear input if there's content, otherwise quit
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') {
+      if (value.length > 0) {
+        setValue('');
+        setShowAutocomplete(false);
+      } else if (onQuit) {
+        onQuit();
+      }
+    }
+  }, { isActive: isReady });
 
   const handleChange = (newValue: string) => {
     // Ignore input during mount guard period

@@ -15,6 +15,8 @@ export interface WelcomeScreenProps {
   namespace: string;
   /** Callback when user submits input */
   onSubmit: (input: string) => void;
+  /** Callback when user wants to quit */
+  onQuit?: () => void;
   /** Whether input is disabled (e.g., during processing) */
   disabled?: boolean;
 }
@@ -35,6 +37,7 @@ export function WelcomeScreen({
   context,
   namespace,
   onSubmit,
+  onQuit,
   disabled = false,
 }: WelcomeScreenProps): React.ReactElement {
   return (
@@ -85,7 +88,7 @@ export function WelcomeScreen({
       </Box>
 
       {/* InputField - existing component (Task 2.5) */}
-      <InputField onSubmit={onSubmit} disabled={disabled} />
+      <InputField onSubmit={onSubmit} onQuit={onQuit} disabled={disabled} />
     </Box>
   );
 }

@@ -79,16 +79,17 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
     loadDefaults();
   }, [kubeconfig, actions]);
 
-  // Handle Ctrl+C and ESC
+  // Handle ESC to cancel running query
   useInput((input, key) => {
-    if (key.ctrl && input === 'c') {
-      exit();
-    }
     // ESC to cancel running query
     if (key.escape && state.isRunning && agentControllerRef.current) {
       agentControllerRef.current.cancel();
       agentControllerRef.current = null;
       actions.setRunning(false);
+    }
+    // Ctrl+C to quit when in selector mode (InputField handles it in REPL mode)
+    if (key.ctrl && input === 'c' && state.mode === 'selector') {
+      exit();
     }
   });
 
@@ -431,6 +432,7 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
           context={state.context}
           namespace={state.namespace}
           onSubmit={handleCommand}
+          onQuit={exit}
           disabled={state.isRunning}
         />
       </Box>
@@ -518,6 +520,7 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
       <OutputArea messages={state.messages} />
       <InputField
         onSubmit={handleCommand}
+        onQuit={exit}
         disabled={state.isRunning}
       />
     </Box>
