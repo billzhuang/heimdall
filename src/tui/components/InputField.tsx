@@ -69,11 +69,17 @@ export function InputField({
   // Handle Ctrl+C: clear input if there's content, otherwise quit
   useInput((input, key) => {
     if (key.ctrl && input === 'c') {
+      // Debug: log the state when Ctrl+C is pressed
+      process.stderr.write(`[DEBUG] Ctrl+C pressed: value.length=${value.length}, onQuit=${!!onQuit}\n`);
       if (value.length > 0) {
+        process.stderr.write(`[DEBUG] Clearing input\n`);
         setValue('');
         setShowAutocomplete(false);
       } else if (onQuit) {
+        process.stderr.write(`[DEBUG] Calling onQuit()\n`);
         onQuit();
+      } else {
+        process.stderr.write(`[DEBUG] No action taken - onQuit is undefined\n`);
       }
     }
   }, { isActive: isReady });
