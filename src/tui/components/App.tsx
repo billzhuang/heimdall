@@ -87,6 +87,10 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
       agentControllerRef.current = null;
       actions.setRunning(false);
     }
+    // Ctrl+C to quit when in selector mode (InputField handles it in REPL mode)
+    if (key.ctrl && input === 'c' && state.mode === 'selector') {
+      exit();
+    }
   });
 
   // Handle session selection from SessionSelector

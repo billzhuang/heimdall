@@ -32,7 +32,7 @@ export function InputField({
       setIsReady(true);
     }, 50);
     return () => clearTimeout(timer);
-  }, [onQuit]);
+  }, []);
 
   // Get filtered commands when input starts with /
   const suggestions = value.startsWith('/') ? filterSlashCommands(value) : [];
