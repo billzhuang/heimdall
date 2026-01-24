@@ -28,3 +28,6 @@ logs.txt
 coverage/
 
 .kiro/*
+
+# Azure CLI
+.azure/

@@ -428,6 +428,7 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
           context={state.context}
           namespace={state.namespace}
           onSubmit={handleCommand}
+          onQuit={exit}
           disabled={state.isRunning}
         />
       </Box>
