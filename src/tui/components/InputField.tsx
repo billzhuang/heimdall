@@ -5,11 +5,13 @@ import { PromptInput } from './PromptInput.js';
 
 export interface InputFieldProps {
   onSubmit: (input: string) => void;
+  onQuit?: () => void;
   disabled?: boolean;
 }
 
 export function InputField({
   onSubmit,
+  onQuit,
   disabled = false,
 }: InputFieldProps): React.ReactElement {
   const [value, setValue] = useState('');
@@ -63,6 +65,18 @@ export function InputField({
       interceptSubmitRef.current = true;
     }
   }, { isActive: isReady && showAutocomplete && hasSuggestions });
+
+  // Handle Ctrl+C: clear input if there's content, otherwise quit
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') {
+      if (value.length > 0) {
+        setValue('');
+        setShowAutocomplete(false);
+      } else if (onQuit) {
+        onQuit();
+      }
+    }
+  }, { isActive: isReady });
 
   const handleChange = (newValue: string) => {
     // Ignore input during mount guard period

@@ -79,11 +79,8 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
     loadDefaults();
   }, [kubeconfig, actions]);
 
-  // Handle Ctrl+C and ESC
+  // Handle ESC to cancel running query
   useInput((input, key) => {
-    if (key.ctrl && input === 'c') {
-      exit();
-    }
     // ESC to cancel running query
     if (key.escape && state.isRunning && agentControllerRef.current) {
       agentControllerRef.current.cancel();
@@ -518,6 +515,7 @@ export function App({ kubeconfig, verbose }: AppProps): React.ReactElement {
       <OutputArea messages={state.messages} />
       <InputField
         onSubmit={handleCommand}
+        onQuit={exit}
         disabled={state.isRunning}
       />
     </Box>
