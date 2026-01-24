@@ -25,12 +25,47 @@ jobs:
       id-token: write
       actions: read # Required for Claude to read CI results on PRs
     steps:
+      - name: Check author permissions
+        id: check_permissions
+        run: |
+          # Get the author association from the event
+          if [ "${{ github.event_name }}" = "issue_comment" ]; then
+            AUTHOR_ASSOCIATION="${{ github.event.comment.author_association }}"
+          elif [ "${{ github.event_name }}" = "pull_request_review_comment" ]; then
+            AUTHOR_ASSOCIATION="${{ github.event.comment.author_association }}"
+          elif [ "${{ github.event_name }}" = "pull_request_review" ]; then
+            AUTHOR_ASSOCIATION="${{ github.event.review.author_association }}"
+          elif [ "${{ github.event_name }}" = "issues" ]; then
+            AUTHOR_ASSOCIATION="${{ github.event.issue.author_association }}"
+          else
+            AUTHOR_ASSOCIATION="NONE"
+          fi
+
+          echo "Author association: $AUTHOR_ASSOCIATION"
+
+          # Only allow trusted users: OWNER, MEMBER, COLLABORATOR
+          # Reject: CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER, NONE
+          case "$AUTHOR_ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "✅ User is authorized to trigger Claude"
+              echo "authorized=true" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "❌ User is not authorized to trigger Claude (author_association: $AUTHOR_ASSOCIATION)"
+              echo "Only repository owners, members, and collaborators can trigger @claude"
+              echo "authorized=false" >> $GITHUB_OUTPUT
+              exit 1
+              ;;
+          esac
+
       - name: Checkout repository
+        if: steps.check_permissions.outputs.authorized == 'true'
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
       - name: Run Claude Code
+        if: steps.check_permissions.outputs.authorized == 'true'
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
