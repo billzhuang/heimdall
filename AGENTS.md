@@ -8,6 +8,26 @@ Heimdall is an AI-powered Kubernetes assistant and SRE agent. It provides an int
 
 **Core Value**: Help SREs and developers diagnose K8s issues faster by combining kubectl with AI reasoning.
 
+## 🚀 Quick Start
+
+**Requirements:** Node.js 20+, `kubectl` access to cluster, `ANTHROPIC_API_KEY` env var.
+
+```bash
+npm install              # Install deps
+npm run dev              # Run interactive TUI
+npm run dev -- --verbose # With verbose output
+npm run dev -- --kubeconfig /path/to/config  # Custom kubeconfig
+npm run build            # Build
+npm start                # Run built CLI
+```
+
+## 🎮 TUI Usage
+
+- Slash commands: `/ctx`, `/ns`, `/model`, `/resume`, `/continue`, `/new`, `/clear`, `/help`, `/exit`
+- Ctrl+C: Clear input (if text), quit (if empty)
+- ESC: Cancel running queries
+- Sessions auto-save and can be resumed
+
 ## 🏗️ Architecture
 
 ```
