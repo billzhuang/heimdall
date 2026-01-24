@@ -68,7 +68,7 @@ export function PromptInput({
       return;
     }
 
-    if (key.tab || (key.shift && key.tab) || (key.ctrl && input === 'c')) {
+    if (key.tab || (key.shift && key.tab)) {
       return;
     }
 
