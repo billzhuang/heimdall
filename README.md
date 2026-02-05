@@ -1,23 +1,26 @@
 # Heimdall
 
-AI-powered Kubernetes assistant and SRE agent using the Claude Agent SDK.
+AI-powered Cloud SRE agent for Kubernetes and AWS operations using the Claude Agent SDK.
 
-Heimdall is an interactive TUI for Kubernetes diagnostics - ask questions in natural language and get intelligent answers powered by AI.
+Heimdall is an interactive TUI for cloud infrastructure diagnostics - ask questions in natural language and get intelligent answers powered by AI with specialized sub-agents.
 
 ## Features
 
-- **Interactive TUI** - Natural language interface for K8s diagnostics
+- **Interactive TUI** - Natural language interface for K8s and AWS diagnostics
+- **Multi-Capability** - Kubernetes troubleshooting + AWS operations (EKS, IAM, cost analysis, etc.)
+- **Specialized Sub-Agents** - Automatic delegation to focused experts (logs, resources, security, costs)
 - **Auto-load Context** - Automatically uses current-context from kubeconfig
 - **Multi-Model Support** - Claude Sonnet/Opus/Haiku, GPT, Gemini
 - **Web Search** - Search for error messages, CVEs, deprecated APIs
 - **Cancellable Queries** - Press ESC to cancel running queries
 - **Thinking Summary** - Each response includes a brief high-level reasoning summary
-- **Kubectl JSON Cache** - Short TTL cache reduces repeated `kubectl get -o json` calls
+- **Safety First** - Built-in command validation blocks destructive operations
 
 ## Prerequisites
 
 - Node.js 18+
 - `kubectl` configured with access to your Kubernetes cluster
+- AWS CLI (optional, for AWS-specific features)
 - `ANTHROPIC_API_KEY` environment variable
 
 ## Installation
@@ -69,11 +72,27 @@ On launch, Heimdall automatically:
 
 ### Example Queries
 
+**Kubernetes:**
 ```text
 heimdall> check pdb configuration
 heimdall> why is my pod in CrashLoopBackOff?
 heimdall> list all deployments with less than 2 replicas
 heimdall> explain the network policies in this namespace
+```
+
+**AWS:**
+```text
+heimdall> check my EKS cluster node groups health
+heimdall> audit IAM roles for overly permissive policies
+heimdall> analyze my AWS costs for this month
+heimdall> list all EC2 instances in us-west-2
+heimdall> check service quotas for EKS
+```
+
+**Combined:**
+```text
+heimdall> why is my EKS node failing to join the cluster?
+heimdall> check if my K8s service account has the right IAM permissions
 ```
 
 ### CLI Options
@@ -115,12 +134,37 @@ npm run test:coverage  # Run tests with coverage
 
 Heimdall uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents) to:
 
-1. Run kubectl commands via the built-in Bash tool
+1. Run kubectl and AWS CLI commands via the built-in Bash tool
 2. Search the web for error messages and documentation
-3. Analyze output using AI understanding of Kubernetes
-4. Provide focused answers to your specific questions
+3. Analyze output using AI understanding of Kubernetes and AWS
+4. Automatically delegate complex tasks to specialized sub-agents
+5. Provide focused answers to your specific questions
 
 The agent operates in **advisory mode** - it runs read-only commands and provides information to help you make decisions.
+
+### Specialized Sub-Agents
+
+Heimdall automatically delegates work to focused sub-agents based on the query:
+
+**Kubernetes Sub-Agents:**
+- **log-analyzer** - Deep log analysis and error correlation
+- **resource-analyzer** - CPU/memory optimization and capacity planning
+- **network-debugger** - DNS, services, and connectivity issues
+- **security-auditor** - RBAC, secrets, and security contexts
+- **web-researcher** - CVE lookup and documentation search
+
+**AWS Sub-Agents:**
+- **eks-troubleshooter** - EKS cluster and node group diagnostics
+- **aws-cli-analyzer** - AWS resource inventory and configuration checks
+- **iam-auditor** - IAM security audits and permission analysis
+- **cost-analyzer** - Cost optimization and billing insights
+- **service-health-checker** - Service health, quotas, and limits
+
+Each sub-agent has:
+- Specialized expertise in its domain
+- Access only to tools it needs (least privilege)
+- Isolated context to prevent information overload
+- Built-in safety checks to prevent destructive operations
 
 ## License
 

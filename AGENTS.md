@@ -4,13 +4,13 @@
 
 ## 🎯 Project Overview
 
-Heimdall is an AI-powered Kubernetes assistant and SRE agent. It provides an interactive TUI (Terminal User Interface) built with React/Ink that allows users to query their Kubernetes clusters using natural language.
+Heimdall is an AI-powered Cloud SRE agent specializing in Kubernetes and AWS operations. It provides an interactive TUI (Terminal User Interface) built with React/Ink that allows users to query their infrastructure using natural language.
 
-**Core Value**: Help SREs and developers diagnose K8s issues faster by combining kubectl with AI reasoning.
+**Core Value**: Help SREs and developers diagnose K8s and AWS issues faster by combining kubectl, AWS CLI, and AI reasoning with specialized sub-agents.
 
 ## 🚀 Quick Start
 
-**Requirements:** Node.js 20+, `kubectl` access to cluster, `ANTHROPIC_API_KEY` env var.
+**Requirements:** Node.js 20+, `kubectl` access to cluster, AWS CLI (optional), `ANTHROPIC_API_KEY` env var.
 
 ```bash
 npm install              # Install deps
@@ -145,15 +145,57 @@ import { foo } from './utils';
 ```
 
 ### 5. Agent Safety
-The agent runs kubectl commands. System prompt enforces READ-ONLY mode:
+The agent runs kubectl and AWS CLI commands. System prompt enforces READ-ONLY mode:
 - ✅ Allowed: `kubectl get`, `describe`, `logs`, `top`
+- ✅ Allowed: `aws describe-*`, `list-*`, `get-*` (read-only operations)
 - ❌ Forbidden: `kubectl apply`, `delete`, `patch`, `create`
+- ❌ Forbidden: `aws create-*`, `delete-*`, `terminate-*`, `update-*` (write operations)
+
+Safety hooks (`safetyHooks.ts`) programmatically block destructive commands at the SDK level.
 
 ### 6. Response Format
 All agent responses must include:
 - `Thinking Summary` (2-5 bullets, high-level reasoning)
 - `Answer` (full response)
 Never reveal hidden chain-of-thought or internal scratch work.
+
+## 🤖 Sub-Agent Architecture
+
+Heimdall uses the Claude Agent SDK's built-in sub-agent delegation system. The main agent orchestrates and delegates specialized tasks to focused sub-agents.
+
+### Kubernetes Sub-Agents
+- **log-analyzer**: Deep log analysis, error correlation, pattern detection
+- **resource-analyzer**: CPU/memory analysis, capacity planning, resource optimization
+- **network-debugger**: DNS, services, ingress, connectivity troubleshooting
+- **security-auditor**: RBAC, secrets, security contexts, policy review
+- **web-researcher**: CVE lookup, documentation search, best practices
+
+### AWS Sub-Agents
+- **eks-troubleshooter**: EKS cluster issues, node groups, AWS-specific K8s problems
+- **aws-cli-analyzer**: AWS account checks, service configurations, resource inventory
+- **iam-auditor**: IAM policies, roles, permissions, trust relationships
+- **cost-analyzer**: Cost analysis, resource optimization, billing insights
+- **service-health-checker**: AWS service health, quotas, limits, region status
+
+### Sub-Agent Implementation
+All sub-agents are defined in `agentRunner.ts` via the `buildAgentDefinitions()` function:
+
+```typescript
+interface AgentDefinition {
+  description: string;  // When/how to invoke this agent
+  prompt: string;       // Specialized system prompt
+  tools?: string[];     // Allowed tools only
+  model?: 'sonnet' | 'opus' | 'haiku' | 'inherit';
+  maxTurns?: number;    // Prevent infinite loops
+}
+```
+
+**Key Principles:**
+1. **Single Responsibility**: Each sub-agent has one narrowly defined role
+2. **Least Privilege**: Only grant tools absolutely needed
+3. **Context Isolation**: Sub-agents maintain isolated context windows
+4. **Automatic Delegation**: Main agent uses Task tool based on descriptions
+5. **Safety Enforcement**: All safety hooks apply to all agents (parent + children)
 
 ## 🧪 Testing Strategy
 

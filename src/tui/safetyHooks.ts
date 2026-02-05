@@ -1,6 +1,6 @@
 /**
  * Safety hooks for Heimdall agent - provides programmatic defense-in-depth
- * by blocking destructive kubectl commands at the SDK level.
+ * by blocking destructive kubectl and AWS CLI commands at the SDK level.
  */
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -45,6 +45,40 @@ export const ALLOWED_KUBECTL_COMMANDS = [
   'cluster-info',
   'config',
   'auth',
+] as const;
+
+/**
+ * List of destructive AWS CLI subcommands (patterns) that should be blocked
+ */
+export const DESTRUCTIVE_AWS_PATTERNS = [
+  'create-',
+  'delete-',
+  'terminate-',
+  'put-',
+  'update-',
+  'attach-',
+  'detach-',
+  'modify-',
+  'start-',
+  'stop-',
+  'reboot-',
+  'run-instances',
+  'allocate-',
+  'associate-',
+  'disassociate-',
+  'release-',
+  'revoke-',
+  'authorize-',
+] as const;
+
+/**
+ * List of allowed AWS CLI subcommands (patterns)
+ */
+export const ALLOWED_AWS_PATTERNS = [
+  'describe-',
+  'get-',
+  'list-',
+  'show-',
 ] as const;
 
 export type DestructiveCommand = typeof DESTRUCTIVE_KUBECTL_COMMANDS[number];
@@ -194,7 +228,13 @@ export function isDestructiveCommand(command: string): boolean {
 export function validateCommand(command: string): CommandValidationResult {
   const parsed = parseKubectlCommand(command);
 
-  // Non-kubectl commands are allowed
+  // Check if this is an AWS command
+  const awsValidation = validateAwsCommand(command);
+  if (awsValidation !== null) {
+    return awsValidation;
+  }
+
+  // Non-kubectl commands (and non-AWS) are allowed
   if (!parsed.isKubectl) {
     return {
       allowed: true,
@@ -241,6 +281,183 @@ export function validateCommand(command: string): CommandValidationResult {
     reason: `Unknown kubectl subcommand '${parsed.subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
     command: parsed.rawCommand,
     subcommand: parsed.subcommand,
+  };
+}
+
+/**
+ * Result of parsing an AWS CLI command
+ */
+export interface ParsedAwsCommand {
+  isAws: boolean;
+  service: string | null;
+  subcommand: string | null;
+  args: string[];
+  rawCommand: string;
+}
+
+/**
+ * Parse an AWS CLI command to extract service and subcommand
+ * Handles various formats like:
+ * - aws eks describe-cluster --name my-cluster
+ * - aws --region us-west-2 ec2 describe-instances
+ * - aws iam list-users
+ */
+export function parseAwsCommand(command: string): ParsedAwsCommand {
+  const trimmed = command.trim();
+  const result: ParsedAwsCommand = {
+    isAws: false,
+    service: null,
+    subcommand: null,
+    args: [],
+    rawCommand: trimmed,
+  };
+
+  if (!trimmed) {
+    return result;
+  }
+
+  // Split command into parts
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+
+  if (parts.length === 0) {
+    return result;
+  }
+
+  // Check if this is an AWS command
+  const firstPart = parts[0].toLowerCase();
+  if (firstPart !== 'aws') {
+    return result;
+  }
+
+  result.isAws = true;
+
+  // AWS global options that take a value
+  const awsOptionsWithValue = new Set([
+    '--region',
+    '--profile',
+    '--output',
+    '--endpoint-url',
+    '--color',
+    '--cli-connect-timeout',
+    '--cli-read-timeout',
+  ]);
+
+  // Find the service name (first non-option argument after 'aws')
+  let skipNext = false;
+  let serviceIndex = -1;
+
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+
+    // Skip options
+    if (part.startsWith('-')) {
+      if (part.includes('=')) {
+        continue;
+      }
+      if (awsOptionsWithValue.has(part)) {
+        skipNext = true;
+      }
+      continue;
+    }
+
+    // This is the service name
+    result.service = part.toLowerCase();
+    serviceIndex = i;
+    break;
+  }
+
+  // Find the subcommand (first non-option argument after service)
+  if (serviceIndex !== -1 && serviceIndex + 1 < parts.length) {
+    skipNext = false;
+
+    for (let i = serviceIndex + 1; i < parts.length; i++) {
+      const part = parts[i];
+
+      if (skipNext) {
+        skipNext = false;
+        continue;
+      }
+
+      // Skip options
+      if (part.startsWith('-')) {
+        if (!part.includes('=')) {
+          skipNext = true;
+        }
+        continue;
+      }
+
+      // This is the subcommand
+      result.subcommand = part.toLowerCase();
+      result.args = parts.slice(i + 1);
+      break;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Validate an AWS command and return result, or null if not an AWS command
+ */
+export function validateAwsCommand(command: string): CommandValidationResult | null {
+  const parsed = parseAwsCommand(command);
+
+  // Not an AWS command
+  if (!parsed.isAws) {
+    return null;
+  }
+
+  // AWS without service or subcommand - allow (will show help)
+  if (!parsed.service || !parsed.subcommand) {
+    return {
+      allowed: true,
+      reason: 'AWS CLI without complete command',
+      command: parsed.rawCommand,
+      subcommand: null,
+    };
+  }
+
+  const subcommand = parsed.subcommand;
+
+  // Check if destructive (matches any destructive pattern)
+  const isDestructive = DESTRUCTIVE_AWS_PATTERNS.some(pattern =>
+    subcommand.includes(pattern.replace('-', ''))
+  );
+
+  if (isDestructive) {
+    return {
+      allowed: false,
+      reason: `Destructive AWS command '${parsed.service} ${subcommand}' is blocked. Run manually: ${parsed.rawCommand}`,
+      command: parsed.rawCommand,
+      subcommand: `${parsed.service} ${subcommand}`,
+    };
+  }
+
+  // Check if allowed (matches any allowed pattern)
+  const isAllowed = ALLOWED_AWS_PATTERNS.some(pattern =>
+    subcommand.startsWith(pattern.replace('-', ''))
+  );
+
+  if (isAllowed) {
+    return {
+      allowed: true,
+      reason: `Read-only AWS command '${parsed.service} ${subcommand}' is allowed`,
+      command: parsed.rawCommand,
+      subcommand: `${parsed.service} ${subcommand}`,
+    };
+  }
+
+  // Unknown subcommand - block by default (security: default-deny policy)
+  return {
+    allowed: false,
+    reason: `Unknown AWS subcommand '${parsed.service} ${subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
+    command: parsed.rawCommand,
+    subcommand: `${parsed.service} ${subcommand}`,
   };
 }
 
