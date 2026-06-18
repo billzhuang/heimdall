@@ -85,4 +85,72 @@ describe('validateCommand', () => {
   it('blocks destructive commands even behind global flags', () => {
     expect(validateCommand('kubectl --context=prod -n default delete pod web').allowed).toBe(false);
   });
+
+  it('blocks every destructive subcommand hidden behind a value-taking flag', () => {
+    for (const cmd of DESTRUCTIVE_KUBECTL_COMMANDS) {
+      expect(validateCommand(`kubectl --kubeconfig /tmp/x ${cmd} thing`).allowed).toBe(false);
+      expect(validateCommand(`kubectl -n kube-system ${cmd} thing`).allowed).toBe(false);
+    }
+  });
+
+  it('echoes the trimmed raw command back in the result', () => {
+    const result = validateCommand('   kubectl   get pods  ');
+    expect(result.command).toBe('kubectl   get pods');
+  });
+
+  it('allows auth can-i with extra flags', () => {
+    expect(validateCommand('kubectl auth can-i --list -n prod').allowed).toBe(true);
+  });
+});
+
+describe('parseKubectlCommand — edge cases', () => {
+  it('treats empty / whitespace-only input as not-kubectl', () => {
+    expect(parseKubectlCommand('').isKubectl).toBe(false);
+    expect(parseKubectlCommand('   \t  ').isKubectl).toBe(false);
+  });
+
+  it('handles bare kubectl with no subcommand', () => {
+    const result = parseKubectlCommand('kubectl');
+    expect(result.isKubectl).toBe(true);
+    expect(result.subcommand).toBeNull();
+    expect(result.args).toEqual([]);
+  });
+
+  it('handles a trailing value-taking flag with no following value', () => {
+    // `--namespace` consumes the (missing) next token; no subcommand remains.
+    const result = parseKubectlCommand('kubectl --namespace');
+    expect(result.subcommand).toBeNull();
+  });
+
+  it('recognizes the --flag=value form without consuming a token', () => {
+    const result = parseKubectlCommand('kubectl --output=json get pods');
+    expect(result.subcommand).toBe('get');
+  });
+
+  it('captures args after the subcommand', () => {
+    const result = parseKubectlCommand('kubectl get pods -n prod -o wide');
+    expect(result.subcommand).toBe('get');
+    expect(result.args).toEqual(['pods', '-n', 'prod', '-o', 'wide']);
+  });
+
+  it('is case-insensitive on the kubectl binary name', () => {
+    expect(parseKubectlCommand('KUBECTL get pods').isKubectl).toBe(true);
+  });
+
+  it('collapses irregular whitespace between tokens', () => {
+    expect(parseKubectlCommand('kubectl\tget   pods').subcommand).toBe('get');
+  });
+});
+
+describe('isDestructiveCommand', () => {
+  it('is false for read-only and non-kubectl commands', () => {
+    expect(isDestructiveCommand('kubectl get pods')).toBe(false);
+    expect(isDestructiveCommand('ls -la')).toBe(false);
+    expect(isDestructiveCommand('kubectl')).toBe(false);
+  });
+
+  it('is true for destructive subcommands, even behind flags', () => {
+    expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
+    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
+  });
 });

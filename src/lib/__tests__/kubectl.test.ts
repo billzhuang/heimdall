@@ -29,6 +29,28 @@ describe('tokenizeArgs', () => {
     // Since execution uses execFile (no shell), these are harmless literals.
     expect(tokenizeArgs('get pods | grep x')).toEqual(['get', 'pods', '|', 'grep', 'x']);
   });
+
+  it('returns an empty array for empty / whitespace-only input', () => {
+    expect(tokenizeArgs('')).toEqual([]);
+    expect(tokenizeArgs('   \t ')).toEqual([]);
+    expect(tokenizeArgs('kubectl')).toEqual([]);
+  });
+
+  it('concatenates adjacent quoted and bare segments into one token', () => {
+    expect(tokenizeArgs(`get po-"abc"'def'`)).toEqual(['get', 'po-abcdef']);
+  });
+
+  it('unescapes \\" and \\\\ inside double quotes', () => {
+    expect(tokenizeArgs('get -o "a\\"b\\\\c"')).toEqual(['get', '-o', 'a"b\\c']);
+  });
+
+  it('treats backslash as literal-next outside quotes', () => {
+    expect(tokenizeArgs('get pod\\ name')).toEqual(['get', 'pod name']);
+  });
+
+  it('preserves an empty quoted argument', () => {
+    expect(tokenizeArgs(`get -l ""`)).toEqual(['get', '-l', '']);
+  });
 });
 
 describe('isJsonOutput', () => {
@@ -66,5 +88,32 @@ describe('runKubectl (policy enforcement)', () => {
     const result = await runKubectl('kubectl delete pod web');
     expect(result).toMatch(/^BLOCKED:/);
     expect(result).toMatch(/destructive/i); // blocked as `delete`, not unknown `kubectl`
+  });
+
+  it('blocks all destructive subcommands and code-execution verbs', async () => {
+    for (const cmd of ['apply -f x.yaml', 'patch pod web', 'scale deploy/api --replicas=0',
+      'rollout restart deploy/api', 'cp pod:/etc/passwd ./', 'port-forward svc/x 8080',
+      'attach mypod', 'debug node/n1', 'drain node1', 'cordon node1', 'taint nodes n1 k=v:NoSchedule']) {
+      expect(await runKubectl(cmd)).toMatch(/^BLOCKED:/);
+    }
+  });
+
+  it('blocks the config family and unknown subcommands', async () => {
+    expect(await runKubectl('config use-context prod')).toMatch(/^BLOCKED:/);
+    expect(await runKubectl('config view --raw')).toMatch(/^BLOCKED:/);
+    expect(await runKubectl('proxy --port=8001')).toMatch(/^BLOCKED:/);
+  });
+
+  it('blocks auth reconcile but not auth can-i', async () => {
+    expect(await runKubectl('auth reconcile -f rbac.yaml')).toMatch(/^BLOCKED:/);
+    // can-i is allowed by policy; execution may fail without a cluster, but it
+    // must NOT be blocked by the read-only gate.
+    expect(await runKubectl('auth can-i list pods')).not.toMatch(/^BLOCKED:/);
+  });
+
+  it('lets read-only reads through the policy gate (execution aside)', async () => {
+    // No cluster in CI: this returns a kubectl error, never a policy block.
+    expect(await runKubectl('get pods -n kube-system')).not.toMatch(/^BLOCKED:/);
+    expect(await runKubectl('describe node node1')).not.toMatch(/^BLOCKED:/);
   });
 });
