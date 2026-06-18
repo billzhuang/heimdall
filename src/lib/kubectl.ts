@@ -27,6 +27,9 @@ const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 100_000;
 
+/** Sentinel returned when a command succeeds but produces no stdout/stderr. */
+export const NO_OUTPUT_MESSAGE = '(command produced no output)';
+
 export interface RunKubectlOptions {
   /** Optional cluster context. Injected as `--context=<ctx>` when the
    *  arguments do not already specify one. Falls back to `HEIMDALL_CONTEXT`. */
@@ -216,7 +219,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       maxBuffer: MAX_BUFFER_BYTES,
     });
 
-    const output = stdout.trim() || stderr.trim() || '(command produced no output)';
+    const output = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
 
     if (cacheFile && stdout) {
       try {

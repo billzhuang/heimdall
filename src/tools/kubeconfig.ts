@@ -4,7 +4,7 @@
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { getContextNames, parseKubeconfig, resolveKubeconfigPath } from '../lib/kubeconfig.ts';
-import { runKubectl } from '../lib/kubectl.ts';
+import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
 
 export const listContexts = defineTool({
   name: 'list_contexts',
@@ -38,13 +38,18 @@ export const listNamespaces = defineTool({
   execute: async ({ context }) => {
     // Route through runKubectl so the read-only policy (and any caching) apply
     // uniformly to every cluster read.
-    const output = await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context });
+    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
+    // Surface policy/execution errors verbatim rather than parsing them as data.
     if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
       return output;
     }
-    const namespaces = output.trim().split(/\s+/).filter(Boolean);
+    const empty = 'No namespaces found (or insufficient permissions to list them).';
+    if (output === NO_OUTPUT_MESSAGE) {
+      return empty;
+    }
+    const namespaces = output.split(/\s+/).filter(Boolean);
     if (namespaces.length === 0) {
-      return 'No namespaces found (or insufficient permissions to list them).';
+      return empty;
     }
     return `Namespaces (${namespaces.length}):\n${namespaces.map((n) => `  ${n}`).join('\n')}`;
   },

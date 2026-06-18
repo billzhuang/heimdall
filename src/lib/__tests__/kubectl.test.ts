@@ -104,16 +104,12 @@ describe('runKubectl (policy enforcement)', () => {
     expect(await runKubectl('proxy --port=8001')).toMatch(/^BLOCKED:/);
   });
 
-  it('blocks auth reconcile but not auth can-i', async () => {
+  it('blocks auth reconcile (mutating nested verb)', async () => {
     expect(await runKubectl('auth reconcile -f rbac.yaml')).toMatch(/^BLOCKED:/);
-    // can-i is allowed by policy; execution may fail without a cluster, but it
-    // must NOT be blocked by the read-only gate.
-    expect(await runKubectl('auth can-i list pods')).not.toMatch(/^BLOCKED:/);
   });
 
-  it('lets read-only reads through the policy gate (execution aside)', async () => {
-    // No cluster in CI: this returns a kubectl error, never a policy block.
-    expect(await runKubectl('get pods -n kube-system')).not.toMatch(/^BLOCKED:/);
-    expect(await runKubectl('describe node node1')).not.toMatch(/^BLOCKED:/);
-  });
+  // The allow path (get/describe/auth can-i not blocked) is asserted in
+  // kubectl-safety.test.ts against validateCommand, without spawning kubectl —
+  // executing an allowed command here would depend on a live cluster and the
+  // runner's kubectl, which is exactly what makes such tests flaky/slow.
 });
