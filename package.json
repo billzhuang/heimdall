@@ -1,16 +1,12 @@
 {
   "name": "heimdall-sre",
-  "version": "0.1.0",
-  "description": "AI-powered Kubernetes assistant and SRE agent using Claude Agent SDK",
+  "version": "0.2.0",
+  "description": "AI-powered, read-only Kubernetes SRE agent built on the Flue agent framework",
   "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "heimdall": "dist/index.js"
-  },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "flue dev --target node",
+    "build": "flue build --target node",
+    "connect": "flue connect heimdall local --target node",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -21,34 +17,27 @@
     "eks",
     "sre",
     "ai-agent",
-    "claude",
+    "flue",
     "k8s",
     "devops"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.31",
-    "commander": "^14.0.2",
-    "dotenv": "^17.2.3",
-    "ink": "^6.6.0",
-    "ink-text-input": "^6.0.0",
+    "@flue/runtime": "^1.0.0-beta.2",
     "js-yaml": "^4.1.1",
-    "react": "^19.2.3"
+    "valibot": "^1.1.0"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.3.2",
+    "@flue/cli": "^1.0.0-beta.1",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.0.10",
-    "@types/react": "^19.2.9",
+    "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^4.0.18",
     "fast-check": "^4.5.3",
-    "ink-testing-library": "^4.0.0",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.19.0"
   }
 }
