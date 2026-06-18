@@ -59,4 +59,12 @@ describe('runKubectl (policy enforcement)', () => {
   it('returns an error for empty input', async () => {
     expect(await runKubectl('   ')).toMatch(/no kubectl arguments/i);
   });
+
+  it('does not block a redundant leading "kubectl" in args', async () => {
+    // Validation runs on the same tokenized argv that executes, so a model that
+    // includes the word "kubectl" must not trip an "unknown subcommand" block.
+    const result = await runKubectl('kubectl delete pod web');
+    expect(result).toMatch(/^BLOCKED:/);
+    expect(result).toMatch(/destructive/i); // blocked as `delete`, not unknown `kubectl`
+  });
 });

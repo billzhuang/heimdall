@@ -67,6 +67,21 @@ contexts:
   it('returns null when nothing merges', () => {
     expect(mergeKubeconfigs([null, null])).toBeNull();
   });
+
+  it('deduplicates context names across files (first wins)', () => {
+    const a = parseKubeconfigContent(SAMPLE)!; // has `prod`, `staging`
+    const b = parseKubeconfigContent(`
+contexts:
+  - name: prod
+    context:
+      cluster: other
+      user: other
+`)!;
+    const merged = mergeKubeconfigs([a, b]);
+    expect(merged!.contexts).toHaveLength(2);
+    expect(getContextNames(merged!)).toEqual(['prod', 'staging']);
+    expect(merged!.contexts.find((c) => c.name === 'prod')!.cluster).toBe('prod-cluster');
+  });
 });
 
 describe('resolveKubeconfigPath', () => {

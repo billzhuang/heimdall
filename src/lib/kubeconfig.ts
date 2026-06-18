@@ -4,13 +4,9 @@
  * shells out to kubectl (read-only).
  */
 import { readFile } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { promisify } from 'node:util';
 import { load as parseYAML } from 'js-yaml';
-
-const execFileAsync = promisify(execFile);
 
 export interface KubeconfigContext {
   name: string;
@@ -63,13 +59,22 @@ export function parseKubeconfigContent(content: string): ParsedKubeconfig | null
   }
 }
 
-/** Merge multiple parsed kubeconfigs; the first non-null current-context wins. */
+/**
+ * Merge multiple parsed kubeconfigs; the first non-null current-context wins.
+ * Context names are deduplicated (first occurrence wins), matching kubectl's
+ * behavior when the same name appears across merged files.
+ */
 export function mergeKubeconfigs(configs: (ParsedKubeconfig | null)[]): ParsedKubeconfig | null {
   const allContexts: KubeconfigContext[] = [];
+  const seen = new Set<string>();
   let currentContext: string | null = null;
   for (const config of configs) {
     if (!config) continue;
-    allContexts.push(...config.contexts);
+    for (const ctx of config.contexts) {
+      if (seen.has(ctx.name)) continue;
+      seen.add(ctx.name);
+      allContexts.push(ctx);
+    }
     if (currentContext === null && config.currentContext) {
       currentContext = config.currentContext;
     }
@@ -100,23 +105,4 @@ export async function parseKubeconfig(kubeconfigPath: string): Promise<ParsedKub
     }
   }
   return mergeKubeconfigs(parsed);
-}
-
-/**
- * Fetch namespace names from the cluster. Uses `execFile` with an argument
- * array (no shell) to keep it injection-safe.
- */
-export async function fetchNamespaces(context: string, kubeconfigPath?: string): Promise<string[]> {
-  const args = ['get', 'namespaces', '-o', 'jsonpath={.items[*].metadata.name}'];
-  if (context) {
-    args.unshift(`--context=${context}`);
-  }
-
-  const env = { ...process.env };
-  if (kubeconfigPath) {
-    env.KUBECONFIG = kubeconfigPath;
-  }
-
-  const { stdout } = await execFileAsync('kubectl', args, { encoding: 'utf8', env, timeout: 10_000 });
-  return stdout.trim().split(/\s+/).filter(Boolean);
 }

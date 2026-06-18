@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
+import { parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,7 +48,11 @@ function getCacheTtlSeconds(): number {
 
 function getCacheDir(): string {
   const baseDir = process.env.HEIMDALL_KUBECTL_CACHE_DIR || tmpdir();
-  return joinPath(baseDir, CACHE_DIR_NAME);
+  // Isolate per-user so a shared base dir (e.g. /tmp) cannot cause cross-user
+  // EACCES write failures or cache poisoning on multi-user hosts.
+  const uid = typeof process.getuid === 'function' ? String(process.getuid()) : undefined;
+  const user = uid ?? process.env.USER ?? process.env.USERNAME ?? 'default';
+  return joinPath(baseDir, `${CACHE_DIR_NAME}-${user}`);
 }
 
 /**
@@ -155,15 +160,17 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return 'Error: no kubectl arguments provided.';
   }
 
-  const fullCommand = `kubectl ${trimmed}`;
-  const validation = validateCommand(fullCommand);
-  if (!validation.allowed) {
-    return `BLOCKED: ${validation.reason}`;
-  }
-
+  // Tokenize first so validation and execution agree on the command. The
+  // model may or may not include a leading "kubectl" in `args`; tokenizeArgs
+  // drops it, and we validate the exact argv we are about to execute.
   const argv = tokenizeArgs(trimmed);
   if (argv.length === 0) {
     return 'Error: no kubectl subcommand provided.';
+  }
+
+  const validation = validateCommand(`kubectl ${argv.join(' ')}`);
+  if (!validation.allowed) {
+    return `BLOCKED: ${validation.reason}`;
   }
 
   const context = options.context ?? process.env.HEIMDALL_CONTEXT;
@@ -181,7 +188,19 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   const cacheable = isCacheEnabled() && parsed === 'get' && isJsonOutput(argv);
   let cacheFile: string | null = null;
   if (cacheable) {
-    const hash = createHash('sha1').update(argv.join(' ')).digest('hex');
+    // The cache identity must distinguish every input that changes the result:
+    // the exact argv (not a space-joined string, which collides across quoting
+    // variants), the kubeconfig file, and the effective cluster context. When
+    // no --context flag is present the active context comes from the
+    // kubeconfig's current-context, so include it to avoid serving cluster A's
+    // data for cluster B after a context switch.
+    let effectiveContext = '';
+    if (!hasContextFlag(argv)) {
+      const cfg = await parseKubeconfig(resolveKubeconfigPath(options.kubeconfig));
+      effectiveContext = cfg?.currentContext ?? '';
+    }
+    const identity = JSON.stringify({ argv, kubeconfig: env.KUBECONFIG ?? '', effectiveContext });
+    const hash = createHash('sha256').update(identity).digest('hex');
     cacheFile = joinPath(getCacheDir(), `${hash}.json`);
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());
     if (cached !== null) {

@@ -35,6 +35,11 @@ export const DESTRUCTIVE_KUBECTL_COMMANDS = [
 /**
  * Explicitly allowed read-only kubectl subcommands. Anything not on this list
  * is blocked by default (default-deny).
+ *
+ * Note: `auth` and `config` are intentionally NOT here. They are command
+ * families that mix read-only and mutating verbs (`auth reconcile` writes RBAC;
+ * `config set-context`/`use-context` mutate the kubeconfig). They are gated by
+ * the nested allow-list below instead.
  */
 export const ALLOWED_KUBECTL_COMMANDS = [
   'get',
@@ -46,9 +51,16 @@ export const ALLOWED_KUBECTL_COMMANDS = [
   'api-versions',
   'version',
   'cluster-info',
-  'config',
-  'auth',
 ] as const;
+
+/**
+ * Read-only nested verbs allowed for command families that also contain
+ * mutating verbs. The family's first argument must be on this list; everything
+ * else in the family is denied (default-deny).
+ */
+export const NESTED_ALLOWED_VERBS: Record<string, readonly string[]> = {
+  auth: ['can-i', 'whoami'],
+};
 
 export type DestructiveCommand = (typeof DESTRUCTIVE_KUBECTL_COMMANDS)[number];
 export type AllowedCommand = (typeof ALLOWED_KUBECTL_COMMANDS)[number];
@@ -68,6 +80,41 @@ export interface CommandValidationResult {
   command: string;
   subcommand: string | null;
 }
+
+/**
+ * Global options that consume the following token as their value. This must
+ * include every value-taking kubectl global flag to prevent bypass attacks
+ * such as `kubectl --v 5 delete pods`. Allocated once at module load.
+ */
+const OPTIONS_WITH_VALUE = new Set([
+  '-n', '--namespace',
+  '-c', '--container',
+  '-l', '--selector',
+  '-f', '--filename',
+  '-o', '--output',
+  '--as',
+  '--as-group',
+  '--as-uid',
+  '--cache-dir',
+  '--certificate-authority',
+  '--client-certificate',
+  '--client-key',
+  '--cluster',
+  '--context',
+  '--kubeconfig',
+  '--log-flush-frequency',
+  '--password',
+  '--profile',
+  '--profile-output',
+  '--request-timeout',
+  '--server', '-s',
+  '--tls-server-name',
+  '--token',
+  '--user',
+  '--username',
+  '--v', '-v',
+  '--vmodule',
+]);
 
 /**
  * Parse a command string to extract the kubectl subcommand. Handles global
@@ -99,38 +146,6 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
 
   result.isKubectl = true;
 
-  // Global options that consume the following token as their value. This must
-  // include every value-taking kubectl global flag to prevent bypass attacks.
-  const optionsWithValue = new Set([
-    '-n', '--namespace',
-    '-c', '--container',
-    '-l', '--selector',
-    '-f', '--filename',
-    '-o', '--output',
-    '--as',
-    '--as-group',
-    '--as-uid',
-    '--cache-dir',
-    '--certificate-authority',
-    '--client-certificate',
-    '--client-key',
-    '--cluster',
-    '--context',
-    '--kubeconfig',
-    '--log-flush-frequency',
-    '--password',
-    '--profile',
-    '--profile-output',
-    '--request-timeout',
-    '--server', '-s',
-    '--tls-server-name',
-    '--token',
-    '--user',
-    '--username',
-    '--v', '-v',
-    '--vmodule',
-  ]);
-
   let skipNext = false;
   for (let i = 1; i < parts.length; i++) {
     const part = parts[i];
@@ -144,7 +159,7 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
       if (part.includes('=')) {
         continue; // --option=value form, no separate value token
       }
-      if (optionsWithValue.has(part)) {
+      if (OPTIONS_WITH_VALUE.has(part)) {
         skipNext = true;
       }
       continue;
@@ -198,6 +213,28 @@ export function validateCommand(command: string): CommandValidationResult {
     return {
       allowed: false,
       reason: `Destructive command '${parsed.subcommand}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
+      command: parsed.rawCommand,
+      subcommand: parsed.subcommand,
+    };
+  }
+
+  // Command families that mix read-only and mutating verbs: gate on the nested
+  // verb (default-deny within the family).
+  const nestedAllowed = NESTED_ALLOWED_VERBS[parsed.subcommand];
+  if (nestedAllowed) {
+    const verb = parsed.args[0]?.toLowerCase() ?? '';
+    if (nestedAllowed.includes(verb)) {
+      return {
+        allowed: true,
+        reason: `Read-only command '${parsed.subcommand} ${verb}' is allowed`,
+        command: parsed.rawCommand,
+        subcommand: parsed.subcommand,
+      };
+    }
+    const attempted = `${parsed.subcommand} ${verb}`.trim();
+    return {
+      allowed: false,
+      reason: `'${attempted}' is blocked. Only read-only '${parsed.subcommand}' verbs are permitted: ${nestedAllowed.join(', ')}.`,
       command: parsed.rawCommand,
       subcommand: parsed.subcommand,
     };

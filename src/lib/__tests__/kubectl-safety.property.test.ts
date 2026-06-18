@@ -35,6 +35,30 @@ describe('validateCommand (property-based)', () => {
     );
   });
 
+  it('blocks mutating nested verbs in mixed command families', () => {
+    // `auth`/`config` are not allowed wholesale; mutating nested verbs like
+    // `auth reconcile` and any `config` verb must stay blocked behind flags.
+    fc.assert(
+      fc.property(
+        fc.constantFrom('auth reconcile -f rbac.yaml', 'config set-context x', 'config use-context x'),
+        globalFlags,
+        (tail, flags) => {
+          const cmd = `kubectl ${flags} ${tail}`.replace(/\s+/g, ' ').trim();
+          expect(validateCommand(cmd).allowed).toBe(false);
+        },
+      ),
+    );
+  });
+
+  it('allows read-only nested auth verbs behind any global flags', () => {
+    fc.assert(
+      fc.property(fc.constantFrom('can-i get pods', 'whoami'), globalFlags, (tail, flags) => {
+        const cmd = `kubectl ${flags} auth ${tail}`.replace(/\s+/g, ' ').trim();
+        expect(validateCommand(cmd).allowed).toBe(true);
+      }),
+    );
+  });
+
   it('never allows a non-kubectl command', () => {
     fc.assert(
       fc.property(fc.string(), (input) => {

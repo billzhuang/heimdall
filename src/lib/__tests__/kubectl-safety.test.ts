@@ -57,6 +57,21 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl proxy').allowed).toBe(false);
   });
 
+  it('gates the auth family to read-only verbs', () => {
+    expect(validateCommand('kubectl auth can-i get pods').allowed).toBe(true);
+    expect(validateCommand('kubectl auth whoami').allowed).toBe(true);
+    // `auth reconcile` creates/updates RBAC objects — must be blocked.
+    expect(validateCommand('kubectl auth reconcile -f rbac.yaml').allowed).toBe(false);
+    // bare `auth` with no verb is denied.
+    expect(validateCommand('kubectl auth').allowed).toBe(false);
+  });
+
+  it('blocks the entire config family (kubeconfig-mutating / credential exposure)', () => {
+    expect(validateCommand('kubectl config view').allowed).toBe(false);
+    expect(validateCommand('kubectl config set-context foo').allowed).toBe(false);
+    expect(validateCommand('kubectl config use-context prod').allowed).toBe(false);
+  });
+
   it('rejects non-kubectl commands', () => {
     const result = validateCommand('rm -rf /');
     expect(result.allowed).toBe(false);
