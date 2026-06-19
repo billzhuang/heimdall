@@ -29,6 +29,7 @@ import {
   buildReflectionPrompt,
 } from './lib/self-improve.ts';
 import { readTaskHistory } from './lib/task-history.ts';
+import { loadConfig } from './lib/config.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -235,7 +236,10 @@ Examples:
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const logPath = join(scenariosDir, LEARNING_LOG_NAME);
-  const taskHistoryPath = join(scenariosDir, TASK_HISTORY_NAME);
+  const config = loadConfig();
+  const taskHistoryPath = config.learning?.file
+    ? resolve(config.learning.file)
+    : join(scenariosDir, TASK_HISTORY_NAME);
 
   // --from-log: skip running evals; reflect on existing log entries instead.
   if (fromLog) {

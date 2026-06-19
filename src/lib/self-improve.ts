@@ -150,7 +150,7 @@ export function buildReflectionPrompt(
     : '';
 
   const historySection = hasHistory
-    ? `\n\n---\n\n## Recent Real-World Investigations (task history)\n\n` +
+    ? `## Recent Real-World Investigations (task history)\n\n` +
       `The following are real prompts the agent handled recently. Review them for ` +
       `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n` +
       buildTaskHistoryContext(taskHistory)
@@ -163,23 +163,29 @@ export function buildReflectionPrompt(
       `Be specific: quote the line(s) to change and what to replace them with.`
     : `No eval failures this run.`;
 
-  return (
-    `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` +
-    failurePart +
-    `\n\n---\n\n` +
-    (hasFailures ? scenarioList + '\n\n---\n\n' : '') +
-    historySection +
-    `\n\n## Your task\n` +
-    (hasFailures
-      ? `For each eval failure, provide:\n` +
-        `1. **Root cause** — why did the agent fail this assertion?\n` +
-        `2. **Instruction fix** — which exact text in \`src/lib/instructions.ts\` should change, and how?\n\n`
-      : '') +
-    (hasHistory
-      ? `For the task history, identify:\n` +
-        `3. **Coverage gaps** — are there prompt patterns that don't match any specialist subagent?\n` +
-        `4. **Severity calibration** — do any findings seem over- or under-triaged?\n\n`
-      : '') +
-    `Focus on changes with the highest impact-to-risk ratio. Prefer small, targeted edits over broad rewrites.`
-  );
+  const sections: string[] = [
+    `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` + failurePart,
+    ...(hasFailures ? [scenarioList] : []),
+    ...(hasHistory ? [historySection] : []),
+  ];
+
+  const taskItems: string[] = [];
+  if (hasFailures) {
+    taskItems.push(
+      `For each eval failure, provide:\n` +
+      `1. **Root cause** — why did the agent fail this assertion?\n` +
+      `2. **Instruction fix** — which exact text in \`src/lib/instructions.ts\` should change, and how?`,
+    );
+  }
+  if (hasHistory) {
+    taskItems.push(
+      `For the task history, identify:\n` +
+      `3. **Coverage gaps** — are there prompt patterns that don't match any specialist subagent?\n` +
+      `4. **Severity calibration** — do any findings seem over- or under-triaged?`,
+    );
+  }
+  sections.push(`## Your task\n\n` + taskItems.join('\n\n'));
+  sections.push(`Focus on changes with the highest impact-to-risk ratio. Prefer small, targeted edits over broad rewrites.`);
+
+  return sections.join('\n\n---\n\n');
 }
