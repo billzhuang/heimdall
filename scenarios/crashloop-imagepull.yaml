@@ -1,0 +1,60 @@
+description: "CrashLoopBackOff due to ImagePullBackOff (bad image tag)"
+prompt: "Why is my api pod crash-looping?"
+mocks:
+  "get pods": |
+    NAME              READY   STATUS             RESTARTS   AGE
+    api-pod-7d9f4b    0/1     CrashLoopBackOff   8          18m
+    redis-5b8c9d      1/1     Running            0          2d
+  "describe pod": |
+    Name:             api-pod-7d9f4b
+    Namespace:        default
+    Node:             ip-10-0-1-42.us-east-1.compute.internal/10.0.1.42
+    Start Time:       Thu, 19 Jun 2026 08:00:00 +0000
+    Labels:           app=api
+                      version=v2.3.1
+    Status:           Running
+    IP:               10.244.1.15
+    Containers:
+      api:
+        Image:          myregistry.io/api:v2.3.1-SNAPSHOT
+        Image ID:
+        Port:           8080/TCP
+        Host Port:      0/TCP
+        State:          Waiting
+          Reason:       CrashLoopBackOff
+        Last State:     Terminated
+          Reason:       Error
+          Exit Code:    1
+          Started:      Thu, 19 Jun 2026 08:17:42 +0000
+          Finished:     Thu, 19 Jun 2026 08:17:43 +0000
+        Ready:          False
+        Restart Count:  8
+        Limits:
+          cpu:     500m
+          memory:  256Mi
+        Requests:
+          cpu:     100m
+          memory:  128Mi
+    Conditions:
+      Type              Status
+      Initialized       True
+      Ready             False
+      ContainersReady   False
+      PodScheduled      True
+    Events:
+      Type     Reason     Age                  From               Message
+      ----     ------     ----                 ----               -------
+      Normal   Scheduled  18m                  default-scheduler  Successfully assigned default/api-pod-7d9f4b to ip-10-0-1-42
+      Normal   Pulling    18m                  kubelet            Pulling image "myregistry.io/api:v2.3.1-SNAPSHOT"
+      Warning  Failed     18m                  kubelet            Failed to pull image "myregistry.io/api:v2.3.1-SNAPSHOT": rpc error: code = Unknown desc = failed to pull and unpack image "myregistry.io/api:v2.3.1-SNAPSHOT": failed to resolve reference "myregistry.io/api:v2.3.1-SNAPSHOT": unexpected status code 404 Not Found
+      Warning  Failed     18m                  kubelet            Error: ErrImagePull
+      Warning  BackOff    17m (x8 over 17m)   kubelet            Back-off pulling image "myregistry.io/api:v2.3.1-SNAPSHOT"
+      Warning  Failed     17m (x8 over 17m)   kubelet            Error: ImagePullBackOff
+  "logs": |
+    Error from server (BadRequest): container "api" in pod "api-pod-7d9f4b" is waiting to start: image can't be pulled
+expectedSeverity: warning
+expectedKeywords:
+  - ImagePullBackOff
+  - image
+forbiddenKeywords:
+  - "I don't know"

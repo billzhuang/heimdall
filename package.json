@@ -13,6 +13,7 @@
     "prompt": "bin/heimdall",
     "watch": "tsx src/watch-mode.ts",
     "triage": "tsx src/triage-mode.ts",
+    "eval": "tsx src/eval-mode.ts",
     "alert": "tsx src/alert-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

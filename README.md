@@ -108,6 +108,58 @@ Triage checks, in order:
 
 Each finding includes a severity label, a description, and a suggested remediation command. The agent never executes remediation itself.
 
+### Eval mode
+
+Run synthetic RCA scenarios to test agent reasoning accuracy without a real cluster.
+kubectl responses are mocked from YAML fixture files in `scenarios/`, so no
+kubeconfig or cluster is required.
+
+```bash
+heimdall eval                       # run all scenarios
+heimdall eval --scenario crashloop  # run only scenarios matching "crashloop"
+
+npm run eval                        # via npm (runs all scenarios)
+```
+
+Each scenario YAML file defines:
+- A **prompt** sent to the agent (e.g. "Why is my api pod crash-looping?")
+- **Mocks** mapping kubectl argument patterns to fixture output
+- **Expected keywords** that must appear in the agent's answer
+- **Forbidden keywords** that must not appear
+- An optional **expected severity** level
+
+Three built-in scenarios ship with Heimdall:
+
+| Scenario | File | Tests |
+| --- | --- | --- |
+| CrashLoopBackOff / ImagePullBackOff | `scenarios/crashloop-imagepull.yaml` | Bad image tag, ErrImagePull events |
+| OOMKilled | `scenarios/oom-killed.yaml` | Memory limit 128Mi, Exit Code 137 |
+| PVC Pending / missing StorageClass | `scenarios/pvc-pending.yaml` | StorageClass "fast-ssd" not found |
+
+Add your own scenarios by creating YAML files in `scenarios/`:
+
+```yaml
+description: "human-readable name"
+prompt: "Why is my api pod crash-looping?"
+mocks:
+  "get pods": |
+    NAME   READY   STATUS              RESTARTS   AGE
+    api-pod-abc   0/1   CrashLoopBackOff   5   10m
+  "describe pod": |
+    Name: api-pod-abc
+    ...
+expectedSeverity: warning
+expectedKeywords:
+  - ImagePullBackOff
+  - image
+forbiddenKeywords:
+  - "I don't know"
+```
+
+Mock keys are matched against kubectl argv by token subset: the key `"get pods"` matches
+any `kubectl get pods ...` call, regardless of additional flags. The most-specific key
+(most tokens) wins when multiple keys match.
+
 ### Interactive mode
 
 For back-and-forth investigation sessions:
@@ -235,6 +287,7 @@ All configuration is via environment variables (see `.env.example`):
 | `HEIMDALL_KUBECTL_CACHE` | Set to `0` to disable the JSON cache | enabled |
 | `HEIMDALL_KUBECTL_CACHE_TTL` | Cache TTL in seconds | `30` |
 | `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |
+| `HEIMDALL_KUBECTL_MOCK` | Path to a JSON mock fixture file (eval mode) | — |
 | `PROMETHEUS_URL` | Prometheus base URL (overrides `prometheus.url` in config) | — |
 | `SLACK_WEBHOOK_URL` | Slack incoming webhook URL (overrides `slack.webhookUrl` in config) | — |
 

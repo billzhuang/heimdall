@@ -34,6 +34,7 @@ show_help() {
 Usage: heimdall -p <prompt> [--json]
        heimdall --watch
        heimdall triage [-n <namespace>] [-A]
+       heimdall eval [--scenario <name>]
 
 Run the Heimdall Kubernetes SRE agent.
 
@@ -48,6 +49,7 @@ Subcommands:
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
+  eval                  Run synthetic RCA evaluation against known failure scenarios
 
 Examples:
   heimdall -p "Why is my frontend deployment crash-looping in prod?"
@@ -58,6 +60,8 @@ Examples:
   heimdall triage                         # full health sweep (default namespace)
   heimdall triage -A                      # sweep all namespaces
   heimdall triage -n prod                 # sweep only the prod namespace
+  heimdall eval                           # run all eval scenarios
+  heimdall eval --scenario crashloop      # run only matching scenarios
 
 JSON output schema (--json):
   { "summary": "…", "answer": "…", "severity": "warning",
@@ -75,6 +79,8 @@ PROMPT=""
 WATCH=false
 TRIAGE=false
 TRIAGE_ARGS=()
+EVAL=false
+EVAL_ARGS=()
 JSON_OUTPUT=false
 
 while [[ $# -gt 0 ]]; do
@@ -84,6 +90,13 @@ while [[ $# -gt 0 ]]; do
       shift
       # Pass remaining args to the triage script.
       TRIAGE_ARGS=("$@")
+      break
+      ;;
+    eval)
+      EVAL=true
+      shift
+      # Pass remaining args to the eval script.
+      EVAL_ARGS=("$@")
       break
       ;;
     -p|--prompt)
@@ -122,7 +135,7 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      echo "Error: unexpected argument '$1' — use -p to pass a prompt or 'triage' for a health sweep" >&2
+      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, or 'eval' for synthetic RCA evaluation" >&2
       show_help >&2
       exit 1
       ;;
@@ -150,6 +163,23 @@ if [[ "$TRIAGE" == "true" ]]; then
     exec "$TSX" "$TRIAGE_SOURCE" "${TRIAGE_ARGS[@]}"
   else
     echo "Error: triage mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
+fi
+
+# --- Eval mode ------------------------------------------------------------
+if [[ "$EVAL" == "true" ]]; then
+  EVAL_COMPILED="${ROOT_DIR}/dist/eval-mode.mjs"
+  EVAL_SOURCE="${ROOT_DIR}/src/eval-mode.ts"
+
+  if [[ -f "$EVAL_COMPILED" ]]; then
+    exec node "$EVAL_COMPILED" "${EVAL_ARGS[@]}"
+  elif [[ -x "$TSX" ]] && [[ -f "$EVAL_SOURCE" ]]; then
+    exec "$TSX" "$EVAL_SOURCE" "${EVAL_ARGS[@]}"
+  else
+    echo "Error: eval mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1

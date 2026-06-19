@@ -1,0 +1,58 @@
+description: "Pod stuck Pending due to unbound PVC / missing StorageClass"
+prompt: "Why is my database pod stuck in Pending state?"
+mocks:
+  "get pods": |
+    NAME          READY   STATUS    RESTARTS   AGE
+    db-0          0/1     Pending   0          12m
+    cache-0       1/1     Running   0          3d
+  "describe pod": |
+    Name:             db-0
+    Namespace:        default
+    Node:             <none>
+    Start Time:       Thu, 19 Jun 2026 07:48:00 +0000
+    Labels:           app=database
+                      statefulset.kubernetes.io/pod-name=db-0
+    Status:           Pending
+    IP:
+    Volumes:
+      data:
+        Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+        ClaimName:  data-db-0
+        ReadOnly:   false
+    Conditions:
+      Type           Status
+      PodScheduled   False
+    Events:
+      Type     Reason            Age                From               Message
+      ----     ------            ----               ----               -------
+      Warning  FailedScheduling  12m (x6 over 12m)  default-scheduler  0/3 nodes are available: 3 pod has unbound immediate PersistentVolumeClaims. preemption: 0/3 nodes are available: 3 Preemption is not helpful for scheduling.
+  "get pvc": |
+    NAME        STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+    data-db-0   Pending                                      fast-ssd       12m
+  "describe pvc": |
+    Name:          data-db-0
+    Namespace:     default
+    StorageClass:  fast-ssd
+    Status:        Pending
+    Volume:
+    Labels:        app=database
+    Annotations:   volume.beta.kubernetes.io/storage-provisioner: kubernetes.io/no-provisioner
+    Finalizers:    [kubernetes.io/pvc-protection]
+    Capacity:
+    Access Modes:
+    VolumeMode:    Filesystem
+    Used By:       db-0
+    Events:
+      Type     Reason                Age                From                         Message
+      ----     ------                ----               ----                         -------
+      Warning  ProvisioningFailed    12m (x6 over 12m)  persistentvolume-controller  storageclass.storage.k8s.io "fast-ssd" not found
+  "get storageclass": |
+    NAME                 PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+    standard (default)   kubernetes.io/gce-pd    Delete          Immediate              true                   30d
+    gp2                  kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   true                   30d
+expectedSeverity: warning
+expectedKeywords:
+  - PVC
+  - StorageClass
+forbiddenKeywords:
+  - "I don't know"

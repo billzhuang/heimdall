@@ -1,0 +1,63 @@
+description: "OOMKilled due to memory limit too low (128Mi)"
+prompt: "Why does my worker pod keep getting killed?"
+mocks:
+  "get pods": |
+    NAME                   READY   STATUS      RESTARTS   AGE
+    worker-6c8d9f-xkp2t   0/1     OOMKilled   12         45m
+    postgres-0             1/1     Running     0          7d
+  "describe pod": |
+    Name:             worker-6c8d9f-xkp2t
+    Namespace:        default
+    Node:             ip-10-0-1-55.us-east-1.compute.internal/10.0.1.55
+    Start Time:       Thu, 19 Jun 2026 07:15:00 +0000
+    Labels:           app=worker
+                      batch=true
+    Status:           Running
+    IP:               10.244.2.8
+    Containers:
+      worker:
+        Image:          myregistry.io/worker:1.4.2
+        Image ID:       myregistry.io/worker@sha256:a3b4c5d6e7f8
+        Port:           <none>
+        Host Port:      <none>
+        State:          Waiting
+          Reason:       CrashLoopBackOff
+        Last State:     Terminated
+          Reason:       OOMKilled
+          Exit Code:    137
+          Started:      Thu, 19 Jun 2026 08:01:33 +0000
+          Finished:     Thu, 19 Jun 2026 08:03:47 +0000
+        Ready:          False
+        Restart Count:  12
+        Limits:
+          cpu:     1000m
+          memory:  128Mi
+        Requests:
+          cpu:     250m
+          memory:  64Mi
+    Conditions:
+      Type              Status
+      Initialized       True
+      Ready             False
+      ContainersReady   False
+      PodScheduled      True
+    Events:
+      Type     Reason     Age                   From               Message
+      ----     ------     ----                  ----               -------
+      Normal   Scheduled  45m                   default-scheduler  Successfully assigned default/worker-6c8d9f-xkp2t to ip-10-0-1-55
+      Normal   Pulled     45m                   kubelet            Container image "myregistry.io/worker:1.4.2" already present on machine
+      Normal   Created    45m                   kubelet            Created container worker
+      Normal   Started    45m                   kubelet            Started container worker
+      Warning  OOMKilling 43m (x12 over 44m)   kubelet            Memory cgroup out of memory: Kill process 12345 (worker) score 1982 or sacrifice child
+      Warning  BackOff    2m  (x24 over 40m)   kubelet            Back-off restarting failed container
+  "logs": |
+    [2026-06-19 08:03:40] INFO  Starting batch job processor
+    [2026-06-19 08:03:41] INFO  Loading dataset into memory: 512MB required
+    [2026-06-19 08:03:47] ERROR java.lang.OutOfMemoryError: Java heap space
+    [2026-06-19 08:03:47] FATAL Killed
+expectedSeverity: warning
+expectedKeywords:
+  - OOMKilled
+  - memory
+forbiddenKeywords:
+  - "I don't know"
