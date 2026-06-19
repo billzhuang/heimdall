@@ -37,6 +37,12 @@ RUN npm ci --omit=dev
 # Copy built artifact (changes on every source build)
 COPY --from=builder /app/dist ./dist
 
+# Copy the default tool config so Docker deployments respect the repo's settings.
+# To override at runtime, either:
+#   • Mount a custom file: -v /host/heimdall.config.yaml:/app/heimdall.config.yaml
+#   • Point to a different path: -e HEIMDALL_CONFIG=/config/heimdall.config.yaml
+COPY --from=builder /app/heimdall.config.yaml ./
+
 # Run as non-root
 RUN useradd --system --no-create-home heimdall && chown -R heimdall:heimdall /app
 USER heimdall
