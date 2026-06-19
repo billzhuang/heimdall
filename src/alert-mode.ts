@@ -1,0 +1,172 @@
+/**
+ * Heimdall alert mode.
+ *
+ * Accepts an alert payload (AlertManager v4 JSON or raw text) and runs a
+ * targeted investigation. Before handing off to the LLM, it optionally seeds
+ * the prompt with live kubectl data for the affected pod/namespace.
+ *
+ * Usage:
+ *   heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">
+ *   npm run alert -- --source grafana alert.json
+ *   npm run alert -- --source raw "Pod api-xyz in prod is CrashLoopBackOff"
+ */
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseAlertManagerPayload, buildAlertPrompt, type ParsedAlert } from './lib/alert.ts';
+import { runKubectl } from './lib/kubectl.ts';
+import { loadConfig } from './lib/config.ts';
+
+const ALERT_TIMEOUT_MS = 300_000;
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+const config = loadConfig();
+
+/**
+ * Pre-fetch kubectl data for the alerted resource.
+ * Returns combined stdout suitable for embedding in the investigation prompt.
+ */
+async function seedKubectl(alert: ParsedAlert): Promise<string> {
+  const parts: string[] = [];
+  const opts = { audit: config.audit, redactSecrets: config.redactSecrets ?? true };
+
+  if (alert.pod && alert.namespace) {
+    const describe = await runKubectl(`describe pod ${alert.pod} -n ${alert.namespace}`, opts).catch(() => '');
+    if (describe && !describe.startsWith('Error:') && !describe.startsWith('BLOCKED:')) {
+      parts.push(`--- kubectl describe pod ${alert.pod} -n ${alert.namespace} ---\n${describe}`);
+    }
+    const logs = await runKubectl(`logs ${alert.pod} -n ${alert.namespace} --tail=50`, opts).catch(() => '');
+    if (logs && !logs.startsWith('Error:') && !logs.startsWith('BLOCKED:')) {
+      parts.push(`--- kubectl logs ${alert.pod} -n ${alert.namespace} --tail=50 ---\n${logs}`);
+    }
+  } else if (alert.namespace) {
+    const pods = await runKubectl(`get pods -n ${alert.namespace}`, opts).catch(() => '');
+    if (pods && !pods.startsWith('Error:') && !pods.startsWith('BLOCKED:')) {
+      parts.push(`--- kubectl get pods -n ${alert.namespace} ---\n${pods}`);
+    }
+    const events = await runKubectl(`get events -n ${alert.namespace} --sort-by=.lastTimestamp`, opts).catch(() => '');
+    if (events && !events.startsWith('Error:') && !events.startsWith('BLOCKED:')) {
+      parts.push(`--- kubectl get events -n ${alert.namespace} ---\n${events}`);
+    }
+  }
+
+  return parts.join('\n\n');
+}
+
+async function runAgent(prompt: string): Promise<void> {
+  const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
+  return new Promise((res, rej) => {
+    let settled = false;
+    const settle = (err?: Error) => { if (!settled) { settled = true; err ? rej(err) : res(); } };
+
+    const child = spawn(binPath, ['-p', prompt], { stdio: ['ignore', 'inherit', 'inherit'] });
+    const timer = setTimeout(() => { child.kill('SIGTERM'); settle(new Error('alert investigation timed out')); }, ALERT_TIMEOUT_MS);
+
+    child.on('close', (code: number | null, signal: string | null) => {
+      clearTimeout(timer);
+      if (code !== null && code !== 0) settle(new Error(`heimdall exited with code ${code}`));
+      else if (code === null && signal !== null) settle(new Error(`heimdall killed by signal ${signal}`));
+      else settle();
+    });
+    child.on('error', (err: Error) => { clearTimeout(timer); settle(err); });
+  });
+}
+
+type AlertSource = 'grafana' | 'prometheus' | 'raw';
+
+export async function runAlertMode(opts: { source: AlertSource; input: string; seed: boolean }): Promise<void> {
+  let alerts: ParsedAlert[];
+
+  if (opts.source === 'raw') {
+    alerts = [{ alertname: 'Manual alert', description: opts.input, labels: {} }];
+  } else {
+    let jsonText: string;
+    if (existsSync(opts.input)) {
+      try { jsonText = readFileSync(opts.input, 'utf-8'); }
+      catch (err) { process.stderr.write(`[heimdall-alert] Cannot read ${opts.input}: ${err}\n`); process.exit(1); }
+    } else {
+      jsonText = opts.input;
+    }
+    let payload: unknown;
+    try { payload = JSON.parse(jsonText); }
+    catch { process.stderr.write('[heimdall-alert] Invalid JSON payload\n'); process.exit(1); }
+    alerts = parseAlertManagerPayload(payload);
+    if (alerts.length === 0) { process.stderr.write('[heimdall-alert] No alerts found in payload\n'); process.exit(1); }
+  }
+
+  const alert = alerts[0];
+  process.stderr.write(`[heimdall-alert] Investigating: ${alert.alertname}${alert.namespace ? ` in ${alert.namespace}` : ''}\n`);
+  if (alerts.length > 1) {
+    process.stderr.write(`[heimdall-alert] ${alerts.length - 1} additional alert(s) in payload — investigating the first one\n`);
+  }
+
+  let seedContext = '';
+  if (opts.seed && (alert.pod || alert.namespace)) {
+    process.stderr.write('[heimdall-alert] Pre-fetching kubectl context...\n');
+    seedContext = await seedKubectl(alert).catch((err) => {
+      process.stderr.write(`[heimdall-alert] Seed phase failed (proceeding without): ${err}\n`);
+      return '';
+    });
+  }
+
+  const prompt = buildAlertPrompt(alert, seedContext || undefined);
+  await runAgent(prompt);
+}
+
+// ── CLI ──────────────────────────────────────────────────────────────────────
+const args = process.argv.slice(2);
+let source: AlertSource = 'raw';
+let seed = true;
+let input = '';
+
+for (let i = 0; i < args.length; i++) {
+  const arg = args[i];
+  if ((arg === '--source' || arg === '-s') && args[i + 1]) {
+    const s = args[++i];
+    if (s !== 'grafana' && s !== 'prometheus' && s !== 'raw') {
+      process.stderr.write(`Error: --source must be grafana, prometheus, or raw\n`); process.exit(1);
+    }
+    source = s;
+  } else if (arg.startsWith('--source=')) {
+    const s = arg.slice('--source='.length);
+    if (s !== 'grafana' && s !== 'prometheus' && s !== 'raw') {
+      process.stderr.write(`Error: --source must be grafana, prometheus, or raw\n`); process.exit(1);
+    }
+    source = s as AlertSource;
+  } else if (arg === '--no-seed') {
+    seed = false;
+  } else if (arg === '-h' || arg === '--help') {
+    process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">
+
+Options:
+  --source <type>   Alert format: grafana, prometheus, or raw text (default: raw)
+  --no-seed         Skip pre-fetching kubectl data before the LLM investigation
+  -h, --help        Show this help
+
+Examples:
+  heimdall alert alert.json
+  heimdall alert --source grafana grafana-alert.json
+  heimdall alert --source prometheus alertmanager-webhook.json
+  heimdall alert --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
+  npm run alert -- --source raw "high latency on api deployment in prod"
+`);
+    process.exit(0);
+  } else if (!arg.startsWith('-')) {
+    input = arg;
+  } else {
+    process.stderr.write(`Error: unknown option: ${arg}\n`); process.exit(1);
+  }
+}
+
+if (!input) {
+  process.stderr.write('Error: alert input (file path or raw text) is required\n');
+  process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">\n');
+  process.exit(1);
+}
+
+runAlertMode({ source, input, seed }).catch((err: unknown) => {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+  process.stderr.write(`[heimdall-alert] Fatal: ${detail}\n`);
+  process.exit(1);
+});
