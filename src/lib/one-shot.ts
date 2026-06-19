@@ -36,8 +36,9 @@ export interface OneShotResult {
  * becomes the answer; if there are no bullets the summary is an empty array.
  */
 export function parseAgentResponse(text: string, model: string): OneShotResult {
-  // Split on "Answer:" header — the agent always emits it on its own line.
-  const answerHeader = /\nAnswer:\s*\n/.exec(text);
+  // Split on "Answer:" header. Use (?:^|\n) so responses that start directly
+  // with "Answer:" (no Thinking Summary section) are still parsed correctly.
+  const answerHeader = /(?:^|\n)Answer:\s*\n/.exec(text);
 
   let summaryText = '';
   let answer = text.trim();
@@ -61,21 +62,26 @@ export function parseAgentResponse(text: string, model: string): OneShotResult {
   };
 }
 
+// Negative lookbehind prevents false positives on negated phrases such as
+// "no error found", "zero failed jobs", or "not running any tasks" — without it
+// those would be classified as critical/warning when the cluster is healthy.
 const CRITICAL_RE =
-  /\b(critical|crash(?:loop)?|oom.?kill|evict|not running|failed|error|down\b|unavailable|image.*pull.*back)/i;
+  /\b(?:critical|not running|down\b|(?<!(?:no|zero|without|not)\s+)(?:crash(?:loop)?|oom.?kill|evict|failed|error|unavailable|image.*pull.*back))/i;
 const WARNING_RE =
-  /\b(warn(?:ing)?|degraded|slow|high.latency|pending|restarting|throttl|limited|high memory|high cpu)/i;
-const HEALTHY_RE = /\b(healthy|all.*running|all.*ready|no issues|no problems|looks good|all good)/i;
+  /\b(?:high memory|high cpu|(?<!(?:no|zero|without|not)\s+)(?:warn(?:ing)?|degraded|slow|high.latency|pending|restarting|throttl|limited))/i;
+const HEALTHY_RE = /\b(?:healthy|all.*running|all.*ready|no issues|no problems|looks good|all good)/i;
 
 /**
  * Derive a severity level from the answer text using keyword heuristics.
  *
- * Priority order: critical > warning > healthy > info (default).
+ * HEALTHY is checked first: a phrase like "No critical issues; all pods are
+ * healthy" should return 'healthy', not 'critical'.  If no healthy signal is
+ * present the critical → warning → info priority then applies.
  */
 export function deriveSeverity(text: string): 'critical' | 'warning' | 'info' | 'healthy' {
+  if (HEALTHY_RE.test(text)) return 'healthy';
   if (CRITICAL_RE.test(text)) return 'critical';
   if (WARNING_RE.test(text)) return 'warning';
-  if (HEALTHY_RE.test(text)) return 'healthy';
   return 'info';
 }
 

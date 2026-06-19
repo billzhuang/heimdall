@@ -138,6 +138,16 @@ if [[ "$FORMAT" == "json" ]] && [[ "$TRIAGE" == "true" ]]; then
   echo "Error: --json/--format json is not compatible with triage mode" >&2
   exit 1
 fi
+# Also catch --json/--format placed AFTER the triage subcommand, which is
+# captured verbatim into TRIAGE_ARGS before the main loop can parse it.
+if [[ "$TRIAGE" == "true" ]]; then
+  for _arg in "${TRIAGE_ARGS[@]+"${TRIAGE_ARGS[@]}"}"; do
+    if [[ "$_arg" == "--json" ]] || [[ "$_arg" == "--format" ]]; then
+      echo "Error: --json/--format json is not compatible with triage mode" >&2
+      exit 1
+    fi
+  done
+fi
 
 # --- Triage mode ----------------------------------------------------------
 if [[ "$TRIAGE" == "true" ]]; then

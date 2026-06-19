@@ -36,13 +36,24 @@ async function captureAgentOutput(prompt: string): Promise<string> {
       else resolve(val);
     };
 
+    // detached: true creates a new process group so that on timeout we can
+    // kill the entire group (bash + the flue subprocess it spawns), not just
+    // the bash wrapper, which would leave the LLM connection orphaned.
     const child = spawn(binPath, ['-p', prompt], {
-      // stderr is inherited so the agent's status messages reach the terminal.
       stdio: ['ignore', 'pipe', 'inherit'],
+      detached: true,
     });
 
     const timer = setTimeout(() => {
-      child.kill('SIGTERM');
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGTERM');
+        } catch {
+          child.kill('SIGTERM');
+        }
+      } else {
+        child.kill('SIGTERM');
+      }
       settle(new Error('agent timed out after 5 minutes'));
     }, TIMEOUT_MS);
 
