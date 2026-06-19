@@ -50,7 +50,7 @@ heimdall --help
 Run a structured, whole-cluster health sweep with severity-ranked findings:
 
 ```bash
-heimdall triage               # sweep the default namespace
+heimdall triage               # sweep all namespaces (default)
 heimdall triage -A            # sweep all namespaces
 heimdall triage -n prod       # sweep only the prod namespace
 

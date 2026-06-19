@@ -28,9 +28,7 @@ export function buildTriagePrompt(opts: TriageOptions = {}): string {
   const nsFlag = opts.namespace ? `-n ${opts.namespace}` : '-A';
   const scope = opts.namespace
     ? `namespace "${opts.namespace}"`
-    : opts.allNamespaces
-      ? 'all namespaces'
-      : 'the default namespace (use -A if you want all namespaces)';
+    : 'all namespaces';
 
   return `Run a complete cluster health triage sweep scoped to ${scope}.
 Work through ALL of the following checks in order. Do not skip any category.

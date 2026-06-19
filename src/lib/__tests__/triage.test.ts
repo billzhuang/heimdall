@@ -45,9 +45,9 @@ describe('buildTriagePrompt', () => {
     expect(prompt).toContain('-A');
   });
 
-  it('uses default scope when no options given', () => {
+  it('uses all-namespaces scope when no options given', () => {
     const prompt = buildTriagePrompt();
-    expect(prompt).toContain('default namespace');
+    expect(prompt).toContain('all namespaces');
     expect(prompt).toContain('-A');
   });
 
