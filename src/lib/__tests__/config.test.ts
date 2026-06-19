@@ -91,6 +91,41 @@ describe('loadConfig', () => {
     expect(config1.tools).not.toBe(config2.tools);
   });
 
+  describe('snake_case aliases', () => {
+    it('accepts list_contexts as an alias for listContexts (actually works, not just warned)', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  list_contexts: false\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const config = loadConfig(configPath);
+      expect(config.tools.listContexts).toBe(false);
+      expect(config.tools.kubectl).toBe(true);
+      expect(config.tools.listNamespaces).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+      warnSpy.mockRestore();
+    });
+
+    it('accepts list_namespaces as an alias for listNamespaces', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  list_namespaces: false\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const config = loadConfig(configPath);
+      expect(config.tools.listNamespaces).toBe(false);
+      expect(config.tools.kubectl).toBe(true);
+      expect(config.tools.listContexts).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+      warnSpy.mockRestore();
+    });
+
+    it('accepts mixed camelCase and snake_case in the same block', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  kubectl: false\n  list_contexts: false\n  listNamespaces: false\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.listContexts).toBe(false);
+      expect(config.tools.listNamespaces).toBe(false);
+    });
+  });
+
   describe('unknown tools key warnings', () => {
     afterEach(() => {
       vi.restoreAllMocks();
@@ -101,34 +136,25 @@ describe('loadConfig', () => {
       writeFileSync(configPath, `tools:\n  kubectl: true\n  bogusKey: false\n`);
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       loadConfig(configPath);
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unknown tools key "bogusKey"'));
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('kubectl'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"bogusKey"'));
+      warnSpy.mockRestore();
     });
 
-    it('hints at the camelCase equivalent for list_contexts (snake_case alias)', () => {
-      const configPath = join(tmpDir, 'heimdall.config.yaml');
-      writeFileSync(configPath, `tools:\n  list_contexts: false\n`);
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      loadConfig(configPath);
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"list_contexts"'));
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"listContexts"'));
-    });
-
-    it('hints at the camelCase equivalent for list_namespaces (snake_case alias)', () => {
-      const configPath = join(tmpDir, 'heimdall.config.yaml');
-      writeFileSync(configPath, `tools:\n  list_namespaces: false\n`);
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      loadConfig(configPath);
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"list_namespaces"'));
-      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"listNamespaces"'));
-    });
-
-    it('does not warn for valid tool keys', () => {
+    it('does not warn for valid camelCase tool keys', () => {
       const configPath = join(tmpDir, 'heimdall.config.yaml');
       writeFileSync(configPath, `tools:\n  kubectl: true\n  listContexts: false\n  listNamespaces: false\n`);
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       loadConfig(configPath);
       expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+    });
+
+    it('does not warn for snake_case alias keys', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  list_contexts: false\n  list_namespaces: false\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      loadConfig(configPath);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+      warnSpy.mockRestore();
     });
 
     it('does not warn when tools section is absent', () => {
@@ -145,6 +171,17 @@ describe('loadConfig', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       loadConfig(configPath);
       expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+    });
+
+    it('ignores unknown keys for config output but still processes known keys', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  kubectl: false\n  typo_key: true\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const config = loadConfig(configPath);
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.listContexts).toBe(true);
+      expect(config.tools.listNamespaces).toBe(true);
+      warnSpy.mockRestore();
     });
   });
 });
