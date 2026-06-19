@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
+import { BLOCKED_PREFIX } from './harness.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -291,7 +292,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   const validation = validateCommand(cmd);
   if (!validation.allowed) {
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
-    return `BLOCKED: ${validation.reason}`;
+    return `${BLOCKED_PREFIX}${validation.reason}`;
   }
 
   // Enforce namespace lockdown: block cross-namespace reads and inject the
@@ -301,7 +302,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     const lockdown = applyNamespaceLockdown(argv, options.lockedNamespace);
     if (lockdown.blocked) {
       await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
-      return `BLOCKED: ${lockdown.reason}`;
+      return `${BLOCKED_PREFIX}${lockdown.reason}`;
     }
     argv = lockdown.argv;
   }

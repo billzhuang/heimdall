@@ -13,6 +13,7 @@ import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { validateAwsCommand } from './aws-safety.ts';
 import type { AuditConfig } from './kubectl.ts';
+import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 
 const execFileAsync = promisify(execFile);
@@ -146,7 +147,7 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
 
   if (!validation.allowed) {
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
-    return `BLOCKED: ${validation.reason}`;
+    return `${BLOCKED_PREFIX}${validation.reason}`;
   }
 
   try {

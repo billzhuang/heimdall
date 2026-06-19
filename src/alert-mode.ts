@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { parseAlertManagerPayload, buildAlertPrompt, type ParsedAlert } from './lib/alert.ts';
 import { runKubectl } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
+import { BLOCKED_PREFIX } from './lib/harness.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -33,20 +34,20 @@ async function seedKubectl(alert: ParsedAlert): Promise<string> {
 
   if (alert.pod && alert.namespace) {
     const describe = await runKubectl(`describe pod ${alert.pod} -n ${alert.namespace}`, opts).catch(() => '');
-    if (describe && !describe.startsWith('Error:') && !describe.startsWith('BLOCKED:')) {
+    if (describe && !describe.startsWith('Error:') && !describe.startsWith(BLOCKED_PREFIX)) {
       parts.push(`--- kubectl describe pod ${alert.pod} -n ${alert.namespace} ---\n${describe}`);
     }
     const logs = await runKubectl(`logs ${alert.pod} -n ${alert.namespace} --tail=50`, opts).catch(() => '');
-    if (logs && !logs.startsWith('Error:') && !logs.startsWith('BLOCKED:')) {
+    if (logs && !logs.startsWith('Error:') && !logs.startsWith(BLOCKED_PREFIX)) {
       parts.push(`--- kubectl logs ${alert.pod} -n ${alert.namespace} --tail=50 ---\n${logs}`);
     }
   } else if (alert.namespace) {
     const pods = await runKubectl(`get pods -n ${alert.namespace}`, opts).catch(() => '');
-    if (pods && !pods.startsWith('Error:') && !pods.startsWith('BLOCKED:')) {
+    if (pods && !pods.startsWith('Error:') && !pods.startsWith(BLOCKED_PREFIX)) {
       parts.push(`--- kubectl get pods -n ${alert.namespace} ---\n${pods}`);
     }
     const events = await runKubectl(`get events -n ${alert.namespace} --sort-by=.lastTimestamp`, opts).catch(() => '');
-    if (events && !events.startsWith('Error:') && !events.startsWith('BLOCKED:')) {
+    if (events && !events.startsWith('Error:') && !events.startsWith(BLOCKED_PREFIX)) {
       parts.push(`--- kubectl get events -n ${alert.namespace} ---\n${events}`);
     }
   }
