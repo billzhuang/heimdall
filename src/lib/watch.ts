@@ -21,6 +21,7 @@ export interface K8sEventObject {
     name?: string;
     namespace?: string;
     apiVersion?: string;
+    uid?: string;
   };
   reason: string;
   message: string;
@@ -50,6 +51,76 @@ export interface WatchFinding {
 export interface WatchFilterConfig {
   namespaces?: string[] | null;
   reasons?: string[] | null;
+}
+
+/** Opaque map of cooldown key → timestamp (ms) of last diagnosis. */
+export type CooldownState = Map<string, number>;
+
+const MAX_COOLDOWN_ENTRIES = 10_000;
+
+/**
+ * Build the de-dup key for an event.
+ * Uses `involvedObject.uid` when present so that a pod deleted and recreated
+ * with the same name (e.g. `web-0`) gets a distinct key for its new lifecycle.
+ * Falls back to `kind/name` when UID is absent (older kubectl / mock events).
+ */
+export function eventCooldownKey(event: K8sEventObject): string {
+  const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? '';
+  const objId = event.involvedObject.uid
+    ?? `${event.involvedObject.kind ?? 'Unknown'}/${event.involvedObject.name ?? 'unknown'}`;
+  return `${ns}/${objId}/${event.reason}`;
+}
+
+/**
+ * Return true when this event should trigger a new diagnosis.
+ *
+ * Suppresses re-diagnosis when the same (namespace, object, reason) key was
+ * already diagnosed within `cooldownSeconds`.  When it returns true, the key's
+ * last-seen time is updated in `state` so the caller does not need to track it.
+ *
+ * The map is kept in LRU order (delete + re-insert on every write moves the key
+ * to the end).  When `state` hits MAX_COOLDOWN_ENTRIES:
+ *   1. Expired entries are pruned with an early-exit scan (O(k) where k = # expired).
+ *   2. If the map is still full after pruning, the oldest (front) entries are evicted
+ *      until we are under the cap — strictly enforcing the memory bound even when all
+ *      entries are active (e.g. a burst of 10 000+ distinct object/reason pairs).
+ */
+export function shouldDiagnose(
+  event: K8sEventObject,
+  state: CooldownState,
+  nowMs: number,
+  cooldownSeconds: number,
+): boolean {
+  const key = eventCooldownKey(event);
+  const lastMs = state.get(key);
+  if (lastMs !== undefined && nowMs - lastMs < cooldownSeconds * 1_000) {
+    return false;
+  }
+  if (cooldownSeconds <= 0) {
+    return true;
+  }
+  if (state.size >= MAX_COOLDOWN_ENTRIES) {
+    const expiryMs = cooldownSeconds * 1_000;
+    // Map is LRU-ordered: oldest entries are at the front. Break on first unexpired.
+    for (const [k, ts] of state) {
+      if (nowMs - ts >= expiryMs) {
+        state.delete(k);
+      } else {
+        break;
+      }
+    }
+    // Fallback: if still at cap (all entries unexpired), evict the oldest.
+    if (state.size >= MAX_COOLDOWN_ENTRIES) {
+      for (const [k] of state) {
+        state.delete(k);
+        if (state.size < MAX_COOLDOWN_ENTRIES) break;
+      }
+    }
+  }
+  // Delete before re-inserting to move this key to the most-recently-used position.
+  state.delete(key);
+  state.set(key, nowMs);
+  return true;
 }
 
 /**

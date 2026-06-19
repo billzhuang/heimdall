@@ -4,8 +4,11 @@ import {
   matchesWatchFilter,
   buildDiagnosticPrompt,
   formatFinding,
+  eventCooldownKey,
+  shouldDiagnose,
   type K8sEventObject,
   type WatchFilterConfig,
+  type CooldownState,
 } from '../watch.ts';
 
 // ---------------------------------------------------------------------------
@@ -231,5 +234,163 @@ describe('formatFinding', () => {
     const parsed = JSON.parse(JSON.stringify(finding));
     expect(parsed.reason).toBe('BackOff');
     expect(parsed.diagnosis).toBe('diag');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// eventCooldownKey
+// ---------------------------------------------------------------------------
+
+describe('eventCooldownKey', () => {
+  it('builds key from namespace, involved-object kind/name, and reason when no uid', () => {
+    const event = makeEvent({
+      metadata: { namespace: 'prod' },
+      involvedObject: { kind: 'Pod', name: 'api-xyz' },
+      reason: 'BackOff',
+    });
+    expect(eventCooldownKey(event)).toBe('prod/Pod/api-xyz/BackOff');
+  });
+
+  it('prefers involvedObject.uid over kind/name when uid is present', () => {
+    const event = makeEvent({
+      metadata: { namespace: 'prod' },
+      involvedObject: { kind: 'Pod', name: 'api-xyz', uid: 'abc-123' },
+      reason: 'BackOff',
+    });
+    expect(eventCooldownKey(event)).toBe('prod/abc-123/BackOff');
+  });
+
+  it('treats a recreated object (same name, different uid) as a new key', () => {
+    const original = makeEvent({
+      metadata: { namespace: 'prod' },
+      involvedObject: { kind: 'Pod', name: 'web-0', uid: 'uid-v1' },
+      reason: 'BackOff',
+    });
+    const recreated = makeEvent({
+      metadata: { namespace: 'prod' },
+      involvedObject: { kind: 'Pod', name: 'web-0', uid: 'uid-v2' },
+      reason: 'BackOff',
+    });
+    expect(eventCooldownKey(original)).not.toBe(eventCooldownKey(recreated));
+  });
+
+  it('falls back to involvedObject.namespace when metadata.namespace is absent', () => {
+    const event = makeEvent({
+      metadata: { name: 'evt' },
+      involvedObject: { kind: 'Pod', name: 'x', namespace: 'staging' },
+      reason: 'OOMKilled',
+    });
+    expect(eventCooldownKey(event)).toBe('staging/Pod/x/OOMKilled');
+  });
+
+  it('uses empty string when no namespace is present', () => {
+    const event = makeEvent({ metadata: {}, involvedObject: { kind: 'Pod', name: 'x' } });
+    expect(eventCooldownKey(event)).toBe('/Pod/x/BackOff');
+  });
+
+  it('produces distinct keys for different reasons on the same object', () => {
+    const a = makeEvent({ reason: 'BackOff' });
+    const b = makeEvent({ reason: 'OOMKilled' });
+    expect(eventCooldownKey(a)).not.toBe(eventCooldownKey(b));
+  });
+
+  it('produces distinct keys for the same reason on different objects', () => {
+    const a = makeEvent({ involvedObject: { kind: 'Pod', name: 'pod-1' } });
+    const b = makeEvent({ involvedObject: { kind: 'Pod', name: 'pod-2' } });
+    expect(eventCooldownKey(a)).not.toBe(eventCooldownKey(b));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shouldDiagnose
+// ---------------------------------------------------------------------------
+
+describe('shouldDiagnose', () => {
+  it('returns true and records state on first occurrence', () => {
+    const state: CooldownState = new Map();
+    expect(shouldDiagnose(makeEvent(), state, 1_000, 300)).toBe(true);
+    expect(state.size).toBe(1);
+  });
+
+  it('suppresses a repeat within the cooldown window', () => {
+    const state: CooldownState = new Map();
+    const event = makeEvent();
+    shouldDiagnose(event, state, 1_000, 300);
+    // 100 s later — still within 300 s window
+    expect(shouldDiagnose(event, state, 1_000 + 100_000, 300)).toBe(false);
+  });
+
+  it('re-diagnoses after the cooldown window expires', () => {
+    const state: CooldownState = new Map();
+    const event = makeEvent();
+    shouldDiagnose(event, state, 1_000, 300);
+    // 1 ms before expiry: still suppressed
+    expect(shouldDiagnose(event, state, 1_000 + 299_999, 300)).toBe(false);
+    // Exactly at expiry boundary (elapsed === cooldown ms): no longer suppressed
+    expect(shouldDiagnose(event, state, 1_000 + 300_000, 300)).toBe(true);
+  });
+
+  it('treats distinct (object, reason) keys independently', () => {
+    const state: CooldownState = new Map();
+    const e1 = makeEvent({ involvedObject: { kind: 'Pod', name: 'pod-1' } });
+    const e2 = makeEvent({ involvedObject: { kind: 'Pod', name: 'pod-2' } });
+    shouldDiagnose(e1, state, 1_000, 300);
+    // e2 has a different key; must be diagnosed
+    expect(shouldDiagnose(e2, state, 1_001, 300)).toBe(true);
+    // e1 is still suppressed
+    expect(shouldDiagnose(e1, state, 1_002, 300)).toBe(false);
+  });
+
+  it('treats the same object with different reasons as distinct keys', () => {
+    const state: CooldownState = new Map();
+    shouldDiagnose(makeEvent({ reason: 'BackOff' }), state, 1_000, 300);
+    expect(shouldDiagnose(makeEvent({ reason: 'OOMKilled' }), state, 1_001, 300)).toBe(true);
+  });
+
+  it('a cooldownSeconds of 0 effectively disables suppression', () => {
+    const state: CooldownState = new Map();
+    const event = makeEvent();
+    shouldDiagnose(event, state, 1_000, 0);
+    // next call at the same timestamp: 0 s window → never suppressed (returns before updating state)
+    expect(shouldDiagnose(event, state, 1_000, 0)).toBe(true);
+  });
+
+  it('prunes expired entries when state exceeds 10 000 entries', () => {
+    const state: CooldownState = new Map();
+    const now = 1_000_000;
+    const cooldown = 300;
+    // Pre-fill with 10 000 entries that are all expired
+    for (let i = 0; i < 10_000; i++) {
+      state.set(`dummy-${i}`, now - (cooldown + 1) * 1_000);
+    }
+    // Adding a new event should trigger pruning of all expired entries
+    shouldDiagnose(makeEvent(), state, now, cooldown);
+    // Only the new entry should remain
+    expect(state.size).toBe(1);
+  });
+
+  it('evicts oldest (LRU) entries when map is full with all non-expired entries', () => {
+    const state: CooldownState = new Map();
+    const now = 1_000_000;
+    const cooldown = 300;
+    // Pre-fill with 10 000 unexpired entries — none will be pruned by expiry scan
+    for (let i = 0; i < 10_000; i++) {
+      state.set(`active-${i}`, now - 10_000); // 10 s old, well within 300 s window
+    }
+    // Triggering a new event must not throw and must keep map at ≤ MAX_COOLDOWN_ENTRIES
+    shouldDiagnose(makeEvent(), state, now, cooldown);
+    expect(state.size).toBeLessThanOrEqual(10_000);
+    // The new event's key must be in the map (it should be inserted after eviction)
+    const newKey = eventCooldownKey(makeEvent());
+    expect(state.has(newKey)).toBe(true);
+  });
+
+  it('uses uid in key so a pod recreated with the same name gets a fresh cooldown', () => {
+    const state: CooldownState = new Map();
+    const original = makeEvent({ involvedObject: { kind: 'Pod', name: 'web-0', uid: 'uid-v1' } });
+    const recreated = makeEvent({ involvedObject: { kind: 'Pod', name: 'web-0', uid: 'uid-v2' } });
+    shouldDiagnose(original, state, 1_000, 300);
+    // Even immediately after, the recreated pod with a different uid is a fresh key
+    expect(shouldDiagnose(recreated, state, 1_001, 300)).toBe(true);
   });
 });

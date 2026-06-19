@@ -26,6 +26,8 @@ import {
   buildDiagnosticPrompt,
   formatFinding,
   postWebhook,
+  shouldDiagnose,
+  type CooldownState,
 } from './lib/watch.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
@@ -77,8 +79,10 @@ async function diagnoseEvent(prompt: string): Promise<string> {
 
 export async function runWatchMode(): Promise<void> {
   const config = loadConfig();
-  const watchConfig = config.watch ?? {};
-  const namespaces = watchConfig.namespaces ?? [];
+  const watchCfg = config.watch;
+  const namespaces = watchCfg?.namespaces ?? [];
+  const cooldownSeconds = watchCfg?.cooldownSeconds ?? 300;
+  const cooldownState: CooldownState = new Map();
 
   // Watch a single namespace explicitly, or all namespaces (-A).
   const kubectlArgs =
@@ -90,9 +94,10 @@ export async function runWatchMode(): Promise<void> {
   if (namespaces.length > 0) {
     process.stderr.write(`[heimdall-watch] Watching namespaces: ${namespaces.join(', ')}\n`);
   }
-  if (watchConfig.reasons?.length) {
-    process.stderr.write(`[heimdall-watch] Filtering reasons: ${watchConfig.reasons.join(', ')}\n`);
+  if (watchCfg?.reasons?.length) {
+    process.stderr.write(`[heimdall-watch] Filtering reasons: ${watchCfg.reasons.join(', ')}\n`);
   }
+  process.stderr.write(`[heimdall-watch] Cooldown: ${cooldownSeconds}s per (object, reason)\n`);
 
   const kubectl = spawn('kubectl', kubectlArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -126,11 +131,19 @@ export async function runWatchMode(): Promise<void> {
   for await (const line of rl) {
     const event = parseEventLine(line);
     if (!event) continue;
-    if (!matchesWatchFilter(event, watchConfig)) continue;
+    if (!matchesWatchFilter(event, watchCfg ?? {})) continue;
 
     const ts = new Date().toISOString();
     const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? 'unknown';
     const objRef = `${event.involvedObject.kind ?? 'unknown'}/${event.involvedObject.name ?? 'unknown'}`;
+
+    if (!shouldDiagnose(event, cooldownState, Date.now(), cooldownSeconds)) {
+      process.stderr.write(
+        `[heimdall-watch] Cooldown: suppressing repeat ${event.reason} on ${objRef} in ${ns}\n`,
+      );
+      continue;
+    }
+
     process.stderr.write(
       `[heimdall-watch] Warning: ${event.reason} on ${objRef} in ${ns}\n`,
     );
@@ -141,8 +154,8 @@ export async function runWatchMode(): Promise<void> {
 
     process.stdout.write(JSON.stringify(finding) + '\n');
 
-    if (watchConfig.webhook) {
-      postWebhook(watchConfig.webhook, finding).catch((err: unknown) => {
+    if (watchCfg?.webhook) {
+      postWebhook(watchCfg.webhook, finding).catch((err: unknown) => {
         process.stderr.write(`[heimdall-watch] Webhook error: ${String(err)}\n`);
       });
     }

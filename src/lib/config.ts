@@ -41,6 +41,10 @@ const WatchSchema = v.nullish(
     // Only diagnose events whose Reason matches one of these strings.
     // Omit (or empty) to diagnose all Warning events.
     reasons: v.nullish(v.array(v.string())),
+    // Cooldown window in seconds before re-diagnosing the same (object, reason).
+    // Prevents LLM cost explosions and alert fatigue from repeated events.
+    // Default: 300 (5 minutes). Set to 0 to disable cooldown.
+    cooldownSeconds: v.nullish(v.number(), 300),
   }),
 );
 
