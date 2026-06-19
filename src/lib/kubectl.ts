@@ -31,6 +31,9 @@ const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 100_000;
 
+/** In-process cache for parsed eval mock files — avoids redundant disk I/O. */
+const evalMockCache = new Map<string, Record<string, string>>();
+
 /** Sentinel returned when a command succeeds but produces no stdout/stderr. */
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
 
@@ -224,6 +227,7 @@ export function getWaitTimeoutMs(argv: string[]): number | null {
  * Exported so the eval test suite can exercise this logic independently.
  */
 export function matchMock(mocks: Record<string, string>, argv: string[]): string | null {
+  if (!mocks || typeof mocks !== 'object') return null;
   const cmdSet = new Set(argv.map(t => t.toLowerCase()));
   let bestKey: string | null = null;
   let bestScore = -1;
@@ -306,8 +310,12 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   const evalMockFile = process.env.HEIMDALL_KUBECTL_MOCK;
   if (evalMockFile) {
     try {
-      const raw = await readFile(evalMockFile, 'utf8');
-      const mocks: Record<string, string> = JSON.parse(raw);
+      let mocks = evalMockCache.get(evalMockFile);
+      if (!mocks) {
+        const raw = await readFile(evalMockFile, 'utf8');
+        mocks = JSON.parse(raw) as Record<string, string>;
+        evalMockCache.set(evalMockFile, mocks);
+      }
       const hit = matchMock(mocks, argv);
       const result = hit ?? `(eval: no mock fixture for: ${argv.join(' ')})`;
       await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: 0, outcome: 'ok' }, audit);

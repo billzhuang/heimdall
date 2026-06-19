@@ -44,7 +44,11 @@ interface EvalResult {
 async function loadScenario(filePath: string): Promise<EvalScenario> {
   const { readFile } = await import('node:fs/promises');
   const raw = await readFile(filePath, 'utf8');
-  return loadYaml(raw) as EvalScenario;
+  const parsed = loadYaml(raw);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error(`Invalid scenario file: ${filePath} is not a valid YAML object`);
+  }
+  return parsed as EvalScenario;
 }
 
 /** Run a single scenario: spawn the agent, parse output, check assertions. */
@@ -93,9 +97,9 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
         if (!settled) {
           settled = true;
           const out = Buffer.concat(chunks).toString('utf8').trim();
-          if (code !== 0 && !out) {
+          if (code !== 0) {
             const errOut = Buffer.concat(errChunks).toString('utf8').trim();
-            reject(new Error(`agent exited with code ${code}: ${errOut}`));
+            reject(new Error(`agent exited with code ${code}: ${errOut || out}`));
           } else {
             resolve(out);
           }
@@ -111,7 +115,12 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
 
     // Parse JSON output from the agent.
     try {
-      finding = JSON.parse(rawOutput) as OneShotFinding;
+      const parsed = JSON.parse(rawOutput);
+      if (!parsed || typeof parsed !== 'object') {
+        failures.push(`Invalid JSON output: expected an object, got ${rawOutput.slice(0, 200)}`);
+      } else {
+        finding = parsed as OneShotFinding;
+      }
     } catch {
       failures.push(`Failed to parse JSON output: ${rawOutput.slice(0, 200)}`);
     }
@@ -123,7 +132,7 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
       }
 
       // Check expected keywords (case-insensitive) anywhere in answer or summary.
-      const fullText = `${finding.summary} ${finding.answer}`.toLowerCase();
+      const fullText = `${finding.summary ?? ''} ${finding.answer ?? ''}`.toLowerCase();
       for (const kw of scenario.expectedKeywords ?? []) {
         if (!fullText.includes(kw.toLowerCase())) {
           failures.push(`Missing expected keyword: "${kw}"`);
