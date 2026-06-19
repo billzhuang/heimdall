@@ -69,4 +69,25 @@ describe('loadConfig', () => {
     const config = loadConfig(configPath);
     expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
   });
+
+  it('handles null tools block (empty YAML key like `tools:`) gracefully', () => {
+    // js-yaml parses `tools:` with no value as null, not undefined.
+    const configPath = join(tmpDir, 'heimdall.config.yaml');
+    writeFileSync(configPath, 'tools:\n');
+    const config = loadConfig(configPath);
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+  });
+
+  it('returns defaults and warns when config is a scalar (not a mapping)', () => {
+    const configPath = join(tmpDir, 'heimdall.config.yaml');
+    writeFileSync(configPath, 'true\n');
+    const config = loadConfig(configPath);
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+  });
+
+  it('each call returns an independent object (no shared mutable default)', () => {
+    const config1 = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+    const config2 = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+    expect(config1.tools).not.toBe(config2.tools);
+  });
 });

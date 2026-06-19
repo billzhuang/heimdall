@@ -10,11 +10,13 @@ import { resolve } from 'node:path';
 import * as yaml from 'js-yaml';
 import * as v from 'valibot';
 
-const ToolsSchema = v.optional(
+// v.nullish handles both `undefined` (missing key) and `null` (empty YAML block,
+// e.g. `tools:` with no value), which js-yaml parses as null, not undefined.
+const ToolsSchema = v.nullish(
   v.object({
-    kubectl: v.optional(v.boolean(), true),
-    listContexts: v.optional(v.boolean(), true),
-    listNamespaces: v.optional(v.boolean(), true),
+    kubectl: v.nullish(v.boolean(), true),
+    listContexts: v.nullish(v.boolean(), true),
+    listNamespaces: v.nullish(v.boolean(), true),
   }),
   { kubectl: true, listContexts: true, listNamespaces: true },
 );
@@ -25,38 +27,44 @@ const HeimdallConfigSchema = v.object({
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
 
-const DEFAULT_CONFIG: HeimdallConfig = {
-  tools: { kubectl: true, listContexts: true, listNamespaces: true },
-};
-
 function resolveConfigPath(): string {
   const envPath = process.env.HEIMDALL_CONFIG;
   if (envPath) return resolve(envPath);
   return resolve(process.cwd(), 'heimdall.config.yaml');
 }
 
+/** Parse an empty document through the schema to get a fresh default object. */
+function defaultConfig(): HeimdallConfig {
+  return v.parse(HeimdallConfigSchema, {});
+}
+
 /**
- * Load and validate the Heimdall config file.  Returns defaults when the file
- * does not exist; logs a warning and returns defaults when the file is invalid.
+ * Load and validate the Heimdall config file.
  *
- * @param configPath - explicit path (used in tests); falls back to env / cwd.
+ * @param configPath - explicit path override (used in tests); falls back to env / cwd.
  */
 export function loadConfig(configPath?: string): HeimdallConfig {
   const filePath = configPath ?? resolveConfigPath();
-  if (!existsSync(filePath)) return DEFAULT_CONFIG;
+  if (!existsSync(filePath)) return defaultConfig();
 
   let raw: unknown;
   try {
     raw = yaml.load(readFileSync(filePath, 'utf-8'));
   } catch (err) {
     console.warn(`[heimdall] Could not read config file ${filePath}:`, err);
-    return DEFAULT_CONFIG;
+    return defaultConfig();
+  }
+
+  // yaml.load returns a scalar (string, boolean, number) for degenerate files.
+  if (raw !== null && raw !== undefined && typeof raw !== 'object') {
+    console.warn(`[heimdall] Config at ${filePath} must be a YAML mapping, got ${typeof raw}`);
+    return defaultConfig();
   }
 
   const result = v.safeParse(HeimdallConfigSchema, raw ?? {});
   if (!result.success) {
     console.warn(`[heimdall] Invalid config at ${filePath}:`, result.issues);
-    return DEFAULT_CONFIG;
+    return defaultConfig();
   }
   return result.output;
 }
