@@ -12,6 +12,7 @@
  */
 import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
+import { dirname, resolve } from 'node:path';
 import { makeKubectl } from '../tools/kubectl.ts';
 import { listContexts, makeListNamespaces } from '../tools/kubeconfig.ts';
 import { makeHelmRelease } from '../tools/helm.ts';
@@ -22,9 +23,13 @@ import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type S
 import { loadConfig } from '../lib/config.ts';
 import type { HeimdallConfig } from '../lib/config.ts';
 import { compileRules } from '../lib/regex-redact.ts';
+import { loadRunbooks } from '../lib/runbooks.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
+
+const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
+const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);
 
 // Typed against the config schema keys so TypeScript enforces that every key in
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
@@ -66,7 +71,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default createAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(enabledToolKeys, lockedNs),
+  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext),
   tools: clusterTools,
   subagents,
 }));

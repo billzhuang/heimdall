@@ -85,6 +85,12 @@ const NamespaceSchema = v.nullish(
   }),
 );
 
+// Runbook integration — local markdown files injected into the system prompt.
+const RunbookEntrySchema = v.object({
+  path: v.string(),
+  tags: v.nullish(v.array(v.string()), []),
+});
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
@@ -95,6 +101,8 @@ const HeimdallConfigSchema = v.object({
   // User-configurable regex redaction rules (disabled by default).
   redaction: RedactionSchema,
   namespace: NamespaceSchema,
+  // Local markdown runbooks loaded into system context at startup.
+  runbooks: v.nullish(v.array(RunbookEntrySchema), []),
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;

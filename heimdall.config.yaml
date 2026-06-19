@@ -46,3 +46,15 @@ tools:
 #
 # namespace:
 #   locked: prod-payments
+
+# Runbook integration — load local markdown playbooks into the system prompt.
+# Paths are resolved relative to this config file's directory.
+# Untagged runbooks always load; tagged ones load only when their tags match the
+# current query (useful when starting heimdall with --prompt).
+#
+# runbooks:
+#   - path: ./runbooks/general.md
+#   - path: ./runbooks/api-latency.md
+#     tags: [latency, api, response-time]
+#   - path: ./runbooks/oom-killed.md
+#     tags: [oom, memory, oomkilled]
