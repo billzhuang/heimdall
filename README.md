@@ -73,6 +73,37 @@ explain the network policies in the payments namespace
 audit RBAC for the default service account
 ```
 
+## Docker deployment
+
+Build the image and run it against your local kubeconfig:
+
+```bash
+docker build -t heimdall .
+docker run --rm -it \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -v ~/.kube:/home/heimdall/.kube:ro \
+  -p 3000:3000 \
+  heimdall
+```
+
+**Tool configuration in Docker**
+
+The image bundles the repo's `heimdall.config.yaml` at `/app/heimdall.config.yaml`, so
+any tool toggles you commit are preserved. To override at runtime without rebuilding:
+
+```bash
+# Mount a custom config over the bundled one
+docker run ... \
+  -v /host/path/heimdall.config.yaml:/app/heimdall.config.yaml:ro \
+  heimdall
+
+# Or point to a different path via env var
+docker run ... \
+  -e HEIMDALL_CONFIG=/config/heimdall.config.yaml \
+  -v /host/path/heimdall.config.yaml:/config/heimdall.config.yaml:ro \
+  heimdall
+```
+
 ## Configuration
 
 All configuration is via environment variables (see `.env.example`):
@@ -82,6 +113,7 @@ All configuration is via environment variables (see `.env.example`):
 | `ANTHROPIC_API_KEY` | Provider credential (required) | — |
 | `HEIMDALL_MODEL` | Flue `provider/model` specifier | `anthropic/claude-sonnet-4-6` |
 | `KUBECONFIG` | Path to kubeconfig | `~/.kube/config` |
+| `HEIMDALL_CONFIG` | Path to `heimdall.config.yaml` | `<cwd>/heimdall.config.yaml` |
 | `HEIMDALL_KUBECTL_CACHE` | Set to `0` to disable the JSON cache | enabled |
 | `HEIMDALL_KUBECTL_CACHE_TTL` | Cache TTL in seconds | `30` |
 | `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |
