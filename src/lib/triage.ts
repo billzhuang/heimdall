@@ -25,10 +25,16 @@ export type TriageCategory = (typeof TRIAGE_CATEGORIES)[number];
  * triage run is repeatable and comparable.
  */
 export function buildTriagePrompt(opts: TriageOptions = {}): string {
-  const nsFlag = opts.namespace ? `-n ${opts.namespace}` : '-A';
+  const nsSuffix = opts.namespace
+    ? ` -n ${opts.namespace}`
+    : opts.allNamespaces
+      ? ' -A'
+      : '';
   const scope = opts.namespace
     ? `namespace "${opts.namespace}"`
-    : 'all namespaces';
+    : opts.allNamespaces
+      ? 'all namespaces'
+      : 'the default namespace';
 
   return `Run a complete cluster health triage sweep scoped to ${scope}.
 Work through ALL of the following checks in order. Do not skip any category.
@@ -36,19 +42,19 @@ Work through ALL of the following checks in order. Do not skip any category.
 1. **Nodes** — \`kubectl get nodes -o wide\`
    Flag: NotReady status; MemoryPressure, DiskPressure, or PIDPressure conditions; Unschedulable nodes.
 
-2. **Pods** — \`kubectl get pods ${nsFlag} -o wide\`
+2. **Pods** — \`kubectl get pods${nsSuffix} -o wide\`
    Flag: CrashLoopBackOff; ImagePullBackOff or ErrImagePull; OOMKilled; Pending > 5 min; ContainerCreating > 5 min; restart count > 5; any phase other than Running or Succeeded.
 
-3. **Workloads** — \`kubectl get deployments,statefulsets,daemonsets ${nsFlag}\`
-   Flag: unavailable replicas (READY < DESIRED). For any flagged workload, check \`kubectl rollout status deployment/<name> -n <ns>\` to see if a rollout is stuck.
+3. **Workloads** — \`kubectl get deployments,statefulsets,daemonsets${nsSuffix}\`
+   Flag: unavailable replicas (READY < DESIRED). For any flagged workload, check \`kubectl rollout status deployment/<name> -n <ns> --timeout=5s\` to see if a rollout is stuck.
 
-4. **Events** — \`kubectl get events ${nsFlag} --sort-by='.lastTimestamp'\`
+4. **Events** — \`kubectl get events${nsSuffix} --sort-by='.lastTimestamp'\`
    Report Warning-type events from the last hour. Group by reason.
 
-5. **PVCs** — \`kubectl get pvc ${nsFlag}\`
+5. **PVCs** — \`kubectl get pvc${nsSuffix}\`
    Flag: any PVC in Pending or Lost phase.
 
-6. **Jobs** — \`kubectl get jobs ${nsFlag}\`
+6. **Jobs** — \`kubectl get jobs${nsSuffix}\`
    Flag: any Job with failed completions (FAILED > 0) or that appears to be hung (COMPLETIONS shows 0/N and the job is old).
 
 For each finding provide:

@@ -85,8 +85,18 @@ const opts: { namespace?: string; allNamespaces?: boolean } = {};
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if ((arg === '-n' || arg === '--namespace') && args[i + 1]) {
+  if (arg === '-n' || arg === '--namespace') {
+    if (i + 1 >= args.length || args[i + 1].startsWith('-')) {
+      process.stderr.write(`Error: ${arg} requires an argument\n`);
+      process.exit(1);
+    }
     opts.namespace = args[++i];
+  } else if (arg.startsWith('--namespace=')) {
+    opts.namespace = arg.slice('--namespace='.length);
+    if (!opts.namespace) {
+      process.stderr.write('Error: --namespace= requires a non-empty value\n');
+      process.exit(1);
+    }
   } else if (arg === '-A' || arg === '--all-namespaces') {
     opts.allNamespaces = true;
   } else if (arg === '-h' || arg === '--help') {
@@ -96,7 +106,7 @@ Run a structured whole-cluster health sweep and report findings by severity.
 
 Options:
   -n, --namespace <ns>   Scope the sweep to a single namespace
-  -A, --all-namespaces   Sweep all namespaces (default when no namespace given)
+  -A, --all-namespaces   Sweep all namespaces
   -h, --help             Show this help message
 
 Examples:
@@ -106,6 +116,9 @@ Examples:
   npm run triage -- -n staging
 `);
     process.exit(0);
+  } else {
+    process.stderr.write(`Error: unknown option: ${arg}\n`);
+    process.exit(1);
   }
 }
 
