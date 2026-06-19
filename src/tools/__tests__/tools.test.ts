@@ -78,6 +78,7 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
   let dir: string;
   let cfg: string;
   let prevKubeconfig: string | undefined;
+  let prevK8sServiceHost: string | undefined;
 
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), 'heimdall-tools-'));
@@ -85,11 +86,16 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
     await writeFile(cfg, KUBECONFIG, 'utf8');
     prevKubeconfig = process.env.KUBECONFIG;
     process.env.KUBECONFIG = cfg;
+    // Prevent in-cluster detection from short-circuiting these tests when they
+    // run inside a Kubernetes pod (e.g. in CI deployed to EKS).
+    prevK8sServiceHost = process.env.KUBERNETES_SERVICE_HOST;
+    delete process.env.KUBERNETES_SERVICE_HOST;
   });
 
   afterAll(async () => {
     if (prevKubeconfig === undefined) delete process.env.KUBECONFIG;
     else process.env.KUBECONFIG = prevKubeconfig;
+    if (prevK8sServiceHost !== undefined) process.env.KUBERNETES_SERVICE_HOST = prevK8sServiceHost;
     await rm(dir, { recursive: true, force: true });
   });
 

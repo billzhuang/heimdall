@@ -25,6 +25,26 @@ export function eksKubeconfigPath(): string {
   return join(tmpdir(), `heimdall-eks-kubeconfig-${user}`);
 }
 
+// Cache the generation promise so concurrent callers share one AWS CLI invocation.
+let _eksKubeconfigPromise: Promise<string> | null = null;
+
+/**
+ * Generate the EKS kubeconfig once per process; subsequent calls return the same
+ * cached promise. Use this instead of calling generateEksKubeconfig() directly
+ * so all kubectl executions see the same file without repeated AWS API calls.
+ */
+export function ensureEksKubeconfig(): Promise<string> {
+  if (!_eksKubeconfigPromise) {
+    _eksKubeconfigPromise = generateEksKubeconfig();
+  }
+  return _eksKubeconfigPromise;
+}
+
+/** Reset the EKS kubeconfig cache (test helper). */
+export function _resetEksKubeconfigCache(): void {
+  _eksKubeconfigPromise = null;
+}
+
 /**
  * Run `aws eks update-kubeconfig` for the cluster named in HEIMDALL_EKS_CLUSTER,
  * writing the result to a temp file and returning its path.

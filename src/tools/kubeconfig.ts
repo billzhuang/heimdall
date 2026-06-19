@@ -6,12 +6,11 @@ import * as v from 'valibot';
 import {
   IN_CLUSTER_CONTEXT,
   getContextNames,
-  inClusterConfig,
   isInCluster,
   parseKubeconfig,
   resolveKubeconfigPath,
 } from '../lib/kubeconfig.ts';
-import { generateEksKubeconfig, isEksMode } from '../lib/eks.ts';
+import { ensureEksKubeconfig, isEksMode } from '../lib/eks.ts';
 import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
 
 export const listContexts = defineTool({
@@ -27,10 +26,11 @@ export const listContexts = defineTool({
     }
 
     // EKS mode: generate kubeconfig dynamically via `aws eks update-kubeconfig`.
+    // ensureEksKubeconfig caches the result so this doesn't re-run on every call.
     let kubeconfigPath: string;
     if (isEksMode()) {
       try {
-        kubeconfigPath = await generateEksKubeconfig();
+        kubeconfigPath = await ensureEksKubeconfig();
       } catch (err) {
         return `Failed to generate EKS kubeconfig: ${(err as Error).message}`;
       }

@@ -18,6 +18,7 @@ import { join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
+import { ensureEksKubeconfig, isEksMode } from './eks.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -193,8 +194,16 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   }
 
   const env = { ...process.env };
-  if (!inCluster && options.kubeconfig) {
+  if (inCluster) {
+    // In-cluster: kubectl uses the mounted service account token automatically.
+    // Do not set KUBECONFIG — it would override the in-cluster config.
+    delete env.KUBECONFIG;
+  } else if (options.kubeconfig) {
     env.KUBECONFIG = options.kubeconfig;
+  } else if (isEksMode()) {
+    // EKS mode: wire the generated kubeconfig into every kubectl call so
+    // runKubectl doesn't fall back to ~/.kube/config.
+    env.KUBECONFIG = await ensureEksKubeconfig();
   }
 
   // Serve JSON `get` reads from the short-TTL cache when possible.
@@ -213,7 +222,9 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       if (inCluster) {
         effectiveContext = IN_CLUSTER_CONTEXT;
       } else {
-        const cfg = await parseKubeconfig(resolveKubeconfigPath(options.kubeconfig));
+        // Use the same kubeconfig resolution that env.KUBECONFIG was set to above.
+        const cfgPath = options.kubeconfig ?? (isEksMode() ? await ensureEksKubeconfig() : undefined);
+        const cfg = await parseKubeconfig(resolveKubeconfigPath(cfgPath));
         effectiveContext = cfg?.currentContext ?? '';
       }
     }
