@@ -370,6 +370,24 @@ describe('structured RCA fields', () => {
     expect(parseOneShotOutput(raw).evidence).toBeUndefined();
   });
 
+  it('parses evidence from a numbered list (e.g. "1. finding: evidence")', () => {
+    const raw = `Answer:\nok\n\nEvidence:\n1. OOMKilled pods: kubectl describe pod → exit 137\n2. high memory: limits.memory: 256Mi\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.evidence).toMatchObject({
+      'OOMKilled pods': 'kubectl describe pod → exit 137',
+      'high memory': 'limits.memory: 256Mi',
+    });
+  });
+
+  it('does not truncate answer on a phrase like "Evidence points to..." (no colon/prefix)', () => {
+    const raw = `Answer:\nEvidence points to a misconfigured probe.\nCausal chain analysis shows restart loops.\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.answer).toContain('Evidence points to');
+    expect(result.answer).toContain('Causal chain analysis');
+    expect(result.causalChain).toBeUndefined();
+    expect(result.evidence).toBeUndefined();
+  });
+
   it('preserves suggestedCommands from the answer section only (not RCA sections)', () => {
     const raw = `Answer:\nRun \`kubectl get pods -n prod\`.\n\nRemediation Steps:\n1. Apply the fix\n`;
     const result = parseOneShotOutput(raw);

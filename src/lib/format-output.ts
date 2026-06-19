@@ -41,7 +41,7 @@ export interface OneShotFinding {
  * Validity Score, Remediation Steps). Used to find section boundaries.
  */
 const RCA_SECTION_HEADER_RE =
-  /(?:^|\n)(?:##?\s*)?(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?[ \t]*/im;
+  /(?:^|\n)(?:##?\s+(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?|(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):)[ \t]*/im;
 
 /**
  * Extract the body of a named section from raw output.
@@ -69,7 +69,7 @@ function parseBulletList(body: string): string[] {
 function parseEvidenceMap(body: string): Record<string, string> | null {
   const map: Record<string, string> = {};
   for (const line of body.split('\n')) {
-    const stripped = line.replace(/^\s*[-*•]\s*/, '').trim();
+    const stripped = line.replace(/^\s*(?:[-*•]|\d+[.):])\s*/, '').trim();
     const sep = stripped.indexOf(': ');
     if (sep > 0) {
       const key = stripped.slice(0, sep).trim();
@@ -128,25 +128,25 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
 
   // ── Structured RCA fields ────────────────────────────────────────────────
 
-  const causalBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s*)?Causal Chain:?[ \t]*\n/i);
+  const causalBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s+Causal Chain:?|Causal Chain:)[ \t]*\n/i);
   if (causalBody) {
     const items = parseBulletList(causalBody);
     if (items.length > 0) finding.causalChain = items;
   }
 
-  const evidenceBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s*)?Evidence:?[ \t]*\n/i);
+  const evidenceBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s+Evidence:?|Evidence:)[ \t]*\n/i);
   if (evidenceBody) {
     const map = parseEvidenceMap(evidenceBody);
     if (map) finding.evidence = map;
   }
 
-  const vsMatch = /(?:^|\n)(?:##?\s*)?Validity Score:?[ \t]*(\d+(?:\.\d+)?)/i.exec(raw);
+  const vsMatch = /(?:^|\n)(?:##?\s+Validity Score:?|Validity Score:)[ \t]*(\d+(?:\.\d+)?)/i.exec(raw);
   if (vsMatch) {
     const score = parseFloat(vsMatch[1]);
     if (!isNaN(score)) finding.validityScore = Math.min(1, Math.max(0, score));
   }
 
-  const remBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s*)?Remediation Steps?:?[ \t]*\n/i);
+  const remBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s+Remediation Steps?:?|Remediation Steps?:)[ \t]*\n/i);
   if (remBody) {
     const items = parseBulletList(remBody);
     if (items.length > 0) finding.remediationSteps = items;
