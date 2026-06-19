@@ -29,7 +29,7 @@ Answer:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the high-level summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -52,6 +52,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>): string {
       '- `kubectl`: run a single READ-ONLY kubectl command. Pass everything after `kubectl`\n  as the `args` string (e.g. "get pods -n kube-system -o json"). No shell pipes —\n  prefer label selectors, field selectors, and jsonpath to narrow output.',
     has('listContexts') && '- `list_contexts`: list available cluster contexts from the kubeconfig.',
     has('listNamespaces') && '- `list_namespaces`: list namespaces in a context.',
+    has('helmRelease') &&
+      '- `helm_release`: read-only Helm release inspection. Actions: list (all releases in a namespace or cluster-wide), status (release health), get (values / manifest / notes for a release).',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [

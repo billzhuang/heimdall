@@ -18,7 +18,7 @@ describe('loadConfig', () => {
 
   it('returns all-enabled defaults when no config file exists', () => {
     const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('defaults audit to disabled when no audit section is present', () => {
@@ -67,28 +67,28 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('returns defaults when the YAML is malformed', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, ': bad yaml: [\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('returns defaults when the config fails schema validation', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, `tools:\n  kubectl: "yes"\n`); // string instead of boolean
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('enables all tools when the tools section is omitted', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '# no tools key\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('handles null tools block (empty YAML key like `tools:`) gracefully', () => {
@@ -96,14 +96,14 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'tools:\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('returns defaults and warns when config is a scalar (not a mapping)', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'true\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
   });
 
   it('each call returns an independent object (no shared mutable default)', () => {
@@ -144,6 +144,17 @@ describe('loadConfig', () => {
       expect(config.tools.kubectl).toBe(false);
       expect(config.tools.listContexts).toBe(false);
       expect(config.tools.listNamespaces).toBe(false);
+    });
+
+    it('accepts helm_release as an alias for helmRelease', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  helm_release: false\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const config = loadConfig(configPath);
+      expect(config.tools.helmRelease).toBe(false);
+      expect(config.tools.kubectl).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+      warnSpy.mockRestore();
     });
   });
 
