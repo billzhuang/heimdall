@@ -3,10 +3,14 @@
   "version": "0.2.0",
   "description": "AI-powered, read-only Kubernetes SRE agent built on the Flue agent framework",
   "type": "module",
+  "bin": {
+    "heimdall": "bin/heimdall"
+  },
   "scripts": {
     "dev": "flue dev --target node",
     "build": "flue build --target node",
     "connect": "flue connect heimdall local --target node",
+    "prompt": "bin/heimdall",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,12 +28,12 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@flue/cli": "^1.0.0-beta.1",
     "@flue/runtime": "^1.0.0-beta.2",
     "js-yaml": "^4.2.0",
     "valibot": "^1.4.1"
   },
   "devDependencies": {
-    "@flue/cli": "^1.0.0-beta.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.9.3",
     "@vitest/coverage-v8": "^4.1.9",

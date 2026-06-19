@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# One-shot Heimdall CLI — send a single prompt and exit.
+# Usage: heimdall -p "Why is my api pod crash-looping?"
+set -euo pipefail
+
+# Resolve symlinks so this works when invoked via `npm install -g` / `npm link`.
+_src="${BASH_SOURCE[0]}"
+while [[ -L "$_src" ]]; do
+  _dir="$(cd "$(dirname "$_src")" && pwd)"
+  _src="$(readlink "$_src")"
+  [[ "$_src" != /* ]] && _src="$_dir/$_src"
+done
+SCRIPT_DIR="$(cd "$(dirname "$_src")" && pwd)"
+unset _src _dir
+
+# Prefer the project-local flue binary; fall back to PATH (global install).
+FLUE="${SCRIPT_DIR}/../node_modules/.bin/flue"
+if [[ ! -x "$FLUE" ]]; then
+  FLUE="$(command -v flue 2>/dev/null || true)"
+fi
+if [[ -z "$FLUE" ]] || [[ ! -x "$FLUE" ]]; then
+  echo "Error: flue CLI not found. Run 'npm install' in the project root first." >&2
+  exit 1
+fi
+
+show_help() {
+  cat <<EOF
+Usage: heimdall -p <prompt>
+
+Run the Heimdall Kubernetes SRE agent with a single prompt and exit.
+
+Options:
+  -p, --prompt <text>   Prompt to send to the agent
+  -h, --help            Show this help message
+
+Examples:
+  heimdall -p "Check all pods in the default namespace"
+  heimdall -p "Why is my frontend deployment crash-looping in prod?"
+  heimdall -p "Audit RBAC for the payments service account"
+
+Environment variables are read from .env (see .env.example).
+For interactive mode use: npm run connect
+EOF
+}
+
+PROMPT=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--prompt)
+      [[ $# -lt 2 ]] && { echo "Error: -p requires an argument" >&2; exit 1; }
+      PROMPT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    --)
+      shift
+      PROMPT="$*"
+      break
+      ;;
+    -*)
+      echo "Error: unknown option: $1" >&2
+      show_help >&2
+      exit 1
+      ;;
+    *)
+      echo "Error: unexpected argument '$1' — use -p to pass a prompt" >&2
+      show_help >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z "$PROMPT" ]]; then
+  echo "Error: a prompt is required  (-p <text>)" >&2
+  show_help >&2
+  exit 1
+fi
+
+printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node

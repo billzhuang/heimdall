@@ -27,7 +27,26 @@ cp .env.example .env   # then set ANTHROPIC_API_KEY
 
 ## Usage
 
-Talk to the agent interactively:
+### One-shot mode
+
+Send a single prompt and exit — useful in scripts, CI, and ad-hoc investigations:
+
+```bash
+npm run prompt -- -p "Why is my api pod crash-looping in prod?"
+```
+
+After `npm install -g` (or `npm link`), the `heimdall` binary is available directly:
+
+```bash
+heimdall -p "Why is my api pod crash-looping in prod?"
+heimdall -p "List all deployments with fewer than 2 replicas"
+heimdall -p "Audit RBAC for the payments service account"
+heimdall --help
+```
+
+### Interactive mode
+
+For back-and-forth investigation sessions:
 
 ```bash
 npm run connect          # = flue connect heimdall local --target node
