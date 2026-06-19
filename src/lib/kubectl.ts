@@ -192,6 +192,39 @@ function hasContextFlag(argv: string[]): boolean {
 }
 
 /**
+ * True when the argv requests a templated output format (jsonpath, go-template,
+ * custom-columns) that produces arbitrary text — structured redaction cannot apply.
+ */
+function isTemplatedOutput(argv: string[]): boolean {
+  const TEMPLATE_RE = /^(?:jsonpath|jsonpath-file|go-template|go-template-file|custom-columns|custom-columns-file)(?:=|$)/;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if ((a === '-o' || a === '--output') && i + 1 < argv.length) {
+      return TEMPLATE_RE.test(argv[i + 1]);
+    }
+    if (a.startsWith('--output=')) return TEMPLATE_RE.test(a.slice('--output='.length));
+    if (a.startsWith('-o=')) return TEMPLATE_RE.test(a.slice('-o='.length));
+    // compact form: -ojsonpath=... (no equals between -o and format name)
+    if (a.startsWith('-o') && a.length > 2 && !a.startsWith('--')) return TEMPLATE_RE.test(a.slice(2));
+  }
+  return false;
+}
+
+/** True when the argv targets a Secret resource (secret, secrets, secret/name). */
+function targetsSecretResource(argv: string[]): boolean {
+  for (const a of argv) {
+    if (a.startsWith('-')) continue;
+    if (/^secrets?$/i.test(a) || /^secrets?\//i.test(a)) return true;
+    if (a.includes(',')) {
+      for (const part of a.split(',')) {
+        if (/^secrets?$/i.test(part) || /^secrets?\//i.test(part)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Parse a Kubernetes/Go duration string (e.g. "30s", "2m", "1h30m") to milliseconds.
  * Returns null for unrecognised formats; 0-ms durations also return null.
  * Exported so tests can cover it without spawning kubectl.
@@ -273,6 +306,14 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return `BLOCKED: ${validation.reason}`;
   }
 
+  // Templated output formats (jsonpath, go-template, custom-columns) produce
+  // arbitrary text that structured redaction cannot parse. Block them for Secret
+  // resources so raw secret values can never reach the model.
+  if (options.redactSecrets !== false && isTemplatedOutput(argv) && targetsSecretResource(argv)) {
+    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
+    return 'BLOCKED: templated output formats (jsonpath, go-template, custom-columns) cannot be safely redacted for Secret resources. Use -o json or -o yaml instead — secret values are automatically redacted from structured output.';
+  }
+
   // When running inside a Kubernetes pod, kubectl reads the mounted service account
   // token automatically. Injecting --context or KUBECONFIG would override that
   // mechanism, so we skip both when in-cluster.
@@ -315,7 +356,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
         effectiveContext = cfg?.currentContext ?? '';
       }
     }
-    const identity = JSON.stringify({ argv, kubeconfig: env.KUBECONFIG ?? '', effectiveContext });
+    const identity = JSON.stringify({ argv, kubeconfig: env.KUBECONFIG ?? '', effectiveContext, redacted: options.redactSecrets !== false });
     const hash = createHash('sha256').update(identity).digest('hex');
     cacheFile = joinPath(getCacheDir(), `${hash}.json`);
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());

@@ -160,6 +160,37 @@ describe('runKubectl (policy enforcement)', () => {
     expect(await runKubectl('auth reconcile -f rbac.yaml')).toMatch(/^BLOCKED:/);
   });
 
+  it('blocks templated output for Secret resources (jsonpath)', async () => {
+    const result = await runKubectl("get secret my-secret -o jsonpath='{.data.token}'");
+    expect(result).toMatch(/^BLOCKED:/);
+    expect(result).toMatch(/jsonpath/);
+  });
+
+  it('blocks templated output for Secret resources (go-template)', async () => {
+    const result = await runKubectl('get secrets -o go-template={{.items}}');
+    expect(result).toMatch(/^BLOCKED:/);
+  });
+
+  it('blocks templated output for Secret resources (custom-columns)', async () => {
+    expect(await runKubectl('get secret db-creds -o custom-columns=NAME:.metadata.name')).toMatch(/^BLOCKED:/);
+  });
+
+  it('blocks templated output for multi-resource list containing secrets', async () => {
+    expect(await runKubectl('get pods,secrets -o jsonpath={.items}')).toMatch(/^BLOCKED:/);
+  });
+
+  it('does not block templated output for non-Secret resources', async () => {
+    // Should reach exec (no cluster) and return a kubectl error, not BLOCKED
+    const result = await runKubectl('get pods -o jsonpath={.items}');
+    expect(result).not.toMatch(/^BLOCKED:/);
+  });
+
+  it('does not block templated Secret output when redactSecrets is explicitly false', async () => {
+    // When redaction is intentionally disabled, templated output is allowed through
+    const result = await runKubectl("get secret my-secret -o jsonpath='{.data.token}'", { redactSecrets: false });
+    expect(result).not.toMatch(/^BLOCKED:/);
+  });
+
   // The allow path (get/describe/auth can-i not blocked) is asserted in
   // kubectl-safety.test.ts against validateCommand, without spawning kubectl —
   // executing an allowed command here would depend on a live cluster and the
