@@ -52,6 +52,53 @@ export interface WatchFilterConfig {
   reasons?: string[] | null;
 }
 
+/** Opaque map of cooldown key → timestamp (ms) of last diagnosis. */
+export type CooldownState = Map<string, number>;
+
+const MAX_COOLDOWN_ENTRIES = 10_000;
+
+/**
+ * Build the de-dup key for an event: namespace + involved-object kind/name + reason.
+ * Two events with the same key are considered the same repeating condition.
+ */
+export function eventCooldownKey(event: K8sEventObject): string {
+  const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? '';
+  const kind = event.involvedObject.kind ?? 'Unknown';
+  const name = event.involvedObject.name ?? 'unknown';
+  return `${ns}/${kind}/${name}/${event.reason}`;
+}
+
+/**
+ * Return true when this event should trigger a new diagnosis.
+ *
+ * Suppresses re-diagnosis when the same (namespace, object, reason) key was
+ * already diagnosed within `cooldownSeconds`.  When it returns true, the key's
+ * last-seen time is updated in `state` so the caller does not need to track it.
+ *
+ * Expired entries are pruned from `state` when it grows past MAX_COOLDOWN_ENTRIES
+ * to keep memory bounded over long-running watch sessions.
+ */
+export function shouldDiagnose(
+  event: K8sEventObject,
+  state: CooldownState,
+  nowMs: number,
+  cooldownSeconds: number,
+): boolean {
+  const key = eventCooldownKey(event);
+  const lastMs = state.get(key);
+  if (lastMs !== undefined && nowMs - lastMs < cooldownSeconds * 1_000) {
+    return false;
+  }
+  if (state.size >= MAX_COOLDOWN_ENTRIES) {
+    const expiryMs = cooldownSeconds * 1_000;
+    for (const [k, ts] of state) {
+      if (nowMs - ts >= expiryMs) state.delete(k);
+    }
+  }
+  state.set(key, nowMs);
+  return true;
+}
+
 /**
  * Parse a single stdout line from `kubectl get events --watch -o json`.
  *
