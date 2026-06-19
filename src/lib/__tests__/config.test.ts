@@ -21,6 +21,27 @@ describe('loadConfig', () => {
     expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true });
   });
 
+  it('defaults audit to disabled when no audit section is present', () => {
+    const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+    expect(config.audit?.enabled).toBe(false);
+  });
+
+  it('loads audit config with enabled and file', () => {
+    const configPath = join(tmpDir, 'heimdall.config.yaml');
+    writeFileSync(configPath, `tools:\n  kubectl: true\naudit:\n  enabled: true\n  file: /var/log/audit.jsonl\n`);
+    const config = loadConfig(configPath);
+    expect(config.audit?.enabled).toBe(true);
+    expect(config.audit?.file).toBe('/var/log/audit.jsonl');
+  });
+
+  it('defaults audit.file to null/undefined (stderr) when omitted', () => {
+    const configPath = join(tmpDir, 'heimdall.config.yaml');
+    writeFileSync(configPath, `audit:\n  enabled: true\n`);
+    const config = loadConfig(configPath);
+    expect(config.audit?.enabled).toBe(true);
+    expect(config.audit?.file ?? null).toBeNull();
+  });
+
   it('loads a valid config file and respects disabled tools', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(

@@ -12,7 +12,7 @@
  */
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { appendFile, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
@@ -30,12 +30,50 @@ const MAX_RESULT_CHARS = 100_000;
 /** Sentinel returned when a command succeeds but produces no stdout/stderr. */
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
 
+export interface AuditConfig {
+  enabled: boolean;
+  /** Path to a JSONL file. Omit (or set null) to write to stderr. */
+  file?: string | null;
+}
+
+interface AuditEntry {
+  ts: string;
+  level: 'audit';
+  cmd: string;
+  context?: string;
+  allowed: boolean;
+  cached?: boolean;
+  durationMs?: number;
+  outcome: 'ok' | 'blocked' | 'error';
+}
+
+async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | undefined): Promise<void> {
+  try {
+    if (!audit?.enabled) return;
+    const line = JSON.stringify(entry);
+    if (audit.file) {
+      try {
+        await mkdir(dirname(audit.file), { recursive: true });
+        await appendFile(audit.file, line + '\n', 'utf8');
+      } catch {
+        process.stderr.write(line + '\n');
+      }
+    } else {
+      process.stderr.write(line + '\n');
+    }
+  } catch {
+    // Audit failures must never disrupt the main execution path.
+  }
+}
+
 export interface RunKubectlOptions {
   /** Optional cluster context. Injected as `--context=<ctx>` when the
    *  arguments do not already specify one. */
   context?: string;
   /** Override the kubeconfig path (otherwise inherits `KUBECONFIG`). */
   kubeconfig?: string;
+  /** Audit logging config. When enabled, a JSON line is written for every call. */
+  audit?: AuditConfig | null;
 }
 
 /** Whether the on-disk JSON cache is enabled (disabled by `HEIMDALL_KUBECTL_CACHE=0`). */
@@ -164,6 +202,10 @@ async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<str
  * a descriptive error message) as a string suitable for returning to the model.
  */
 export async function runKubectl(args: string, options: RunKubectlOptions = {}): Promise<string> {
+  const { audit } = options;
+  const startTs = new Date().toISOString();
+  const startMs = Date.now();
+
   const trimmed = args.trim();
   if (!trimmed) {
     return 'Error: no kubectl arguments provided.';
@@ -177,8 +219,10 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return 'Error: no kubectl subcommand provided.';
   }
 
-  const validation = validateCommand(`kubectl ${argv.join(' ')}`);
+  const cmd = `kubectl ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
+  const validation = validateCommand(cmd);
   if (!validation.allowed) {
+    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
     return `BLOCKED: ${validation.reason}`;
   }
 
@@ -229,6 +273,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     cacheFile = joinPath(getCacheDir(), `${hash}.json`);
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());
     if (cached !== null) {
+      await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
       return truncate(cached);
     }
   }
@@ -252,10 +297,12 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       }
     }
 
+    await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
     const err = error as { stderr?: string; stdout?: string; message?: string };
     const detail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
   }
 }
