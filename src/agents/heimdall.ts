@@ -13,8 +13,8 @@
 import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { makeKubectl } from '../tools/kubectl.ts';
-import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
-import { helmRelease } from '../tools/helm.ts';
+import { listContexts, makeListNamespaces } from '../tools/kubeconfig.ts';
+import { makeHelmRelease } from '../tools/helm.ts';
 import { makePrometheusQuery } from '../tools/prometheus.ts';
 import { makeAwsCli } from '../tools/aws.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
@@ -29,11 +29,13 @@ const regexRedactionRules = config.redaction?.enabled ? compileRules(config.reda
 // Typed against the config schema keys so TypeScript enforces that every key in
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
 // without adding the tool (or vice versa) is a compile-time error.
+const lockedNs = config.namespace?.locked;
+
 const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules, config.namespace?.locked),
+  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules, lockedNs),
   listContexts,
-  listNamespaces,
-  helmRelease,
+  listNamespaces: makeListNamespaces(lockedNs),
+  helmRelease: makeHelmRelease(lockedNs),
   prometheusQuery: makePrometheusQuery(config.prometheus, regexRedactionRules),
   awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
 };
@@ -64,7 +66,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default createAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(enabledToolKeys, config.namespace?.locked),
+  instructions: buildInstructions(enabledToolKeys, lockedNs),
   tools: clusterTools,
   subagents,
 }));

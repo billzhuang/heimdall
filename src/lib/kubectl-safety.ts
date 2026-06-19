@@ -235,7 +235,8 @@ export function applyNamespaceLockdown(argv: string[], lockedNs: string): Namesp
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
 
-    if (arg === '--all-namespaces') {
+    // Block --all-namespaces in all forms: bare, boolean (--all-namespaces=true/1), etc.
+    if (arg === '--all-namespaces' || arg.startsWith('--all-namespaces=')) {
       return {
         blocked: true,
         reason: `namespace lockdown is active — '--all-namespaces' is not allowed; only namespace '${lockedNs}' is accessible`,

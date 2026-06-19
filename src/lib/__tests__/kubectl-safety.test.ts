@@ -315,4 +315,14 @@ describe('applyNamespaceLockdown', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-n=other', `--namespace=${NS}`], NS);
     expect(result.blocked).toBe(true);
   });
+
+  it('blocks --all-namespaces=true (boolean form)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--all-namespaces=true'], NS);
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks --all-namespaces=1', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--all-namespaces=1'], NS);
+    expect(result.blocked).toBe(true);
+  });
 });
