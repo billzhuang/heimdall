@@ -306,8 +306,12 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     cacheFile = joinPath(getCacheDir(), `${hash}.json`);
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());
     if (cached !== null) {
+      // Apply redaction on cache reads too: cache entries written before
+      // redaction was enabled (or while it was temporarily disabled) may
+      // contain raw secret values.
+      const safeOutput = redactSecrets ? redactSecretValues(cached, argv) : cached;
       await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
-      return truncate(cached);
+      return truncate(safeOutput);
     }
   }
 

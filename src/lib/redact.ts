@@ -14,8 +14,8 @@ export const REDACTED_FORMAT_MESSAGE =
 function detectFormat(argv: string[]): 'json' | 'yaml' | 'other' {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '-o=json' || a === '--output=json') return 'json';
-    if (a === '-o=yaml' || a === '--output=yaml') return 'yaml';
+    if (a === '-ojson' || a === '-o=json' || a === '--output=json') return 'json';
+    if (a === '-oyaml' || a === '-o=yaml' || a === '--output=yaml') return 'yaml';
     if ((a === '-o' || a === '--output') && i + 1 < argv.length) {
       const val = argv[i + 1];
       if (val === 'json') return 'json';
@@ -33,10 +33,37 @@ const FLAGS_CONSUMING_NEXT = new Set([
   '--field-selector', '--sort-by', '-L', '--label-columns',
 ]);
 
-/** True when argv represents a `get secret[s]` command (not mixed resource types). */
+function isSecretResource(token: string): boolean {
+  const lower = token.toLowerCase();
+  return lower.split(',').some(
+    (part) =>
+      part === 'secret' ||
+      part === 'secrets' ||
+      part.startsWith('secret/') ||
+      part.startsWith('secrets/'),
+  );
+}
+
+/**
+ * True when argv contains a `get` command that includes secrets in the resource
+ * type. Handles leading global flags (e.g. `--context=...` prepended by
+ * runKubectl) and comma-separated resource types (e.g. `secret,configmap`).
+ */
 export function isGetSecretCommand(argv: string[]): boolean {
-  if (argv.length === 0 || argv[0] !== 'get') return false;
-  let i = 1;
+  // Scan past any leading global flags to find the 'get' subcommand.
+  let getIndex = -1;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === 'get') {
+      getIndex = i;
+      break;
+    }
+    if (!arg.startsWith('-')) return false; // Non-flag before 'get' → not a get command.
+    if (!arg.includes('=') && FLAGS_CONSUMING_NEXT.has(arg)) i++; // skip flag value token
+  }
+  if (getIndex === -1) return false;
+
+  let i = getIndex + 1;
   while (i < argv.length) {
     const a = argv[i];
     if (a.startsWith('-')) {
@@ -44,13 +71,7 @@ export function isGetSecretCommand(argv: string[]): boolean {
       i++;
       continue;
     }
-    const lower = a.toLowerCase();
-    return (
-      lower === 'secret' ||
-      lower === 'secrets' ||
-      lower.startsWith('secret/') ||
-      lower.startsWith('secrets/')
-    );
+    return isSecretResource(a);
   }
   return false;
 }

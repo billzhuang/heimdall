@@ -38,6 +38,20 @@ describe('isGetSecretCommand', () => {
     expect(isGetSecretCommand(['get', '--namespace', 'prod', 'secrets'])).toBe(true);
     expect(isGetSecretCommand(['get', '-o', 'json', 'secret', 'foo'])).toBe(true);
   });
+
+  it('handles --context= prepended by runKubectl (global flag before get)', () => {
+    expect(isGetSecretCommand(['--context=prod', 'get', 'secret', 'foo', '-o', 'jsonpath=...'])).toBe(true);
+    expect(isGetSecretCommand(['--context=prod', 'get', 'pods'])).toBe(false);
+  });
+
+  it('handles comma-separated resource types containing secret', () => {
+    expect(isGetSecretCommand(['get', 'secret,configmap', '-o', 'json'])).toBe(true);
+    expect(isGetSecretCommand(['get', 'configmap,secret', '-n', 'prod'])).toBe(true);
+  });
+
+  it('returns false for comma-separated types with no secret', () => {
+    expect(isGetSecretCommand(['get', 'pod,configmap'])).toBe(false);
+  });
 });
 
 // ── redactSecretValues — JSON ────────────────────────────────────────────────
@@ -190,6 +204,19 @@ describe('redactSecretValues — other formats', () => {
       'get', 'secret', 'db-creds', '-o', 'jsonpath={.data.password}',
     ]);
     expect(result).toBe(REDACTED_FORMAT_MESSAGE);
+  });
+
+  it('redacts when format is -ojson (attached, no space)', () => {
+    const output = secretJson({ password: 'dGVzdA==' });
+    const result = redactSecretValues(output, ['get', 'secret', 'db-creds', '-ojson']);
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    expect((parsed['data'] as Record<string, string>)['password']).toMatch(/^<redacted:/);
+  });
+
+  it('redacts when format is -oyaml (attached, no space)', () => {
+    const yamlSecret = `apiVersion: v1\nkind: Secret\nmetadata:\n  name: x\ndata:\n  key: c2VjcmV0\n`;
+    const result = redactSecretValues(yamlSecret, ['get', 'secret', 'x', '-oyaml']);
+    expect(result).toMatch(/<redacted: \d+ bytes>/);
   });
 
   it('blocks go-template on get secret with REDACTED_FORMAT_MESSAGE', () => {
