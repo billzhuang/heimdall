@@ -38,10 +38,12 @@ export interface RunKubectlOptions {
   kubeconfig?: string;
 }
 
+/** Whether the on-disk JSON cache is enabled (disabled by `HEIMDALL_KUBECTL_CACHE=0`). */
 function isCacheEnabled(): boolean {
   return process.env.HEIMDALL_KUBECTL_CACHE !== '0';
 }
 
+/** Cache TTL in seconds from `HEIMDALL_KUBECTL_CACHE_TTL`, falling back to the default. */
 function getCacheTtlSeconds(): number {
   const raw = process.env.HEIMDALL_KUBECTL_CACHE_TTL;
   if (!raw) return DEFAULT_CACHE_TTL_SECONDS;
@@ -49,6 +51,7 @@ function getCacheTtlSeconds(): number {
   return Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_CACHE_TTL_SECONDS;
 }
 
+/** Per-user cache directory under the configured base (or the OS temp dir). */
 function getCacheDir(): string {
   const baseDir = process.env.HEIMDALL_KUBECTL_CACHE_DIR || tmpdir();
   // Isolate per-user so a shared base dir (e.g. /tmp) cannot cause cross-user
@@ -128,10 +131,12 @@ export function isJsonOutput(argv: string[]): boolean {
   return false;
 }
 
+/** True when the argv already specifies a `--context` flag. */
 function hasContextFlag(argv: string[]): boolean {
   return argv.some((a) => a === '--context' || a.startsWith('--context='));
 }
 
+/** Cap very large output so a single read can't blow past the model's context. */
 function truncate(text: string): string {
   if (text.length <= MAX_RESULT_CHARS) return text;
   return (
@@ -140,6 +145,7 @@ function truncate(text: string): string {
   );
 }
 
+/** Return the cached contents if the file exists and is younger than the TTL, else null. */
 async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<string | null> {
   try {
     const info = await stat(cacheFile);

@@ -90,6 +90,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
+/** Per-specialist instruction strings, keyed by subagent name. */
 export const SUBAGENT_INSTRUCTIONS = {
   'log-analyzer': subagentInstructions(
     'You are a Kubernetes log-analysis specialist.',
