@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { writeFile, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   generateSuggestion,
@@ -8,6 +8,7 @@ import {
   buildReflectionPrompt,
   readLearningLog,
   appendLearningEntry,
+  resolveLogPath,
 } from '../self-improve.ts';
 
 describe('generateSuggestion', () => {
@@ -146,6 +147,49 @@ describe('readLearningLog', () => {
     } finally {
       await unlink(tmpPath).catch(() => undefined);
     }
+  });
+});
+
+describe('resolveLogPath', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns defaultPath when nothing is set', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    expect(resolveLogPath(undefined, undefined, '/default/path')).toBe('/default/path');
+  });
+
+  it('cli --log-path takes highest priority', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '/env/path.jsonl');
+    const result = resolveLogPath('/cli/path.jsonl', '/config/path.jsonl', '/default/path');
+    expect(result).toBe(resolve('/cli/path.jsonl'));
+  });
+
+  it('HEIMDALL_LEARNING_LOG env var takes priority over config and default', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '/env/path.jsonl');
+    const result = resolveLogPath(undefined, '/config/path.jsonl', '/default/path');
+    expect(result).toBe(resolve('/env/path.jsonl'));
+  });
+
+  it('config logFile takes priority over default when env is unset', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    const result = resolveLogPath(undefined, '/config/path.jsonl', '/default/path');
+    expect(result).toBe(resolve('/config/path.jsonl'));
+  });
+
+  it('resolves relative cli path to absolute', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    const result = resolveLogPath('relative/log.jsonl', undefined, '/default/path');
+    expect(result).toBe(resolve('relative/log.jsonl'));
+    expect(result.startsWith('/')).toBe(true);
+  });
+
+  it('resolves relative env path to absolute', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', 'relative/env-log.jsonl');
+    const result = resolveLogPath(undefined, undefined, '/default/path');
+    expect(result).toBe(resolve('relative/env-log.jsonl'));
+    expect(result.startsWith('/')).toBe(true);
   });
 });
 

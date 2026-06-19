@@ -27,6 +27,7 @@ import {
   appendLearningEntry,
   readLearningLog,
   buildReflectionPrompt,
+  resolveLogPath,
 } from './lib/self-improve.ts';
 import { readTaskHistory } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
@@ -200,6 +201,8 @@ async function main(): Promise<void> {
   let scenarioFilter: string | undefined;
   let reflect = false;
   let fromLog = false;
+  let cliLogPath: string | undefined;
+  let logStdout = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
@@ -210,8 +213,14 @@ async function main(): Promise<void> {
       reflect = true;
     } else if (args[i] === '--from-log') {
       fromLog = true;
+    } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
+      cliLogPath = args[++i];
+    } else if (args[i].startsWith('--log-path=')) {
+      cliLogPath = args[i].slice('--log-path='.length);
+    } else if (args[i] === '--log-stdout') {
+      logStdout = true;
     } else if (args[i] === '-h' || args[i] === '--help') {
-      process.stdout.write(`Usage: heimdall self-improve [--scenario <name>] [--reflect] [--from-log]
+      process.stdout.write(`Usage: heimdall self-improve [--scenario <name>] [--reflect] [--from-log] [--log-path <path>] [--log-stdout]
 
 Run eval scenarios and record failures as structured learning entries.
 
@@ -219,24 +228,37 @@ Options:
   --scenario, -s <name>  Run only scenarios whose filename contains <name>
   --reflect              After running, print a meta-prompt for instruction improvements
   --from-log             Reflect on existing learning-log.jsonl instead of running new evals
+  --log-path, -l <path>  Write the learning log to <path> instead of the default location
+  --log-stdout           Emit learning entries as JSONL to stdout (no file written)
   -h, --help             Show this help message
 
-The learning log is written to scenarios/learning-log.jsonl.
-Review it after each run to track what the agent is getting wrong and why.
+Log path resolution order (highest to lowest priority):
+  1. --log-path <path>
+  2. HEIMDALL_LEARNING_LOG environment variable
+  3. learning.logFile in heimdall.config.yaml
+  4. Default: scenarios/learning-log.jsonl (relative to the Heimdall package root)
+
+In container or lambda deployments the local filesystem is ephemeral. Use one of:
+  - Mount a persistent volume and set HEIMDALL_LEARNING_LOG=/mnt/volume/learning-log.jsonl
+  - Set learning.logFile in heimdall.config.yaml to an absolute path on a mounted volume
+  - Use --log-stdout to emit entries to stdout for aggregation by the container log driver
 
 Examples:
-  heimdall self-improve                       # run all scenarios, record failures
-  heimdall self-improve --reflect             # run evals + print reflection prompt
-  heimdall self-improve --reflect --from-log  # reflect on prior failures in the log
-  heimdall self-improve --scenario crashloop  # run only matching scenarios
+  heimdall self-improve                                          # run all scenarios, record failures
+  heimdall self-improve --reflect                               # run evals + print reflection prompt
+  heimdall self-improve --reflect --from-log                    # reflect on prior failures in the log
+  heimdall self-improve --scenario crashloop                    # run only matching scenarios
+  heimdall self-improve --log-path /mnt/efs/learning-log.jsonl  # write log to persistent volume
+  heimdall self-improve --log-stdout                            # emit JSONL entries to stdout
+  HEIMDALL_LEARNING_LOG=/mnt/data/log.jsonl heimdall self-improve
 `);
       process.exit(0);
     }
   }
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
-  const logPath = join(scenariosDir, LEARNING_LOG_NAME);
   const config = loadConfig();
+  const logPath = resolveLogPath(cliLogPath, config.learning?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
   const taskHistoryPath = config.learning?.file
     ? resolve(config.learning.file)
     : join(scenariosDir, TASK_HISTORY_NAME);
@@ -316,12 +338,20 @@ Examples:
     const learningEntries = failedResults.map(r =>
       buildLearningEntry(r.scenario, r.prompt, r.failures),
     );
-    for (const entry of learningEntries) {
-      await appendLearningEntry(entry, logPath);
+    if (logStdout) {
+      process.stdout.write('\n=== LEARNING ENTRIES (JSONL) ===\n');
+      for (const entry of learningEntries) {
+        process.stdout.write(JSON.stringify(entry) + '\n');
+      }
+      process.stdout.write('=== END LEARNING ENTRIES ===\n');
+    } else {
+      for (const entry of learningEntries) {
+        await appendLearningEntry(entry, logPath);
+      }
+      process.stdout.write(
+        `\n${failedResults.length} learning entr${failedResults.length === 1 ? 'y' : 'ies'} written to ${logPath}\n`,
+      );
     }
-    process.stdout.write(
-      `\n${failedResults.length} learning entr${failedResults.length === 1 ? 'y' : 'ies'} written to ${logPath}\n`,
-    );
 
     if (reflect) {
       const taskHistory = await readTaskHistory(taskHistoryPath);

@@ -99,6 +99,10 @@ const LearningSchema = v.nullish(
     // Path for the task-history JSONL log. Defaults to scenarios/task-history.jsonl
     // relative to the Heimdall package root. Set to an absolute path to redirect.
     file: v.nullish(v.string()),
+    // Path for the self-improve learning log (scenarios/learning-log.jsonl by default).
+    // In container/lambda deployments where the local filesystem is ephemeral, set this
+    // to a path on a mounted persistent volume, or use HEIMDALL_LEARNING_LOG env var.
+    logFile: v.nullish(v.string()),
   }),
   { enabled: true },
 );
