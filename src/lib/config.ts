@@ -33,6 +33,7 @@ const PrometheusSchema = v.nullish(
     // Request timeout in milliseconds (default 10 000).
     timeoutMs: v.nullish(v.number(), 10_000),
   }),
+);
 
 const AuditSchema = v.nullish(
   v.object({
@@ -41,6 +42,20 @@ const AuditSchema = v.nullish(
     file: v.nullish(v.string()),
   }),
   { enabled: false },
+);
+
+// Configurable regex redaction rules — applied to all tool output before the model sees it.
+const RedactionRuleSchema = v.object({
+  name: v.string(),
+  pattern: v.string(),
+});
+
+const RedactionSchema = v.nullish(
+  v.object({
+    enabled: v.nullish(v.boolean(), false),
+    rules: v.nullish(v.array(RedactionRuleSchema), []),
+  }),
+  { enabled: false, rules: [] },
 );
 
 // Watch mode config — controls the proactive K8s Warning event monitor.
@@ -70,6 +85,8 @@ const HeimdallConfigSchema = v.object({
   // Redact Secret .data / .stringData values in kubectl output (code-enforced, default on).
   redactSecrets: v.nullish(v.boolean(), true),
   prometheus: PrometheusSchema,
+  // User-configurable regex redaction rules (disabled by default).
+  redaction: RedactionSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;

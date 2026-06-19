@@ -13,6 +13,7 @@ import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { validateAwsCommand } from './aws-safety.ts';
 import type { AuditConfig } from './kubectl.ts';
+import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -62,6 +63,8 @@ function truncate(text: string): string {
 export interface RunAwsCliOptions {
   /** Audit logging config. When enabled, a JSON line is written for every call. */
   audit?: AuditConfig | null;
+  /** User-configured regex redaction rules compiled at startup. */
+  regexRedactionRules?: CompiledRedactionRule[];
 }
 
 /**
@@ -124,7 +127,7 @@ export function tokenizeAwsArgs(input: string): string[] {
  * a descriptive error message) as a string suitable for returning to the model.
  */
 export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): Promise<string> {
-  const { audit } = options;
+  const { audit, regexRedactionRules = [] } = options;
   const startTs = new Date().toISOString();
   const startMs = Date.now();
 
@@ -154,11 +157,13 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
     });
 
     const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
+    const output = applyRedaction(rawOutput, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
-    return truncate(rawOutput);
+    return truncate(output);
   } catch (error) {
     const err = error as { stderr?: string; stdout?: string; message?: string };
-    const detail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const detail = applyRedaction(rawDetail, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`aws exited with an error:\n${detail}`);
   }

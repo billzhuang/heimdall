@@ -260,6 +260,24 @@ The tool supports:
 Only read-only GET endpoints (`/api/v1/query`, `/api/v1/query_range`) are called.
 Results are capped at 20 000 characters to avoid overflowing the model's context.
 
+### Regex redaction
+
+Heimdall already structurally redacts Kubernetes Secret `.data`/`.stringData` values from kubectl output. For broader coverage — API keys that appear in ConfigMaps or pod env vars, bearer tokens in log snippets, PEM headers in Prometheus label values — add user-defined regex rules to `heimdall.config.yaml`:
+
+```yaml
+redaction:
+  enabled: true
+  rules:
+    - name: aws_access_key
+      pattern: 'AKIA[0-9A-Z]{16}'
+    - name: private_key_pem
+      pattern: '-----BEGIN( RSA| EC| OPENSSH)? PRIVATE KEY-----'
+    - name: generic_token
+      pattern: '(?i)(bearer|token|api[_-]?key)["\s:=]+[A-Za-z0-9/+._-]{20,}'
+```
+
+**Disabled by default.** When enabled, each rule's `pattern` is compiled as a JavaScript regex (global flag added automatically) and applied to all tool output before it reaches the model. Matches are replaced with `[REDACTED:<name>]`. Patterns are compiled once at startup; an invalid regex is skipped with a warning rather than crashing the agent.
+
 ## Project layout
 
 ```
