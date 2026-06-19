@@ -62,6 +62,12 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl diff -f - <<EOF').allowed).toBe(true);
   });
 
+  it('allows kubectl events (read-only event listing, kubectl ≥ 1.26)', () => {
+    expect(validateCommand('kubectl events').allowed).toBe(true);
+    expect(validateCommand('kubectl events --for=pod/my-pod').allowed).toBe(true);
+    expect(validateCommand('kubectl events --types=Warning -n prod').allowed).toBe(true);
+  });
+
   it('gates the auth family to read-only verbs', () => {
     expect(validateCommand('kubectl auth can-i get pods').allowed).toBe(true);
     expect(validateCommand('kubectl auth whoami').allowed).toBe(true);
