@@ -33,6 +33,7 @@ const PrometheusSchema = v.nullish(
     // Request timeout in milliseconds (default 10 000).
     timeoutMs: v.nullish(v.number(), 10_000),
   }),
+);
 
 const AuditSchema = v.nullish(
   v.object({
