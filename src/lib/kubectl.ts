@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
-import { parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
+import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -182,13 +182,18 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return `BLOCKED: ${validation.reason}`;
   }
 
-  const context = options.context ?? process.env.HEIMDALL_CONTEXT;
+  // When running inside a Kubernetes pod, kubectl reads the mounted service account
+  // token automatically. Injecting --context or KUBECONFIG would override that
+  // mechanism, so we skip both when in-cluster.
+  const inCluster = isInCluster();
+
+  const context = !inCluster ? (options.context ?? process.env.HEIMDALL_CONTEXT) : undefined;
   if (context && !hasContextFlag(argv)) {
     argv.unshift(`--context=${context}`);
   }
 
   const env = { ...process.env };
-  if (options.kubeconfig) {
+  if (!inCluster && options.kubeconfig) {
     env.KUBECONFIG = options.kubeconfig;
   }
 
@@ -205,8 +210,12 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     // data for cluster B after a context switch.
     let effectiveContext = '';
     if (!hasContextFlag(argv)) {
-      const cfg = await parseKubeconfig(resolveKubeconfigPath(options.kubeconfig));
-      effectiveContext = cfg?.currentContext ?? '';
+      if (inCluster) {
+        effectiveContext = IN_CLUSTER_CONTEXT;
+      } else {
+        const cfg = await parseKubeconfig(resolveKubeconfigPath(options.kubeconfig));
+        effectiveContext = cfg?.currentContext ?? '';
+      }
     }
     const identity = JSON.stringify({ argv, kubeconfig: env.KUBECONFIG ?? '', effectiveContext });
     const hash = createHash('sha256').update(identity).digest('hex');

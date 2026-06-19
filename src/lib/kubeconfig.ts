@@ -40,6 +40,26 @@ export function resolveKubeconfigPath(optionPath?: string): string {
   return optionPath || process.env.KUBECONFIG || getDefaultKubeconfigPath();
 }
 
+/** Context name used when Heimdall detects it is running inside a Kubernetes pod. */
+export const IN_CLUSTER_CONTEXT = 'in-cluster';
+
+/**
+ * True when the process is running inside a Kubernetes pod.
+ * kubectl automatically reads the mounted service account token in this case —
+ * no kubeconfig file or --context flag is needed.
+ */
+export function isInCluster(): boolean {
+  return !!process.env.KUBERNETES_SERVICE_HOST;
+}
+
+/** Synthetic single-context kubeconfig representing the pod's own cluster. */
+export function inClusterConfig(): ParsedKubeconfig {
+  return {
+    contexts: [{ name: IN_CLUSTER_CONTEXT, cluster: IN_CLUSTER_CONTEXT, user: IN_CLUSTER_CONTEXT }],
+    currentContext: IN_CLUSTER_CONTEXT,
+  };
+}
+
 /** Parse kubeconfig YAML content into contexts. Pure — used by tests. */
 export function parseKubeconfigContent(content: string): ParsedKubeconfig | null {
   try {
