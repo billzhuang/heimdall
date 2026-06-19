@@ -163,8 +163,7 @@ describe('isDestructiveCommand', () => {
 
   it('is true for destructive subcommands, even behind flags', () => {
     expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
-    // rollout is no longer destructive (it's a nested-verb family); use validateCommand for policy checks.
-    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(false);
+    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
     expect(validateCommand('kubectl --context=prod rollout restart deploy/api').allowed).toBe(false);
   });
 });
