@@ -15,7 +15,7 @@ import type { ToolDefinition } from '@flue/runtime';
 import { kubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
-import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions } from '../lib/instructions.ts';
+import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
 import type { HeimdallConfig } from '../lib/config.ts';
 
@@ -38,7 +38,7 @@ if (clusterTools.length === 0) {
   console.warn('[heimdall] No tools are enabled in heimdall.config.yaml — the agent has no cluster access.');
 }
 
-const subagents = (Object.keys(SUBAGENT_INSTRUCTIONS) as Array<keyof typeof SUBAGENT_INSTRUCTIONS>).map((name) =>
+const subagents = (Object.keys(SUBAGENT_INSTRUCTIONS) as SubagentName[]).map((name) =>
   defineAgentProfile({
     name,
     description: SUBAGENT_DESCRIPTIONS[name],
