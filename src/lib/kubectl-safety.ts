@@ -23,7 +23,6 @@ export const DESTRUCTIVE_KUBECTL_COMMANDS = [
   'cordon',
   'uncordon',
   'taint',
-  'rollout',
   // Commands that can execute arbitrary code or exfiltrate data
   'exec',
   'port-forward',
@@ -60,6 +59,8 @@ export const ALLOWED_KUBECTL_COMMANDS = [
  */
 export const NESTED_ALLOWED_VERBS: Record<string, readonly string[]> = {
   auth: ['can-i', 'whoami'],
+  // rollout mixes read-only verbs (status, history) with mutating ones (restart, undo, pause, resume).
+  rollout: ['status', 'history'],
 };
 
 export type DestructiveCommand = (typeof DESTRUCTIVE_KUBECTL_COMMANDS)[number];
