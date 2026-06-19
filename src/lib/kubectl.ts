@@ -353,7 +353,8 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return truncate(output);
   } catch (error) {
     const err = error as { stderr?: string; stdout?: string; message?: string };
-    const detail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const detail = redactSecrets ? redactSecretValues(rawDetail, argv) : rawDetail;
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
   }

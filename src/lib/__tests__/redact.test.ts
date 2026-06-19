@@ -44,6 +44,13 @@ describe('isGetSecretCommand', () => {
     expect(isGetSecretCommand(['--context=prod', 'get', 'pods'])).toBe(false);
   });
 
+  it('handles value-taking flags that shift resource position (--request-timeout bypass fix)', () => {
+    // Without the fix, --request-timeout consumes its value token, but if not in the set
+    // the value '5s' would be treated as the resource type and return false.
+    expect(isGetSecretCommand(['get', '--request-timeout', '5s', 'secret', 'db'])).toBe(true);
+    expect(isGetSecretCommand(['get', '--request-timeout', '5s', 'pods'])).toBe(false);
+  });
+
   it('handles comma-separated resource types containing secret', () => {
     expect(isGetSecretCommand(['get', 'secret,configmap', '-o', 'json'])).toBe(true);
     expect(isGetSecretCommand(['get', 'configmap,secret', '-n', 'prod'])).toBe(true);
@@ -136,10 +143,11 @@ describe('redactSecretValues — JSON', () => {
     expect((parsed['data'] as Record<string, string>)['password']).toBe('<redacted: 4 bytes>');
   });
 
-  it('byte count for stringData uses string length', () => {
+  it('byte count for stringData uses UTF-8 byte length', () => {
     const output = secretJson({}, { token: 'hello' });
     const result = redactSecretValues(output, argv('json'));
     const parsed = JSON.parse(result) as Record<string, unknown>;
+    // 'hello' is 5 ASCII bytes
     expect((parsed['stringData'] as Record<string, string>)['token']).toBe('<redacted: 5 bytes>');
   });
 

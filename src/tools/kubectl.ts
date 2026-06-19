@@ -17,7 +17,7 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean)
       'port-forward, ...) are blocked. For rollout: only "status" and "history" are allowed; ' +
       'restart/undo/pause/resume are blocked. There is no shell, so pipes/redirects do not work — ' +
       'use label selectors, --field-selector, or -o jsonpath to filter output. ' +
-      'Secret .data and .stringData values are always redacted in the output.',
+      'Treat Secret .data and .stringData values as sensitive regardless of output format.',
     parameters: v.object({
       args: v.pipe(
         v.string(),

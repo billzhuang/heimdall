@@ -6,6 +6,7 @@
  * instructions.
  */
 import * as yaml from 'js-yaml';
+import { OPTIONS_WITH_VALUE } from './kubectl-safety.ts';
 
 export const REDACTED_FORMAT_MESSAGE =
   'Secret values cannot be safely extracted in this output format. ' +
@@ -26,12 +27,8 @@ function detectFormat(argv: string[]): 'json' | 'yaml' | 'other' {
   return 'other';
 }
 
-const FLAGS_CONSUMING_NEXT = new Set([
-  '-n', '--namespace', '-o', '--output', '-l', '--selector', '-f', '--filename',
-  '-c', '--container', '--context', '--kubeconfig', '--as', '-v', '--v',
-  '--server', '-s', '--token', '--user', '--username', '--password', '--cluster',
-  '--field-selector', '--sort-by', '-L', '--label-columns',
-]);
+// Reuse the authoritative set from kubectl-safety.ts so the two parsers stay in sync.
+const FLAGS_CONSUMING_NEXT = OPTIONS_WITH_VALUE;
 
 function isSecretResource(token: string): boolean {
   const lower = token.toLowerCase();
@@ -96,7 +93,7 @@ function redactDataFields(
     const str = typeof value === 'string' ? value : String(value ?? '');
     const byteCount = isBase64
       ? Math.floor(str.replace(/=+$/, '').length * 3 / 4)
-      : str.length;
+      : Buffer.byteLength(str, 'utf8');
     result[key] = `<redacted: ${byteCount} bytes>`;
   }
   return result;

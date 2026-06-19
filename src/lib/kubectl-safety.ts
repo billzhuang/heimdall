@@ -104,7 +104,7 @@ export interface CommandValidationResult {
  * include every value-taking kubectl global flag to prevent bypass attacks
  * such as `kubectl --v 5 delete pods`. Allocated once at module load.
  */
-const OPTIONS_WITH_VALUE = new Set([
+export const OPTIONS_WITH_VALUE = new Set([
   '-n', '--namespace',
   '-c', '--container',
   '-l', '--selector',
