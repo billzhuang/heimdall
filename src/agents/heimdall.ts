@@ -15,7 +15,7 @@ import type { ToolDefinition } from '@flue/runtime';
 import { kubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
-import { SUBAGENT_INSTRUCTIONS, buildInstructions } from '../lib/instructions.ts';
+import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
 import type { HeimdallConfig } from '../lib/config.ts';
 
@@ -38,37 +38,15 @@ if (clusterTools.length === 0) {
   console.warn('[heimdall] No tools are enabled in heimdall.config.yaml — the agent has no cluster access.');
 }
 
-const logAnalyzer = defineAgentProfile({
-  name: 'log-analyzer',
-  description: 'Deep pod-log analysis: error correlation, timeline reconstruction, pattern detection.',
-  model: DEFAULT_MODEL,
-  instructions: SUBAGENT_INSTRUCTIONS['log-analyzer'],
-  tools: clusterTools,
-});
-
-const resourceAnalyzer = defineAgentProfile({
-  name: 'resource-analyzer',
-  description: 'CPU/memory requests & limits, capacity planning, resource bottleneck analysis.',
-  model: DEFAULT_MODEL,
-  instructions: SUBAGENT_INSTRUCTIONS['resource-analyzer'],
-  tools: clusterTools,
-});
-
-const networkDebugger = defineAgentProfile({
-  name: 'network-debugger',
-  description: 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
-  model: DEFAULT_MODEL,
-  instructions: SUBAGENT_INSTRUCTIONS['network-debugger'],
-  tools: clusterTools,
-});
-
-const securityAuditor = defineAgentProfile({
-  name: 'security-auditor',
-  description: 'RBAC, service accounts, security contexts, and exposed-secret review.',
-  model: DEFAULT_MODEL,
-  instructions: SUBAGENT_INSTRUCTIONS['security-auditor'],
-  tools: clusterTools,
-});
+const subagents = (Object.keys(SUBAGENT_INSTRUCTIONS) as Array<keyof typeof SUBAGENT_INSTRUCTIONS>).map((name) =>
+  defineAgentProfile({
+    name,
+    description: SUBAGENT_DESCRIPTIONS[name],
+    model: DEFAULT_MODEL,
+    instructions: SUBAGENT_INSTRUCTIONS[name],
+    tools: clusterTools,
+  }),
+);
 
 export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster issues with kubectl + AI reasoning.';
 
@@ -76,5 +54,5 @@ export default createAgent(() => ({
   model: DEFAULT_MODEL,
   instructions: buildInstructions(),
   tools: clusterTools,
-  subagents: [logAnalyzer, resourceAnalyzer, networkDebugger, securityAuditor],
+  subagents,
 }));

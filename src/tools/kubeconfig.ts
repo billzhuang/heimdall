@@ -48,9 +48,7 @@ export const listNamespaces = defineTool({
     ),
   }),
   execute: async ({ context }) => {
-    // In-cluster: there is only one cluster (the pod's own). Context is not applicable.
-    const effectiveContext = isInCluster() ? undefined : context;
-    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context: effectiveContext })).trim();
+    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
     // Surface policy/execution errors verbatim rather than parsing them as data.
     if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
       return output;

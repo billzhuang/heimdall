@@ -76,6 +76,14 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
+/** Short agent-facing description for each specialist, keyed by subagent name. */
+export const SUBAGENT_DESCRIPTIONS = {
+  'log-analyzer': 'Deep pod-log analysis: error correlation, timeline reconstruction, pattern detection.',
+  'resource-analyzer': 'CPU/memory requests & limits, capacity planning, resource bottleneck analysis.',
+  'network-debugger': 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
+  'security-auditor': 'RBAC, service accounts, security contexts, and exposed-secret review.',
+} as const;
+
 /** Per-specialist instruction strings, keyed by subagent name. */
 export const SUBAGENT_INSTRUCTIONS = {
   'log-analyzer': subagentInstructions(
