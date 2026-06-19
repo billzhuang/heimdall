@@ -53,6 +53,9 @@ export const ALLOWED_KUBECTL_COMMANDS = [
   // Server-side dry-run: compares live state against a manifest, no writes.
   // In practice the agent can only use this with inline manifests passed via -f.
   'diff',
+  // Read-only event listing (kubectl ≥ 1.26). --watch streams indefinitely;
+  // the tool's exec timeout will kill it, so no special flag blocking is needed.
+  'events',
 ] as const;
 
 /**
