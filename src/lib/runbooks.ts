@@ -15,6 +15,7 @@ export interface RunbookConfig {
 }
 
 const MAX_RUNBOOK_CHARS = 8_000;
+const TRUNCATION_MARKER = '\n[truncated]';
 
 /**
  * True when any of the given tags appears as a case-insensitive whole-word token
@@ -25,7 +26,7 @@ export function tagsMatch(tags: string[] | null | undefined, query: string): boo
   const q = query.toLowerCase();
   return tags.some((tag) => {
     const escaped = tag.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?<![a-z0-9_])${escaped}(?![a-z0-9_])`, 'i').test(q);
+    return new RegExp(`(?<![a-z0-9_])${escaped}(?![a-z0-9_])`).test(q);
   });
 }
 
@@ -66,7 +67,15 @@ export function loadRunbooks(configDir: string, configs: RunbookConfig[], query?
     const budget = MAX_RUNBOOK_CHARS - totalChars - header.length;
     if (budget <= 0) break;
 
-    const body = text.length <= budget ? text : text.slice(0, budget) + '\n[truncated]';
+    // Subtract marker length from the slice budget so the combined body never
+    // exceeds the remaining budget when truncation is applied. When the budget
+    // is smaller than the marker itself, use a partial marker rather than a
+    // negative slice index (which would trim from the end in JS).
+    const body = text.length <= budget
+      ? text
+      : budget <= TRUNCATION_MARKER.length
+        ? TRUNCATION_MARKER.slice(0, budget)
+        : text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
     parts.push(header + body);
     totalChars += header.length + body.length;
   }

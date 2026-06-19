@@ -95,6 +95,21 @@ describe('loadRunbooks', () => {
     expect(result).toContain('General steps');
   });
 
+  it('does not match tag as a substring of a larger word (word boundaries)', () => {
+    const dir = makeTmpDir();
+    writeFileSync(join(dir, 'api.md'), '# API runbook');
+    writeFileSync(join(dir, 'oom.md'), '# OOM runbook');
+    expect(loadRunbooks(dir, [{ path: 'api.md', tags: ['api'] }], 'rapid deployment')).toBe('');
+    expect(loadRunbooks(dir, [{ path: 'oom.md', tags: ['oom'] }], 'room is full')).toBe('');
+  });
+
+  it('is case-insensitive when matching tags', () => {
+    const dir = makeTmpDir();
+    writeFileSync(join(dir, 'oom.md'), '# OOM runbook');
+    const result = loadRunbooks(dir, [{ path: 'oom.md', tags: ['OOM', 'Memory'] }], 'pod oom killed');
+    expect(result).toContain('OOM runbook');
+  });
+
   it('loads all runbooks when no query is given', () => {
     const dir = makeTmpDir();
     writeFileSync(join(dir, 'a.md'), 'Runbook A');
@@ -121,7 +136,7 @@ describe('loadRunbooks', () => {
     const longContent = 'x'.repeat(10_000);
     writeFileSync(join(dir, 'big.md'), longContent);
     const result = loadRunbooks(dir, [{ path: 'big.md' }]);
-    expect(result.length).toBeLessThanOrEqual(8_000 + 200); // header overhead
+    expect(result.length).toBeLessThanOrEqual(8_000);
     expect(result).toContain('[truncated]');
   });
 
@@ -130,6 +145,18 @@ describe('loadRunbooks', () => {
     writeFileSync(join(dir, 'empty.md'), '   \n  ');
     const result = loadRunbooks(dir, [{ path: 'empty.md' }]);
     expect(result).toBe('');
+  });
+
+  it('stays within 8 000 chars when remaining budget is smaller than the truncation marker', () => {
+    // header = '\n\n### Runbook: a.md\n\n' = 21 chars
+    // body_a = 7948 → totalChars after a = 7969
+    // budget_b = 8000 - 7969 - 21 = 10 < TRUNCATION_MARKER.length (12)
+    // Without the guard, slice(0, 10-12) = slice(0,-2) overflows the cap.
+    const dir = makeTmpDir();
+    writeFileSync(join(dir, 'a.md'), 'a'.repeat(7948));
+    writeFileSync(join(dir, 'b.md'), 'overflow content that must not exceed cap');
+    const result = loadRunbooks(dir, [{ path: 'a.md' }, { path: 'b.md' }]);
+    expect(result.length).toBeLessThanOrEqual(8_000);
   });
 
   it('resolves paths relative to configDir', () => {

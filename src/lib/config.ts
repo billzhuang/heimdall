@@ -107,6 +107,7 @@ const SlackSchema = v.nullish(
   { enabled: false },
 );
 
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,

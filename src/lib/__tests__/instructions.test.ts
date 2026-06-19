@@ -128,6 +128,27 @@ describe('buildInstructions — namespace lockdown', () => {
   });
 });
 
+describe('buildInstructions — runbook context', () => {
+  it('injects runbook content under a Runbook context section', () => {
+    const out = buildInstructions(undefined, null, 'Follow this playbook: check HPA first.');
+    expect(out).toContain('## Runbook context');
+    expect(out).toContain('check HPA first');
+  });
+
+  it('does not include the Runbook context section when runbookContent is empty', () => {
+    expect(buildInstructions(undefined, null, '')).not.toContain('## Runbook context');
+    expect(buildInstructions()).not.toContain('## Runbook context');
+  });
+
+  it('places runbook context before the Tools section', () => {
+    const out = buildInstructions(undefined, null, 'step: restart HPA');
+    const rbPos = out.indexOf('## Runbook context');
+    const toolsPos = out.indexOf('## Tools');
+    expect(rbPos).toBeGreaterThan(-1);
+    expect(rbPos).toBeLessThan(toolsPos);
+  });
+});
+
 describe('DEFAULT_MODEL', () => {
   it('is a provider/model specifier', () => {
     expect(DEFAULT_MODEL).toMatch(/.+\/.+/);
