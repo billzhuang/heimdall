@@ -205,6 +205,14 @@ if [[ "$BACKEND" == "claude-cli" ]] && [[ "$TRIAGE" == "true" ]]; then
   echo "Error: --backend claude-cli is not compatible with the triage subcommand" >&2
   exit 1
 fi
+if [[ "$BACKEND" == "claude-cli" ]] && [[ "$EVAL" == "true" ]]; then
+  echo "Error: --backend claude-cli is not compatible with the eval subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "claude-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
+  echo "Error: --backend claude-cli is not compatible with the self-improve subcommand" >&2
+  exit 1
+fi
 
 # --- Triage mode ----------------------------------------------------------
 if [[ "$TRIAGE" == "true" ]]; then
