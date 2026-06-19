@@ -7,14 +7,33 @@
  * Cluster access flows exclusively through the read-only `kubectl` tool, so the
  * agent can investigate but never mutate a cluster. Deep investigations can be
  * delegated to read-only specialist subagents.
+ *
+ * Which tools are enabled is controlled by `heimdall.config.yaml` (or the path
+ * in `HEIMDALL_CONFIG`), so no code change is needed to add or remove a tool.
  */
 import { createAgent, defineAgentProfile } from '@flue/runtime';
+import type { ToolDefinition } from '@flue/runtime';
 import { kubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_INSTRUCTIONS, buildInstructions } from '../lib/instructions.ts';
+import { loadConfig } from '../lib/config.ts';
 
-const clusterTools = [kubectl, listContexts, listNamespaces];
+const config = loadConfig();
+
+const ALL_TOOLS: Record<string, ToolDefinition> = {
+  kubectl,
+  listContexts,
+  listNamespaces,
+};
+
+const TOOL_KEYS = ['kubectl', 'listContexts', 'listNamespaces'] as const;
+
+function buildClusterTools(): ToolDefinition[] {
+  return TOOL_KEYS.filter((key) => config.tools[key]).map((key) => ALL_TOOLS[key]);
+}
+
+const clusterTools = buildClusterTools();
 
 const logAnalyzer = defineAgentProfile({
   name: 'log-analyzer',

@@ -1,0 +1,14 @@
+# Heimdall tool configuration
+#
+# Set HEIMDALL_CONFIG=/path/to/heimdall.config.yaml to use a custom location.
+# All keys are optional — omit a section to use the built-in defaults.
+
+tools:
+  # Read-only kubectl execution (core tool — disable only for testing)
+  kubectl: true
+
+  # Discover EKS cluster contexts from kubeconfig / in-cluster token
+  listContexts: true
+
+  # Enumerate namespaces in a context
+  listNamespaces: true
