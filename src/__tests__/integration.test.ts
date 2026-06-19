@@ -13,11 +13,13 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const BIN = resolve(ROOT, 'bin/heimdall');
 
 function heimdall(...args: string[]) {
-  return spawnSync('bash', [BIN, ...args], {
+  const result = spawnSync(BIN, args, {
     cwd: ROOT,
     encoding: 'utf-8',
     timeout: 10_000,
   });
+  if (result.error) throw result.error;
+  return result;
 }
 
 describe('heimdall binary smoke tests', () => {
