@@ -241,6 +241,35 @@ export function validateCommand(command: string): CommandValidationResult {
     };
   }
 
+  // Block bare stdin reads that would cause execFile to hang waiting for input.
+  // "-f-" and "--filename=-" are always blocked (no value follows the dash).
+  // "-f -" / "--filename -" are only blocked when "-" is the final token; when
+  // extra tokens follow (e.g. a heredoc marker like "<<EOF"), kubectl will fail
+  // with an argument error rather than blocking on stdin indefinitely.
+  for (let i = 0; i < parsed.args.length; i++) {
+    const arg = parsed.args[i];
+    if (arg === '-f-' || arg === '--filename=-') {
+      return {
+        allowed: false,
+        reason: 'Reading from stdin via "-" is not supported and would cause the command to hang.',
+        command: parsed.rawCommand,
+        subcommand: parsed.subcommand,
+      };
+    }
+    if (
+      (arg === '-f' || arg === '--filename') &&
+      parsed.args[i + 1] === '-' &&
+      i + 2 >= parsed.args.length
+    ) {
+      return {
+        allowed: false,
+        reason: 'Reading from stdin via "-" is not supported and would cause the command to hang.',
+        command: parsed.rawCommand,
+        subcommand: parsed.subcommand,
+      };
+    }
+  }
+
   // Command families that mix read-only and mutating verbs: gate on the nested
   // verb (default-deny within the family).
   const nestedAllowed = NESTED_ALLOWED_VERBS[parsed.subcommand];
