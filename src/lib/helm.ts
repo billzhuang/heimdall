@@ -51,6 +51,16 @@ function truncate(text: string): string {
 export async function runHelm(action: HelmAction, options: RunHelmOptions = {}): Promise<string> {
   const { release, namespace, getType, allNamespaces } = options;
 
+  // Reject names starting with '-': execFile prevents shell injection, but helm
+  // would still parse such values as flags (option injection / argument injection).
+  // Valid Helm release names and Kubernetes namespaces never start with a hyphen.
+  if (release && release.startsWith('-')) {
+    return 'Error: release name cannot start with a hyphen.';
+  }
+  if (namespace && namespace.startsWith('-')) {
+    return 'Error: namespace cannot start with a hyphen.';
+  }
+
   let argv: string[];
 
   if (action === 'list') {

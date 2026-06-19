@@ -24,7 +24,13 @@ RUN apt-get update && \
     echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check && \
     chmod +x kubectl && mv kubectl /usr/local/bin/kubectl && \
     rm kubectl.sha256 && \
-    curl --fail -sL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash && \
+    HELM_VERSION=v3.17.3 && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    sha256sum --check "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    tar -zxf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    mv "linux-${ARCH}/helm" /usr/local/bin/helm && \
+    rm -rf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" "linux-${ARCH}" && \
     apt-get purge -y curl && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 

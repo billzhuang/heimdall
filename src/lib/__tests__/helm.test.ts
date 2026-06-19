@@ -30,6 +30,16 @@ describe('runHelm — input validation', () => {
     expect(result).toMatch(/invalid getType/i);
   });
 
+  it('rejects release names starting with a hyphen (option injection)', async () => {
+    const result = await runHelm('status', { release: '-evil-release' });
+    expect(result).toMatch(/cannot start with a hyphen/i);
+  });
+
+  it('rejects namespaces starting with a hyphen (option injection)', async () => {
+    const result = await runHelm('list', { namespace: '-evil-namespace' });
+    expect(result).toMatch(/cannot start with a hyphen/i);
+  });
+
   it('ALLOWED_HELM_ACTIONS contains exactly list, status, and get', () => {
     expect([...ALLOWED_HELM_ACTIONS].sort()).toEqual(['get', 'list', 'status']);
   });
