@@ -348,9 +348,22 @@ describe('structured RCA fields', () => {
     expect(result.remediationSteps).toBeUndefined();
   });
 
-  it('clamps validityScore to [0, 1]', () => {
+  it('clamps validityScore to [0, 1] — upper bound', () => {
     const raw = `Answer:\nok\n\nValidity Score: 1.5\n`;
     expect(parseOneShotOutput(raw).validityScore).toBe(1);
+  });
+
+  it('clamps validityScore to [0, 1] — lower bound', () => {
+    const raw = `Answer:\nok\n\nValidity Score: -0.5\n`;
+    expect(parseOneShotOutput(raw).validityScore).toBe(0);
+  });
+
+  it('does not truncate answer on exact section name + colon inline (e.g. "Causal Chain: a brief note")', () => {
+    const raw = `Answer:\nCausal Chain: a brief mention in prose.\nMore text here.\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.answer).toContain('Causal Chain: a brief mention in prose.');
+    expect(result.answer).toContain('More text here.');
+    expect(result.causalChain).toBeUndefined();
   });
 
   it('omits validityScore when Validity Score section is absent', () => {

@@ -18,7 +18,7 @@ If a fix is needed, present the exact command(s) as a SUGGESTION for the operato
 run manually — never attempt to run them yourself.`;
 
 const RESPONSE_FORMAT = `## Response format
-Always respond in the following sections. Omit Evidence and Validity Score only when no tools were called.
+Always respond in the following sections. Always include Thinking Summary, Answer, Causal Chain, and Remediation Steps. Include Evidence and Validity Score only when at least one tool was called and returned output.
 
 Thinking Summary:
 - 2-5 bullets describing your goal, the checks you ran, the evidence, and your conclusion (high level only).

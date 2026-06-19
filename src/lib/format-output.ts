@@ -41,7 +41,7 @@ export interface OneShotFinding {
  * Validity Score, Remediation Steps). Used to find section boundaries.
  */
 const RCA_SECTION_HEADER_RE =
-  /(?:^|\n)(?:##?\s+(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?|(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):)[ \t]*/im;
+  /(?:^|\n)(?:##?\s+(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?|(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):)[ \t]*(?=\n|-?\d)/im;
 
 /**
  * Extract the body of a named section from raw output.
@@ -105,6 +105,9 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
 
   let summary = '';
   let answer = raw.trim();
+  // rcaRaw: slice of raw starting at the first RCA section header, so extractors
+  // never accidentally match section-like phrases inside the Answer body.
+  let rcaRaw = '';
 
   if (summaryMatch !== null) {
     const bodyStart = summaryMatch.index + summaryMatch[0].length;
@@ -114,10 +117,13 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
 
   if (answerMatch !== null) {
     const bodyStart = answerMatch.index + answerMatch[0].length;
-    // Truncate the answer before the first RCA section header.
     const firstRca = RCA_SECTION_HEADER_RE.exec(raw.slice(bodyStart));
     const bodyEnd = firstRca !== null ? bodyStart + firstRca.index : raw.length;
     answer = raw.slice(bodyStart, bodyEnd).trim();
+    if (firstRca !== null) rcaRaw = raw.slice(bodyStart + firstRca.index);
+  } else {
+    const firstRca = RCA_SECTION_HEADER_RE.exec(raw);
+    if (firstRca !== null) rcaRaw = raw.slice(firstRca.index);
   }
 
   const suggestedCommands = extractKubectlCommands(answer);
@@ -126,27 +132,27 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
   const finding: OneShotFinding = { summary, answer, severity, suggestedCommands };
   if (model !== undefined && model !== '') finding.model = model;
 
-  // ── Structured RCA fields ────────────────────────────────────────────────
+  // ── Structured RCA fields (searched within rcaRaw only) ──────────────────
 
-  const causalBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s+Causal Chain:?|Causal Chain:)[ \t]*\n/i);
+  const causalBody = extractRcaSection(rcaRaw, /(?:^|\n)(?:##?\s+Causal Chain:?|Causal Chain:)[ \t]*\n/i);
   if (causalBody) {
     const items = parseBulletList(causalBody);
     if (items.length > 0) finding.causalChain = items;
   }
 
-  const evidenceBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s+Evidence:?|Evidence:)[ \t]*\n/i);
+  const evidenceBody = extractRcaSection(rcaRaw, /(?:^|\n)(?:##?\s+Evidence:?|Evidence:)[ \t]*\n/i);
   if (evidenceBody) {
     const map = parseEvidenceMap(evidenceBody);
     if (map) finding.evidence = map;
   }
 
-  const vsMatch = /(?:^|\n)(?:##?\s+Validity Score:?|Validity Score:)[ \t]*(\d+(?:\.\d+)?)/i.exec(raw);
+  const vsMatch = /(?:^|\n)(?:##?\s+Validity Score:?|Validity Score:)[ \t]*(-?\d+(?:\.\d+)?)/i.exec(rcaRaw);
   if (vsMatch) {
     const score = parseFloat(vsMatch[1]);
     if (!isNaN(score)) finding.validityScore = Math.min(1, Math.max(0, score));
   }
 
-  const remBody = extractRcaSection(raw, /(?:^|\n)(?:##?\s+Remediation Steps?:?|Remediation Steps?:)[ \t]*\n/i);
+  const remBody = extractRcaSection(rcaRaw, /(?:^|\n)(?:##?\s+Remediation Steps?:?|Remediation Steps?:)[ \t]*\n/i);
   if (remBody) {
     const items = parseBulletList(remBody);
     if (items.length > 0) finding.remediationSteps = items;
