@@ -160,7 +160,7 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
   'crashloop-analyzer': subagentInstructions(
     'You are a Kubernetes CrashLoopBackOff diagnosis specialist.',
     `## Focus
-- Fetch logs from the crashing container: \`kubectl logs <pod> -n <ns> --previous\`.
+- Identify the crashing container from \`kubectl describe pod\`, then fetch its previous logs: \`kubectl logs <pod> -n <ns> -c <container> --previous\`.
 - Identify the exit code from \`kubectl describe pod\` (1 = app error, 137 = OOM, 143 = SIGTERM).
 - Check pod events for the restart reason: \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod>\`.
 - Inspect liveness and readiness probe configuration from \`kubectl describe pod\`.
@@ -173,7 +173,7 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Identify OOMKilled containers via \`kubectl describe pod\` (exit code 137, reason OOMKilled).
 - Report current memory request and limit for each affected container.
 - Check node memory pressure: \`kubectl describe node <node>\`.
-- Check actual memory usage trends with \`kubectl top pod\` and \`kubectl top node\` if metrics-server is available.
+- Check actual memory usage trends with \`kubectl top pod <pod> -n <ns> --containers\` and \`kubectl top node <node>\` if metrics-server is available.
 - Recommend new memory limits based on observed usage patterns, with a safety margin.
 - Use \`kubectl describe\`, \`kubectl top\`, and \`kubectl get events\`.`,
   ),
