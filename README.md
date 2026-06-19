@@ -54,7 +54,7 @@ heimdall triage               # sweep the default namespace
 heimdall triage -A            # sweep all namespaces
 heimdall triage -n prod       # sweep only the prod namespace
 
-npm run triage                # via npm (all namespaces)
+npm run triage                # via npm (default namespace)
 npm run triage -- -n staging  # scope to a namespace
 ```
 

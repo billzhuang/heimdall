@@ -47,10 +47,12 @@ async function runAgent(prompt: string): Promise<void> {
       settle(new Error('triage timed out after 5 minutes'));
     }, TRIAGE_TIMEOUT_MS);
 
-    child.on('close', (code: number | null) => {
+    child.on('close', (code: number | null, signal: string | null) => {
       clearTimeout(timer);
       if (code !== null && code !== 0) {
         settle(new Error(`heimdall exited with code ${code}`));
+      } else if (code === null && signal !== null) {
+        settle(new Error(`heimdall killed by signal ${signal}`));
       } else {
         settle();
       }

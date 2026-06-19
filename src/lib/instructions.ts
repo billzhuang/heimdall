@@ -83,7 +83,9 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - resource-analyzer — CPU/memory requests & limits, capacity, bottlenecks.
 - network-debugger — DNS, services, endpoints, ingress, connectivity.
 - security-auditor — RBAC, service accounts, security contexts, exposed secrets.
-- triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.`);
+- triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
+- crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
+- oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -106,7 +108,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -115,6 +117,8 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'network-debugger': 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
   'security-auditor': 'RBAC, service accounts, security contexts, and exposed-secret review.',
   'triage': 'Whole-cluster health sweep: structured diagnostic triage with severity-ranked findings across nodes, pods, workloads, events, PVCs, and jobs.',
+  'crashloop-analyzer': 'Diagnose CrashLoopBackOff pods: fetch previous logs, identify exit codes, check liveness/readiness probes, rank likely root causes.',
+  'oomkill-analyzer': 'Diagnose OOMKilled pods: identify affected containers, report memory requests vs. limits, check node memory pressure, suggest new limits.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -152,6 +156,26 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
   report metadata (name, namespace, keys present) only, and never attempt to
   decode or print secret values even if they appear in tool output.
 - Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.`,
+  ),
+  'crashloop-analyzer': subagentInstructions(
+    'You are a Kubernetes CrashLoopBackOff diagnosis specialist.',
+    `## Focus
+- Identify the crashing container from \`kubectl describe pod\`, then fetch its previous logs: \`kubectl logs <pod> -n <ns> -c <container> --previous\`.
+- Identify the exit code from \`kubectl describe pod\` (1 = app error, 137 = OOM, 143 = SIGTERM).
+- Check pod events for the restart reason: \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod>\`.
+- Inspect liveness and readiness probe configuration from \`kubectl describe pod\`.
+- Rank likely root causes by evidence (application crash, OOM, misconfigured probe, missing config/secret).
+- Use \`kubectl logs\`, \`kubectl describe pod\`, and \`kubectl get events\`.`,
+  ),
+  'oomkill-analyzer': subagentInstructions(
+    'You are a Kubernetes OOMKilled pod diagnosis specialist.',
+    `## Focus
+- Identify OOMKilled containers via \`kubectl describe pod\` (exit code 137, reason OOMKilled).
+- Report current memory request and limit for each affected container.
+- Check node memory pressure: \`kubectl describe node <node>\`.
+- Check actual memory usage trends with \`kubectl top pod <pod> -n <ns> --containers\` and \`kubectl top node <node>\` if metrics-server is available.
+- Recommend new memory limits based on observed usage patterns, with a safety margin.
+- Use \`kubectl describe\`, \`kubectl top\`, and \`kubectl get events\`.`,
   ),
   'triage': subagentInstructions(
     'You are a Kubernetes cluster triage specialist.',
