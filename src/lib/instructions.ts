@@ -34,11 +34,12 @@ export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'hel
 /**
  * Build the top-level Heimdall instructions.
  *
- * @param enabledTools - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
+ * @param enabledTools    - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
  *   When omitted, all tools are assumed enabled (backwards-compatible default).
  * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
+ * @param runbookContext  - pre-loaded runbook text to append as a context section.
  */
-export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null): string {
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string): string {
   const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
 
   const connectionLines = [
@@ -101,6 +102,10 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
+
+  if (runbookContext) {
+    sections.push(`## Runbook context\nThe following team runbooks are relevant to this session. Follow their guidance when diagnosing issues that match their scope.${runbookContext}`);
+  }
 
   return sections.join('\n\n');
 }
