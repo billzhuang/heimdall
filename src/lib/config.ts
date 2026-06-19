@@ -21,6 +21,26 @@ const ToolsSchema = v.nullish(
   { kubectl: true, listContexts: true, listNamespaces: true },
 );
 
+const KNOWN_TOOL_KEYS = new Set(['kubectl', 'listContexts', 'listNamespaces']);
+
+// Common snake_case mistakes (the model sees these names, operators may copy them verbatim).
+const SNAKE_CASE_ALIASES: Record<string, string> = {
+  list_contexts: 'listContexts',
+  list_namespaces: 'listNamespaces',
+};
+
+function warnUnknownToolKeys(tools: unknown, filePath: string): void {
+  if (tools === null || tools === undefined || typeof tools !== 'object') return;
+  for (const key of Object.keys(tools as object)) {
+    if (KNOWN_TOOL_KEYS.has(key)) continue;
+    const alias = SNAKE_CASE_ALIASES[key];
+    const hint = alias
+      ? ` — did you mean "${alias}"?`
+      : `. Known keys: ${[...KNOWN_TOOL_KEYS].join(', ')}`;
+    console.warn(`[heimdall] Config ${filePath}: unknown tools key "${key}"${hint}`);
+  }
+}
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
 });
@@ -61,7 +81,10 @@ export function loadConfig(configPath?: string): HeimdallConfig {
     return defaultConfig();
   }
 
-  const result = v.safeParse(HeimdallConfigSchema, raw ?? {});
+  const rawObj = (raw ?? {}) as Record<string, unknown>;
+  warnUnknownToolKeys(rawObj['tools'], filePath);
+
+  const result = v.safeParse(HeimdallConfigSchema, rawObj);
   if (!result.success) {
     console.warn(`[heimdall] Invalid config at ${filePath}:`, result.issues);
     return defaultConfig();
