@@ -88,7 +88,7 @@ export function createCheck<TInput extends Record<string, unknown>>(
 ): SafetyCheck<TInput> {
   return (input: TInput): HarnessCheckResult => {
     const reason = predicate(input);
-    return reason !== null
+    return typeof reason === 'string'
       ? { allowed: false, reason }
       : { allowed: true, reason: 'check passed' };
   };

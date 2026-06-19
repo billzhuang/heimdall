@@ -74,6 +74,13 @@ describe('createCheck', () => {
     expect(result.allowed).toBe(true);
   });
 
+  it('allows when predicate returns undefined (implicit pass)', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const check = createCheck(() => undefined as any);
+    const result = check({});
+    expect(result.allowed).toBe(true);
+  });
+
   it('blocks when predicate returns a non-null string', () => {
     const check = createCheck(() => 'operation not permitted');
     const result = check({});
