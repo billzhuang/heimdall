@@ -17,6 +17,11 @@ tools:
   # Enable when Prometheus is reachable and set prometheus.url below.
   # prometheus_query: true
 
+  # Read-only AWS CLI execution — disabled by default; requires AWS credentials in env.
+  # Set to true to enable `aws_cli` tool and AWS specialist subagents (eks-troubleshooter,
+  # iam-auditor, aws-resource-analyzer). Also accepted as `aws_cli: true`.
+  # awsCli: false
+
 # Prometheus HTTP API (required when tools.prometheus_query is enabled).
 # prometheus:
 #   url: http://prometheus-operated.monitoring:9090

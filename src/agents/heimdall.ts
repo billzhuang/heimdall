@@ -16,6 +16,7 @@ import { makeKubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
 import { helmRelease } from '../tools/helm.ts';
 import { makePrometheusQuery } from '../tools/prometheus.ts';
+import { makeAwsCli } from '../tools/aws.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
@@ -32,6 +33,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   listNamespaces,
   helmRelease,
   prometheusQuery: makePrometheusQuery(config.prometheus),
+  awsCli: makeAwsCli({ audit: config.audit }),
 };
 
 const enabledToolKeys = new Set(

@@ -51,7 +51,7 @@ describe('buildInstructions', () => {
 
   it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
     const allEnabled = buildInstructions();
-    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery']));
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli']));
     expect(allEnabled).toBe(explicit);
   });
 
@@ -77,9 +77,12 @@ describe('buildInstructions', () => {
 });
 
 describe('SUBAGENT_INSTRUCTIONS', () => {
-  it('defines all seven specialists', () => {
+  it('defines all specialist subagents', () => {
     expect(Object.keys(SUBAGENT_INSTRUCTIONS).sort()).toEqual([
+      'aws-resource-analyzer',
       'crashloop-analyzer',
+      'eks-troubleshooter',
+      'iam-auditor',
       'log-analyzer',
       'network-debugger',
       'oomkill-analyzer',

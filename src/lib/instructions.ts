@@ -29,7 +29,7 @@ Answer:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the high-level summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -56,6 +56,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>): string {
       '- `helm_release`: read-only Helm release inspection. Actions: list (all releases in a namespace or cluster-wide), status (release health), get (values / manifest / notes for a release).',
     has('prometheusQuery') &&
       '- `prometheus_query`: query Prometheus for time-series metrics using PromQL. Query types: instant (single point in time) or range (time window with step). Use for golden signals — request rate, error rate, latency, saturation — and resource trends.',
+    has('awsCli') &&
+      '- `aws_cli`: run a single READ-ONLY AWS CLI command. Pass everything after `aws` as the\n  `args` string (e.g. "ec2 describe-instances --region us-east-1", "iam list-roles",\n  "eks describe-cluster --name my-cluster"). Only describe-*, get-*, list-*, show-*\n  subcommands are permitted. Use --query (JMESPath) to narrow output.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -79,6 +81,12 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
 
   sections.push(READ_ONLY_POLICY);
 
+  const awsSubagentLines = has('awsCli') ? [
+    '- eks-troubleshooter — EKS cluster issues, node groups, managed node scaling, EKS add-ons.',
+    '- iam-auditor — IAM policies, roles, permissions, trust relationships, least-privilege review.',
+    '- aws-resource-analyzer — AWS resource inventory, configuration checks, quota/limit inspection.',
+  ] : [];
+
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
@@ -87,7 +95,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - security-auditor — RBAC, service accounts, security contexts, exposed secrets.
 - triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
-- oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.`);
+- oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -110,7 +118,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -121,6 +129,9 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'triage': 'Whole-cluster health sweep: structured diagnostic triage with severity-ranked findings across nodes, pods, workloads, events, PVCs, and jobs.',
   'crashloop-analyzer': 'Diagnose CrashLoopBackOff pods: fetch previous logs, identify exit codes, check liveness/readiness probes, rank likely root causes.',
   'oomkill-analyzer': 'Diagnose OOMKilled pods: identify affected containers, report memory requests vs. limits, check node memory pressure, suggest new limits.',
+  'eks-troubleshooter': 'AWS EKS cluster issues: node groups, managed node scaling, EKS add-ons, AWS-specific Kubernetes integration problems.',
+  'iam-auditor': 'AWS IAM security audit: policies, roles, permissions, trust relationships, least-privilege review.',
+  'aws-resource-analyzer': 'AWS resource inspection: EC2, RDS, S3, Lambda, service quotas, resource inventory, and configuration checks across AWS services.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -189,5 +200,62 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Use \`kubectl get -o wide\` for nodes and pods; \`kubectl rollout status --timeout=5s\` to detect stuck rollouts (timeout keeps the command within the tool's execution budget); \`kubectl get events --sort-by='.lastTimestamp'\` for recent warnings.
 - Flag: NotReady nodes; pressure conditions; CrashLoopBackOff, ImagePullBackOff, OOMKilled, high-restart, or stuck pods; unavailable replicas; Pending/Lost PVCs; failed jobs.
 - End with a summary line: "Triage complete: X critical, Y warning, Z info findings."`,
+  ),
+  'eks-troubleshooter': subagentInstructions(
+    'You are an AWS EKS troubleshooting specialist.',
+    `## Focus
+- Diagnose EKS cluster issues (control plane health, node groups, Fargate profiles).
+- Check EKS add-ons (vpc-cni, kube-proxy, coredns, ebs-csi-driver) for version compatibility.
+- Analyze node group health and auto-scaling activity.
+- Debug AWS-specific Kubernetes integration issues (IAM roles for service accounts, security groups for pods, subnet capacity).
+- Correlate kubectl findings with AWS-side data (e.g. node group events, launch template issues).
+
+## Commands to use
+- \`aws eks describe-cluster --name <name>\`, \`aws eks list-nodegroups --cluster-name <name>\`
+- \`aws eks describe-nodegroup --cluster-name <name> --nodegroup-name <ng>\`
+- \`aws eks list-addons --cluster-name <name>\`, \`aws eks describe-addon ...\`
+- \`kubectl get nodes -o wide\`, \`kubectl describe node <node>\`
+
+## Read-only constraint
+Only describe-*, get-*, list-*, show-* AWS CLI subcommands are permitted.
+Never suggest running destructive AWS commands yourself — report findings and suggest commands for the operator.`,
+  ),
+  'iam-auditor': subagentInstructions(
+    'You are an AWS IAM security auditor.',
+    `## Focus
+- Audit IAM policies (managed and inline) for overly permissive rules.
+- Review IAM roles, trust relationships, and permission boundaries.
+- Check users and groups for access key age and least-privilege adherence.
+- Identify wildcard actions (*), wildcard resources (*), and missing condition keys.
+- Verify service accounts use IRSA (IAM Roles for Service Accounts) rather than node-level instance profiles.
+
+## Commands to use
+- \`aws iam list-roles\`, \`aws iam get-role --role-name <name>\`
+- \`aws iam list-attached-role-policies --role-name <name>\`
+- \`aws iam get-policy-version --policy-arn <arn> --version-id <v>\`
+- \`aws sts get-caller-identity\`
+
+## Read-only constraint
+Only describe-*, get-*, list-*, show-* AWS CLI subcommands are permitted.
+Never print actual secret values, access keys, or credentials.
+Report metadata (name, ARN, key presence) only — never decode or expose sensitive values.`,
+  ),
+  'aws-resource-analyzer': subagentInstructions(
+    'You are an AWS resource inspection specialist.',
+    `## Focus
+- Inventory and inspect AWS resources across relevant services (EC2, RDS, S3, Lambda, ELB, etc.).
+- Check service quotas and current utilization against limits.
+- Identify misconfigured resources (public S3 buckets, open security groups, unencrypted volumes).
+- Report resource counts, configuration details, and region distribution.
+
+## Commands to use
+- \`aws ec2 describe-instances\`, \`aws ec2 describe-security-groups\`
+- \`aws rds describe-db-instances\`, \`aws s3api list-buckets\`
+- \`aws service-quotas list-service-quotas --service-code <svc>\`
+- \`aws lambda list-functions\`, \`aws elbv2 describe-load-balancers\`
+
+## Read-only constraint
+Only describe-*, get-*, list-*, show-* AWS CLI subcommands are permitted.
+Never expose credentials, secret values, or access keys in output.`,
   ),
 };
