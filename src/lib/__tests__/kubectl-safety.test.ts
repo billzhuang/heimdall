@@ -57,6 +57,11 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl proxy').allowed).toBe(false);
   });
 
+  it('allows kubectl diff (server-side dry-run, read-only)', () => {
+    expect(validateCommand('kubectl diff -f deploy.yaml').allowed).toBe(true);
+    expect(validateCommand('kubectl diff -f - <<EOF').allowed).toBe(true);
+  });
+
   it('gates the auth family to read-only verbs', () => {
     expect(validateCommand('kubectl auth can-i get pods').allowed).toBe(true);
     expect(validateCommand('kubectl auth whoami').allowed).toBe(true);
