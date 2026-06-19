@@ -3,10 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  IN_CLUSTER_CONTEXT,
   getContextNames,
   getDefaultKubeconfigPath,
-  inClusterConfig,
   isInCluster,
   mergeKubeconfigs,
   parseKubeconfig,
@@ -205,11 +203,3 @@ describe('isInCluster', () => {
   });
 });
 
-describe('inClusterConfig', () => {
-  it('returns a single in-cluster context as current', () => {
-    const cfg = inClusterConfig();
-    expect(cfg.currentContext).toBe(IN_CLUSTER_CONTEXT);
-    expect(cfg.contexts).toHaveLength(1);
-    expect(cfg.contexts[0].name).toBe(IN_CLUSTER_CONTEXT);
-  });
-});

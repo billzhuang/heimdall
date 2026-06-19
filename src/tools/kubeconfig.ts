@@ -10,7 +10,6 @@ import {
   parseKubeconfig,
   resolveKubeconfigPath,
 } from '../lib/kubeconfig.ts';
-import { ensureEksKubeconfig, isEksMode } from '../lib/eks.ts';
 import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
 
 export const listContexts = defineTool({
@@ -25,18 +24,7 @@ export const listContexts = defineTool({
       return `Contexts (1):\n* ${IN_CLUSTER_CONTEXT} (current)`;
     }
 
-    // EKS mode: generate kubeconfig dynamically via `aws eks update-kubeconfig`.
-    // ensureEksKubeconfig caches the result so this doesn't re-run on every call.
-    let kubeconfigPath: string;
-    if (isEksMode()) {
-      try {
-        kubeconfigPath = await ensureEksKubeconfig();
-      } catch (err) {
-        return `Failed to generate EKS kubeconfig: ${(err as Error).message}`;
-      }
-    } else {
-      kubeconfigPath = resolveKubeconfigPath();
-    }
+    const kubeconfigPath = resolveKubeconfigPath();
 
     const config = await parseKubeconfig(kubeconfigPath);
     if (!config) {
@@ -60,9 +48,9 @@ export const listNamespaces = defineTool({
     ),
   }),
   execute: async ({ context }) => {
-    // Route through runKubectl so the read-only policy (and any caching) apply
-    // uniformly to every cluster read.
-    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
+    // In-cluster: there is only one cluster (the pod's own). Context is not applicable.
+    const effectiveContext = isInCluster() ? undefined : context;
+    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context: effectiveContext })).trim();
     // Surface policy/execution errors verbatim rather than parsing them as data.
     if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
       return output;
