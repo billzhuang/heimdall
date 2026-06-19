@@ -70,6 +70,9 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl rollout status deployment/api').allowed).toBe(true);
     expect(validateCommand('kubectl rollout status -n prod deployment/api').allowed).toBe(true);
     expect(validateCommand('kubectl rollout history deployment/api').allowed).toBe(true);
+    // flags between rollout and the nested verb must not cause a false block
+    expect(validateCommand('kubectl rollout -n prod status deployment/api').allowed).toBe(true);
+    expect(validateCommand('kubectl rollout --namespace=kube-system history deployment/api').allowed).toBe(true);
     // mutating verbs must stay blocked
     expect(validateCommand('kubectl rollout restart deployment/api').allowed).toBe(false);
     expect(validateCommand('kubectl rollout undo deployment/api').allowed).toBe(false);
@@ -164,9 +167,13 @@ describe('isDestructiveCommand', () => {
 
   it('is true for destructive subcommands, even behind flags', () => {
     expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
-    // rollout is now in NESTED_ALLOWED_VERBS, not DESTRUCTIVE — isDestructiveCommand returns false,
-    // but validateCommand still blocks rollout restart via nested default-deny.
-    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(false);
-    expect(validateCommand('kubectl --context=prod rollout restart deploy/api').allowed).toBe(false);
+    // rollout is in NESTED_ALLOWED_VERBS; mutating verbs are still detected as destructive.
+    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
+    expect(isDestructiveCommand('kubectl rollout undo deployment/api')).toBe(true);
+    // read-only nested verbs are NOT destructive
+    expect(isDestructiveCommand('kubectl rollout status deployment/api')).toBe(false);
+    expect(isDestructiveCommand('kubectl auth can-i get pods')).toBe(false);
+    // auth reconcile mutates RBAC — must be destructive
+    expect(isDestructiveCommand('kubectl auth reconcile -f rbac.yaml')).toBe(true);
   });
 });

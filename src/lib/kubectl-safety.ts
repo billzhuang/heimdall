@@ -174,13 +174,48 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
   return result;
 }
 
-/** True when the command is a kubectl invocation that mutates cluster state. */
+/**
+ * Extract the nested verb from a command's args array, skipping any global
+ * flags that appear between the subcommand and the verb. This handles patterns
+ * like `kubectl rollout -n prod status` or `kubectl auth --context=x can-i`.
+ */
+function extractNestedVerb(args: string[]): string {
+  let skipNext = false;
+  for (const arg of args) {
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      if (!arg.includes('=') && OPTIONS_WITH_VALUE.has(arg)) {
+        skipNext = true;
+      }
+      continue;
+    }
+    return arg.toLowerCase();
+  }
+  return '';
+}
+
+/**
+ * True when the command is a kubectl invocation that mutates cluster state.
+ * Covers both the flat destructive subcommands and mutating nested verbs
+ * (e.g. `kubectl rollout restart`, `kubectl auth reconcile`).
+ */
 export function isDestructiveCommand(command: string): boolean {
   const parsed = parseKubectlCommand(command);
   if (!parsed.isKubectl || !parsed.subcommand) {
     return false;
   }
-  return DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand);
+  if (DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand)) {
+    return true;
+  }
+  const nestedAllowed = NESTED_ALLOWED_VERBS[parsed.subcommand];
+  if (nestedAllowed) {
+    const verb = extractNestedVerb(parsed.args);
+    return !nestedAllowed.includes(verb);
+  }
+  return false;
 }
 
 /**
@@ -220,10 +255,11 @@ export function validateCommand(command: string): CommandValidationResult {
   }
 
   // Command families that mix read-only and mutating verbs: gate on the nested
-  // verb (default-deny within the family).
+  // verb (default-deny within the family). Skip any flags that appear between
+  // the subcommand and the verb (e.g. `kubectl rollout -n prod status`).
   const nestedAllowed = NESTED_ALLOWED_VERBS[parsed.subcommand];
   if (nestedAllowed) {
-    const verb = parsed.args[0]?.toLowerCase() ?? '';
+    const verb = extractNestedVerb(parsed.args);
     if (nestedAllowed.includes(verb)) {
       return {
         allowed: true,

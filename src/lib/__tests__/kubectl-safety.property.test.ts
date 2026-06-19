@@ -66,14 +66,19 @@ describe('validateCommand (property-based)', () => {
     );
   });
 
-  it('allows read-only rollout verbs (status, history) behind any global flags', () => {
+  it('allows read-only rollout verbs (status, history) with global flags before or after rollout', () => {
     fc.assert(
       fc.property(
         fc.constantFrom('status deployment/api', 'history deployment/api'),
         globalFlags,
-        (tail, flags) => {
-          const cmd = `kubectl ${flags} rollout ${tail}`.replace(/\s+/g, ' ').trim();
-          expect(validateCommand(cmd).allowed).toBe(true);
+        globalFlags,
+        (tail, flagsBefore, flagsAfter) => {
+          // flags before rollout
+          const cmdBefore = `kubectl ${flagsBefore} rollout ${tail}`.replace(/\s+/g, ' ').trim();
+          expect(validateCommand(cmdBefore).allowed).toBe(true);
+          // flags between rollout and the nested verb
+          const cmdBetween = `kubectl rollout ${flagsAfter} ${tail}`.replace(/\s+/g, ' ').trim();
+          expect(validateCommand(cmdBetween).allowed).toBe(true);
         },
       ),
     );
