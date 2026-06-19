@@ -57,12 +57,17 @@ export async function runPrometheusQuery(
     searchParams.set('step', params.step!);
   }
 
-  const reqUrl = `${config.url.replace(/\/$/, '')}${endpoint}?${searchParams.toString()}`;
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
   try {
+    // Build the request URL inside the try block so a malformed config.url
+    // throws a TypeError that is caught and returned as a clean error string.
+    const baseUrl = new URL(config.url);
+    baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + endpoint;
+    searchParams.forEach((value, key) => baseUrl.searchParams.set(key, value));
+    const reqUrl = baseUrl.toString();
+
     const response = await fetch(reqUrl, { signal: controller.signal });
 
     if (!response.ok) {

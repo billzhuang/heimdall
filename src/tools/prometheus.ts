@@ -17,7 +17,7 @@ export function makePrometheusQuery(
   prometheusConfig?: { url?: string | null; timeoutMs?: number | null } | null,
 ) {
   const config: PrometheusConfig = {
-    url: prometheusConfig?.url ?? process.env.PROMETHEUS_URL ?? DEFAULT_PROMETHEUS_URL,
+    url: prometheusConfig?.url || process.env.PROMETHEUS_URL || DEFAULT_PROMETHEUS_URL,
     timeoutMs: prometheusConfig?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   };
 

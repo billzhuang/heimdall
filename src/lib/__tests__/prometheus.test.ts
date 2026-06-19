@@ -172,6 +172,17 @@ describe('runPrometheusQuery — HTTP errors', () => {
 // Network / timeout errors
 // ---------------------------------------------------------------------------
 
+describe('runPrometheusQuery — malformed URL', () => {
+  it('returns a clean error message when config.url is not a valid URL', async () => {
+    const result = await runPrometheusQuery(
+      'instant',
+      { query: 'up' },
+      { url: 'not-a-valid-url', timeoutMs: 5_000 },
+    );
+    expect(result).toMatch(/Prometheus query failed/i);
+  });
+});
+
 describe('runPrometheusQuery — network errors', () => {
   it('returns a timeout message on AbortError', async () => {
     const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
