@@ -67,10 +67,12 @@ describe('buildInstructions', () => {
 });
 
 describe('SUBAGENT_INSTRUCTIONS', () => {
-  it('defines all five specialists', () => {
+  it('defines all seven specialists', () => {
     expect(Object.keys(SUBAGENT_INSTRUCTIONS).sort()).toEqual([
+      'crashloop-analyzer',
       'log-analyzer',
       'network-debugger',
+      'oomkill-analyzer',
       'resource-analyzer',
       'security-auditor',
       'triage',
