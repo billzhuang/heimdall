@@ -1,0 +1,113 @@
+# Heimdall least-privilege read-only RBAC manifests.
+#
+# Creates: Namespace, ServiceAccount, ClusterRole (secrets excluded — see
+# rbac-with-secrets.yaml for the opt-in extension), and ClusterRoleBinding.
+#
+# Apply:
+#   kubectl apply -f deploy/rbac.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: heimdall
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: heimdall
+  namespace: heimdall
+---
+# Read-only ClusterRole covering every resource Heimdall can inspect.
+# Secrets are intentionally excluded; apply rbac-with-secrets.yaml to opt in.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: heimdall-readonly
+rules:
+  # Core resources
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - endpoints
+      - events
+      - limitranges
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+      - persistentvolumes
+      - pods
+      - pods/log
+      - replicationcontrollers
+      - resourcequotas
+      - serviceaccounts
+      - services
+    verbs: ["get", "list", "watch"]
+  # apps
+  - apiGroups: ["apps"]
+    resources:
+      - daemonsets
+      - deployments
+      - replicasets
+      - statefulsets
+    verbs: ["get", "list", "watch"]
+  # batch
+  - apiGroups: ["batch"]
+    resources:
+      - cronjobs
+      - jobs
+    verbs: ["get", "list", "watch"]
+  # autoscaling
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  # networking
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingressclasses
+      - ingresses
+      - networkpolicies
+    verbs: ["get", "list", "watch"]
+  # storage
+  - apiGroups: ["storage.k8s.io"]
+    resources:
+      - storageclasses
+      - volumeattachments
+    verbs: ["get", "list", "watch"]
+  # policy
+  - apiGroups: ["policy"]
+    resources:
+      - poddisruptionbudgets
+    verbs: ["get", "list", "watch"]
+  # RBAC inspection (kubectl auth can-i, RBAC audit)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources:
+      - clusterrolebindings
+      - clusterroles
+      - rolebindings
+      - roles
+    verbs: ["get", "list", "watch"]
+  # Metrics API (kubectl top nodes / kubectl top pods)
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - nodes
+      - pods
+    verbs: ["get", "list"]
+  # events.k8s.io (kubectl events, Kubernetes ≥ 1.26)
+  - apiGroups: ["events.k8s.io"]
+    resources:
+      - events
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: heimdall-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: heimdall-readonly
+subjects:
+  - kind: ServiceAccount
+    name: heimdall
+    namespace: heimdall
