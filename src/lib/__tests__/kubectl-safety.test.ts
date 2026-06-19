@@ -66,6 +66,19 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl auth').allowed).toBe(false);
   });
 
+  it('gates the rollout family to read-only verbs (status, history)', () => {
+    expect(validateCommand('kubectl rollout status deployment/api').allowed).toBe(true);
+    expect(validateCommand('kubectl rollout status -n prod deployment/api').allowed).toBe(true);
+    expect(validateCommand('kubectl rollout history deployment/api').allowed).toBe(true);
+    // mutating verbs must stay blocked
+    expect(validateCommand('kubectl rollout restart deployment/api').allowed).toBe(false);
+    expect(validateCommand('kubectl rollout undo deployment/api').allowed).toBe(false);
+    expect(validateCommand('kubectl rollout pause deployment/api').allowed).toBe(false);
+    expect(validateCommand('kubectl rollout resume deployment/api').allowed).toBe(false);
+    // bare rollout with no verb is denied
+    expect(validateCommand('kubectl rollout').allowed).toBe(false);
+  });
+
   it('blocks the entire config family (kubeconfig-mutating / credential exposure)', () => {
     expect(validateCommand('kubectl config view').allowed).toBe(false);
     expect(validateCommand('kubectl config set-context foo').allowed).toBe(false);
@@ -151,6 +164,9 @@ describe('isDestructiveCommand', () => {
 
   it('is true for destructive subcommands, even behind flags', () => {
     expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
-    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
+    // rollout is now in NESTED_ALLOWED_VERBS, not DESTRUCTIVE — isDestructiveCommand returns false,
+    // but validateCommand still blocks rollout restart via nested default-deny.
+    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(false);
+    expect(validateCommand('kubectl --context=prod rollout restart deploy/api').allowed).toBe(false);
   });
 });

@@ -36,11 +36,18 @@ describe('validateCommand (property-based)', () => {
   });
 
   it('blocks mutating nested verbs in mixed command families', () => {
-    // `auth`/`config` are not allowed wholesale; mutating nested verbs like
-    // `auth reconcile` and any `config` verb must stay blocked behind flags.
+    // `auth`/`config`/`rollout` are not allowed wholesale; mutating nested verbs must stay blocked.
     fc.assert(
       fc.property(
-        fc.constantFrom('auth reconcile -f rbac.yaml', 'config set-context x', 'config use-context x'),
+        fc.constantFrom(
+          'auth reconcile -f rbac.yaml',
+          'config set-context x',
+          'config use-context x',
+          'rollout restart deployment/api',
+          'rollout undo deployment/api',
+          'rollout pause deployment/api',
+          'rollout resume deployment/api',
+        ),
         globalFlags,
         (tail, flags) => {
           const cmd = `kubectl ${flags} ${tail}`.replace(/\s+/g, ' ').trim();
@@ -56,6 +63,19 @@ describe('validateCommand (property-based)', () => {
         const cmd = `kubectl ${flags} auth ${tail}`.replace(/\s+/g, ' ').trim();
         expect(validateCommand(cmd).allowed).toBe(true);
       }),
+    );
+  });
+
+  it('allows read-only rollout verbs (status, history) behind any global flags', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('status deployment/api', 'history deployment/api'),
+        globalFlags,
+        (tail, flags) => {
+          const cmd = `kubectl ${flags} rollout ${tail}`.replace(/\s+/g, ' ').trim();
+          expect(validateCommand(cmd).allowed).toBe(true);
+        },
+      ),
     );
   });
 
