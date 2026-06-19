@@ -48,6 +48,9 @@ const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
   watch: WatchSchema,
+  // Redact .data/.stringData values from Secret output before returning to the
+  // model. Default true — this is a code-enforced guarantee, not a prompt hint.
+  redactSecrets: v.nullish(v.boolean(), true),
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;

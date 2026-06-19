@@ -18,6 +18,7 @@ import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
+import { redactSecretValues } from './redact-secrets.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +75,12 @@ export interface RunKubectlOptions {
   kubeconfig?: string;
   /** Audit logging config. When enabled, a JSON line is written for every call. */
   audit?: AuditConfig | null;
+  /**
+   * Redact `.data` / `.stringData` values from Secret output before returning
+   * to the model.  Defaults to `true` when omitted — code-enforced, not a
+   * prompt hint.  Set to `false` only for audited, intentional debugging.
+   */
+  redactSecrets?: boolean;
 }
 
 /** Whether the on-disk JSON cache is enabled (disabled by `HEIMDALL_KUBECTL_CACHE=0`). */
@@ -165,6 +172,16 @@ export function isJsonOutput(argv: string[]): boolean {
     if (a === '-o=json' || a === '--output=json') {
       return true;
     }
+  }
+  return false;
+}
+
+/** True when the argv requests YAML output (`-o yaml` / `--output=yaml`). */
+function isYamlOutput(argv: string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '-o' || a === '--output') return argv[i + 1] === 'yaml';
+    if (a === '-o=yaml' || a === '--output=yaml') return true;
   }
   return false;
 }
@@ -329,12 +346,20 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       maxBuffer: MAX_BUFFER_BYTES,
     });
 
-    const output = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
+    // Redact Secret values before caching or returning to the model.
+    // Default-true; only skipped when the caller explicitly sets redactSecrets: false.
+    const outputFormat = isJsonOutput(argv) ? 'json' : isYamlOutput(argv) ? 'yaml' : null;
+    const safeStdout =
+      options.redactSecrets !== false && outputFormat !== null
+        ? redactSecretValues(stdout, outputFormat)
+        : stdout;
 
-    if (cacheFile && stdout) {
+    const output = safeStdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
+
+    if (cacheFile && safeStdout) {
       try {
         await mkdir(dirname(cacheFile), { recursive: true });
-        await writeFile(cacheFile, stdout, 'utf8');
+        await writeFile(cacheFile, safeStdout, 'utf8');
       } catch {
         // Caching is best-effort; ignore write failures.
       }
