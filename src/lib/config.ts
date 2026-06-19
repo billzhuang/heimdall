@@ -21,10 +21,24 @@ const ToolsSchema = v.nullish(
   { kubectl: true, listContexts: true, listNamespaces: true },
 );
 
-const KNOWN_TOOL_KEYS = new Set(['kubectl', 'listContexts', 'listNamespaces']);
+const HeimdallConfigSchema = v.object({
+  tools: ToolsSchema,
+});
+
+export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
+
+// Typed against the schema so TypeScript enforces this map stays in sync when
+// new tool keys are added to ToolsSchema — missing a key here is a compile error.
+const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, true> = {
+  kubectl: true,
+  listContexts: true,
+  listNamespaces: true,
+};
+
+const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
 
 // Common snake_case mistakes (the model sees these names, operators may copy them verbatim).
-const SNAKE_CASE_ALIASES: Record<string, string> = {
+const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools']>> = {
   list_contexts: 'listContexts',
   list_namespaces: 'listNamespaces',
 };
@@ -40,12 +54,6 @@ function warnUnknownToolKeys(tools: unknown, filePath: string): void {
     console.warn(`[heimdall] Config ${filePath}: unknown tools key "${key}"${hint}`);
   }
 }
-
-const HeimdallConfigSchema = v.object({
-  tools: ToolsSchema,
-});
-
-export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
 
 function resolveConfigPath(): string {
   const envPath = process.env.HEIMDALL_CONFIG;
