@@ -1,7 +1,9 @@
 # Heimdall in-cluster Deployment.
 #
 # Prerequisites:
-#   1. Apply deploy/rbac.yaml first (creates Namespace + ServiceAccount).
+#   1. Apply RBAC:
+#      - Cluster-wide: kubectl apply -f deploy/rbac.yaml
+#      - Single-namespace: kubectl apply -f deploy/rbac-namespaced.yaml  (do NOT also apply rbac.yaml)
 #   2. Create the API key Secret (see below).
 #   3. Build and push the image, then update `image:` to your registry.
 #
