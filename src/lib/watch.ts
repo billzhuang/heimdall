@@ -123,6 +123,49 @@ export function shouldDiagnose(
   return true;
 }
 
+/** Parameters for the exponential-backoff reconnect schedule. */
+export interface BackoffOptions {
+  /** Initial delay in ms (e.g. 1 000). */
+  baseMs: number;
+  /** Maximum delay in ms (e.g. 30 000). */
+  capMs: number;
+  /** Fractional jitter 0–1 applied symmetrically (e.g. 0.3 → ±30 %). */
+  jitter: number;
+}
+
+/**
+ * Compute the delay in milliseconds before the Nth reconnect attempt.
+ *
+ * Uses exponential backoff capped at `capMs`, with additive proportional jitter
+ * so that a burst of reconnecting processes does not all retry simultaneously:
+ *
+ *   delay = clamp(baseMs × 2^attempt, capMs) × uniform(1-jitter, 1+jitter)
+ *
+ * @param attempt - zero-based attempt index (0 = first reconnect after initial failure)
+ * @param opts    - backoff configuration
+ * @param random  - RNG function (injectable for deterministic tests; defaults to Math.random)
+ */
+export function computeBackoffMs(
+  attempt: number,
+  opts: BackoffOptions,
+  random: () => number = Math.random,
+): number {
+  const raw = Math.min(opts.baseMs * (2 ** attempt), opts.capMs);
+  return Math.round(raw * (1 - opts.jitter + random() * opts.jitter * 2));
+}
+
+/**
+ * Return true when the watch stream has been alive long enough that the
+ * reconnect-attempt counter should be reset to 0.
+ *
+ * Prevents penalising the first failure after a long healthy run with a slow
+ * backoff: if the stream was stable for `resetThresholdMs`, the next failure
+ * is treated as a fresh first attempt.
+ */
+export function shouldResetBackoff(uptimeMs: number, resetThresholdMs: number): boolean {
+  return uptimeMs >= resetThresholdMs;
+}
+
 /**
  * Parse a single stdout line from `kubectl get events --watch -o json`.
  *
