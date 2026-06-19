@@ -26,7 +26,7 @@ const config = loadConfig();
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
 // without adding the tool (or vice versa) is a compile-time error.
 const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl: makeKubectl(config.audit),
+  kubectl: makeKubectl(config.audit, config.redactSecrets),
   listContexts,
   listNamespaces,
   helmRelease,

@@ -18,6 +18,7 @@ import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
+import { redactSecretValues } from './redact.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +75,8 @@ export interface RunKubectlOptions {
   kubeconfig?: string;
   /** Audit logging config. When enabled, a JSON line is written for every call. */
   audit?: AuditConfig | null;
+  /** Redact Secret .data / .stringData values from output (default: true). */
+  redactSecrets?: boolean;
 }
 
 /** Whether the on-disk JSON cache is enabled (disabled by `HEIMDALL_KUBECTL_CACHE=0`). */
@@ -232,7 +235,7 @@ async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<str
  * a descriptive error message) as a string suitable for returning to the model.
  */
 export async function runKubectl(args: string, options: RunKubectlOptions = {}): Promise<string> {
-  const { audit } = options;
+  const { audit, redactSecrets = true } = options;
   const startTs = new Date().toISOString();
   const startMs = Date.now();
 
@@ -303,8 +306,12 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     cacheFile = joinPath(getCacheDir(), `${hash}.json`);
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());
     if (cached !== null) {
+      // Apply redaction on cache reads too: cache entries written before
+      // redaction was enabled (or while it was temporarily disabled) may
+      // contain raw secret values.
+      const safeOutput = redactSecrets ? redactSecretValues(cached, argv) : cached;
       await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
-      return truncate(cached);
+      return truncate(safeOutput);
     }
   }
 
@@ -329,12 +336,14 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       maxBuffer: MAX_BUFFER_BYTES,
     });
 
-    const output = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
+    const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
+    const output = redactSecrets ? redactSecretValues(rawOutput, argv) : rawOutput;
 
     if (cacheFile && stdout) {
       try {
         await mkdir(dirname(cacheFile), { recursive: true });
-        await writeFile(cacheFile, stdout, 'utf8');
+        // Cache the redacted output so cache hits are also safe.
+        await writeFile(cacheFile, output, 'utf8');
       } catch {
         // Caching is best-effort; ignore write failures.
       }
@@ -344,7 +353,8 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return truncate(output);
   } catch (error) {
     const err = error as { stderr?: string; stdout?: string; message?: string };
-    const detail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const detail = redactSecrets ? redactSecretValues(rawDetail, argv) : rawDetail;
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
   }

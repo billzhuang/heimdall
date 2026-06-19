@@ -146,7 +146,9 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
     `## Focus
 - Audit RBAC roles, bindings, and overly permissive service accounts.
 - Review security contexts and pod security settings.
-- Flag exposed secrets — never print actual secret values.
+- Flag exposed secrets. Treat Secret .data and .stringData values as sensitive:
+  report metadata (name, namespace, keys present) only, and never attempt to
+  decode or print secret values even if they appear in tool output.
 - Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.`,
   ),
 };

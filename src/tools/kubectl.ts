@@ -5,7 +5,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runKubectl, type AuditConfig } from '../lib/kubectl.ts';
 
-export function makeKubectl(audit?: AuditConfig | null) {
+export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean) {
   return defineTool({
     name: 'kubectl',
     description:
@@ -16,7 +16,8 @@ export function makeKubectl(audit?: AuditConfig | null) {
       'Destructive subcommands (apply, create, delete, patch, edit, scale, exec, ' +
       'port-forward, ...) are blocked. For rollout: only "status" and "history" are allowed; ' +
       'restart/undo/pause/resume are blocked. There is no shell, so pipes/redirects do not work — ' +
-      'use label selectors, --field-selector, or -o jsonpath to filter output.',
+      'use label selectors, --field-selector, or -o jsonpath to filter output. ' +
+      'Treat Secret .data and .stringData values as sensitive regardless of output format.',
     parameters: v.object({
       args: v.pipe(
         v.string(),
@@ -27,7 +28,7 @@ export function makeKubectl(audit?: AuditConfig | null) {
         v.description('Optional cluster context to target (added as --context=...). Defaults to the configured/current context.'),
       ),
     }),
-    execute: async ({ args, context }) => runKubectl(args, { context, audit }),
+    execute: async ({ args, context }) => runKubectl(args, { context, audit, redactSecrets }),
   });
 }
 
