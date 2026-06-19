@@ -9,8 +9,10 @@
 const READ_ONLY_POLICY = `## Read-only policy (enforced)
 You operate in READ-ONLY / advisory mode. Cluster access is only available through
 the \`kubectl\` tool, which mechanically blocks any state-changing or code-executing
-subcommand (apply, create, delete, patch, edit, replace, scale, rollout, drain,
-cordon, taint, exec, port-forward, attach, cp, debug, ...).
+subcommand (apply, create, delete, patch, edit, replace, scale, drain,
+cordon, uncordon, taint, exec, port-forward, attach, cp, debug, ...). For \`rollout\`,
+only the read-only verbs \`status\` and \`history\` are allowed; mutating verbs
+(restart, undo, pause, resume) are blocked.
 
 If a fix is needed, present the exact command(s) as a SUGGESTION for the operator to
 run manually — never attempt to run them yourself.`;
