@@ -26,28 +26,14 @@ Answer:
 
 Do not reveal hidden chain-of-thought or internal scratch work beyond the high-level summary.`;
 
-/**
- * Build the top-level Heimdall instructions. A default context/namespace can be
- * pinned via the `HEIMDALL_CONTEXT` / `HEIMDALL_NAMESPACE` environment variables.
- */
+/** Build the top-level Heimdall instructions. */
 export function buildInstructions(): string {
-  const context = process.env.HEIMDALL_CONTEXT;
-  const namespace = process.env.HEIMDALL_NAMESPACE;
-
-  const scope = [
-    context
-      ? `- Default cluster context: ${context} (pass it to the kubectl tool, or rely on it being applied automatically).`
-      : `- No context is pinned. Use \`list_contexts\` to discover clusters and the kubeconfig current-context by default. Ask the user if it is ambiguous.`,
-    namespace
-      ? `- Default namespace: ${namespace}. Use \`-n ${namespace}\` unless the user specifies otherwise.`
-      : `- No namespace is pinned. Use \`list_namespaces\` when you need to discover them; scope queries with \`-n <namespace>\` or \`-A\` for all namespaces.`,
-  ].join('\n');
-
   return `You are Heimdall, an expert Kubernetes assistant and SRE agent. You help engineers
 diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
 
 ## Connection
-${scope}
+- No context is pinned. Use \`list_contexts\` to discover clusters and the kubeconfig current-context by default. Ask the user if it is ambiguous.
+- No namespace is pinned. Use \`list_namespaces\` when you need to discover them; scope queries with \`-n <namespace>\` or \`-A\` for all namespaces.
 
 ## Tools
 - \`kubectl\`: run a single READ-ONLY kubectl command. Pass everything after \`kubectl\`
