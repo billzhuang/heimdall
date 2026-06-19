@@ -9,6 +9,8 @@
  *   `kubectl-safety.ts` before it runs.
  * - `kubectl get ... -o json` responses are cached on disk for a short TTL to
  *   avoid hammering the API server during tight diagnostic loops.
+ * - When `HEIMDALL_KUBECTL_MOCK` is set to a JSON file path, `runKubectl`
+ *   returns fixture output instead of exec'ing kubectl (eval / test mode).
  */
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -28,6 +30,9 @@ const CACHE_DIR_NAME = 'heimdall-kubectl-cache';
 const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 100_000;
+
+/** In-process cache for parsed eval mock files — avoids redundant disk I/O. */
+const evalMockCache = new Map<string, Record<string, string>>();
 
 /** Sentinel returned when a command succeeds but produces no stdout/stderr. */
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
@@ -212,6 +217,31 @@ export function getWaitTimeoutMs(argv: string[]): number | null {
   return null;
 }
 
+/**
+ * Match a mock fixture for the given argv.
+ *
+ * Each key in `mocks` is a space-separated list of tokens. A key matches when
+ * every one of its tokens appears (case-insensitive) in the argv set. The
+ * most-specific match (most key tokens) wins. Returns null when no key matches.
+ *
+ * Exported so the eval test suite can exercise this logic independently.
+ */
+export function matchMock(mocks: Record<string, string>, argv: string[]): string | null {
+  if (!mocks || typeof mocks !== 'object') return null;
+  const cmdSet = new Set(argv.map(t => t.toLowerCase()));
+  let bestKey: string | null = null;
+  let bestScore = -1;
+  for (const [key, response] of Object.entries(mocks)) {
+    const keyTokens = key.toLowerCase().split(/\s+/).filter(Boolean);
+    if (keyTokens.length === 0) continue;
+    if (keyTokens.every(kt => cmdSet.has(kt)) && keyTokens.length > bestScore) {
+      bestScore = keyTokens.length;
+      bestKey = key;
+    }
+  }
+  return bestKey !== null ? mocks[bestKey] : null;
+}
+
 /** Cap very large output so a single read can't blow past the model's context. */
 function truncate(text: string): string {
   if (text.length <= MAX_RESULT_CHARS) return text;
@@ -274,6 +304,25 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       return `BLOCKED: ${lockdown.reason}`;
     }
     argv = lockdown.argv;
+  }
+
+  // Eval mock mode: return fixture output instead of exec'ing kubectl.
+  const evalMockFile = process.env.HEIMDALL_KUBECTL_MOCK;
+  if (evalMockFile) {
+    try {
+      let mocks = evalMockCache.get(evalMockFile);
+      if (!mocks) {
+        const raw = await readFile(evalMockFile, 'utf8');
+        mocks = JSON.parse(raw) as Record<string, string>;
+        evalMockCache.set(evalMockFile, mocks);
+      }
+      const hit = matchMock(mocks, argv);
+      const result = hit ?? `(eval: no mock fixture for: ${argv.join(' ')})`;
+      await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: 0, outcome: 'ok' }, audit);
+      return result;
+    } catch (err) {
+      return `(eval mock error: ${String(err)})`;
+    }
   }
 
   // When running inside a Kubernetes pod, kubectl reads the mounted service account
