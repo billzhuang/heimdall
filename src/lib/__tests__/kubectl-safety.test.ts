@@ -68,6 +68,17 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl events --types=Warning -n prod').allowed).toBe(true);
   });
 
+  it('blocks bare stdin reads that would hang the agent', () => {
+    // Bare "-" as the final token means execFile would block on stdin forever.
+    expect(validateCommand('kubectl diff -f -').allowed).toBe(false);
+    expect(validateCommand('kubectl diff -f-').allowed).toBe(false);
+    expect(validateCommand('kubectl diff --filename=-').allowed).toBe(false);
+    expect(validateCommand('kubectl diff --filename -').allowed).toBe(false);
+    expect(validateCommand('kubectl get -f -').allowed).toBe(false);
+    // Heredoc marker after "-" → kubectl fails with an arg error, not a hang.
+    expect(validateCommand('kubectl diff -f - <<EOF').allowed).toBe(true);
+  });
+
   it('gates the auth family to read-only verbs', () => {
     expect(validateCommand('kubectl auth can-i get pods').allowed).toBe(true);
     expect(validateCommand('kubectl auth whoami').allowed).toBe(true);
