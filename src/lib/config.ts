@@ -45,6 +45,9 @@ const WatchSchema = v.nullish(
     // Prevents LLM cost explosions and alert fatigue from repeated events.
     // Default: 300 (5 minutes). Set to 0 to disable cooldown.
     cooldownSeconds: v.nullish(v.number(), 300),
+    // Maximum number of consecutive reconnect attempts before giving up.
+    // Omit (or set to null) for unlimited retries.
+    maxReconnectAttempts: v.nullish(v.number()),
   }),
 );
 

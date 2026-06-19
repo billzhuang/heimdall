@@ -5,6 +5,11 @@
  * one by calling the Heimdall agent.  Findings are emitted as JSON lines to
  * stdout and optionally POSTed to a webhook.
  *
+ * The kubectl watch stream is supervised: when it ends (network blip,
+ * API-server restart, idle-timeout, etc.) the monitor reconnects with
+ * exponential backoff + jitter.  On SIGINT/SIGTERM the loop exits cleanly
+ * without a reconnect attempt.
+ *
  * Usage:
  *   npm run watch
  *   heimdall --watch
@@ -14,12 +19,15 @@
  *     namespaces: ["prod", "staging"]  # omit for all namespaces
  *     webhook: https://hooks.slack.com/...  # optional Slack / generic webhook
  *     reasons: ["BackOff", "OOMKilled"]    # omit for all Warning events
+ *     cooldownSeconds: 300                 # default 300 s; 0 = no cooldown
+ *     maxReconnectAttempts: 10             # omit for unlimited retries
  */
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
+import type { HeimdallConfig } from './lib/config.ts';
 import {
   parseEventLine,
   matchesWatchFilter,
@@ -27,10 +35,16 @@ import {
   formatFinding,
   postWebhook,
   shouldDiagnose,
+  computeBackoffMs,
+  shouldResetBackoff,
   type CooldownState,
 } from './lib/watch.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
+// Backoff: 1 s → 2 s → 4 s … capped at 30 s, ±30 % jitter.
+const BACKOFF_OPTS = { baseMs: 1_000, capMs: 30_000, jitter: 0.3 };
+// Reset the reconnect counter after a stream that was healthy for ≥ 60 s.
+const BACKOFF_RESET_THRESHOLD_MS = 60_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -77,58 +91,56 @@ async function diagnoseEvent(prompt: string): Promise<string> {
   });
 }
 
-export async function runWatchMode(): Promise<void> {
-  const config = loadConfig();
-  const watchCfg = config.watch;
-  const namespaces = watchCfg?.namespaces ?? [];
-  const cooldownSeconds = watchCfg?.cooldownSeconds ?? 300;
-  const cooldownState: CooldownState = new Map();
-
-  // Watch a single namespace explicitly, or all namespaces (-A).
-  const kubectlArgs =
-    namespaces.length === 1
-      ? ['get', 'events', '--watch', '-o', 'json', '-n', namespaces[0]]
-      : ['get', 'events', '--watch', '-o', 'json', '-A'];
-
-  process.stderr.write('[heimdall-watch] Starting Kubernetes Warning event monitor...\n');
-  if (namespaces.length > 0) {
-    process.stderr.write(`[heimdall-watch] Watching namespaces: ${namespaces.join(', ')}\n`);
-  }
-  if (watchCfg?.reasons?.length) {
-    process.stderr.write(`[heimdall-watch] Filtering reasons: ${watchCfg.reasons.join(', ')}\n`);
-  }
-  process.stderr.write(`[heimdall-watch] Cooldown: ${cooldownSeconds}s per (object, reason)\n`);
-
+/**
+ * Run one kubectl watch session until the stream ends.
+ *
+ * Processes each Warning event: filters, applies cooldown, diagnoses, and
+ * emits a JSON finding line.  Returns normally when the stream closes.
+ * Throws when kubectl fails to start.
+ * Returns early (without throwing) when `isShuttingDown()` becomes true.
+ */
+async function runWatchStream(
+  kubectlArgs: string[],
+  watchCfg: HeimdallConfig['watch'],
+  cooldownState: CooldownState,
+  cooldownSeconds: number,
+  isShuttingDown: () => boolean,
+): Promise<void> {
   const kubectl = spawn('kubectl', kubectlArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+
+  let spawnError: Error | null = null;
 
   kubectl.stderr?.on('data', (chunk: Buffer) => {
     process.stderr.write(`[kubectl] ${chunk.toString()}`);
   });
 
-  kubectl.on('error', (err: Error) => {
-    process.stderr.write(`[heimdall-watch] Failed to start kubectl: ${err.message}\n`);
-    process.exit(1);
-  });
-
   kubectl.on('close', (code: number | null) => {
-    process.stderr.write(
-      `[heimdall-watch] kubectl exited with code ${code ?? 'null'}\n`,
-    );
-    if (code !== null && code !== 0) process.exit(code);
+    process.stderr.write(`[heimdall-watch] kubectl exited with code ${code ?? 'null'}\n`);
   });
 
   if (!kubectl.stdout) {
-    process.stderr.write('[heimdall-watch] kubectl stdout unavailable\n');
-    process.exit(1);
+    throw new Error('kubectl stdout unavailable');
   }
 
   const rl = createInterface({ input: kubectl.stdout, crlfDelay: Infinity });
 
+  // Close readline when kubectl fails to start so the for-await loop exits.
+  kubectl.on('error', (err: Error) => {
+    spawnError = err;
+    rl.close();
+  });
+
   // Process events serially: one diagnosis at a time keeps memory bounded and
   // avoids hammering the API server during burst events.
   for await (const line of rl) {
+    if (isShuttingDown()) {
+      rl.close();
+      kubectl.kill('SIGTERM');
+      return;
+    }
+
     const event = parseEventLine(line);
     if (!event) continue;
     if (!matchesWatchFilter(event, watchCfg ?? {})) continue;
@@ -159,6 +171,76 @@ export async function runWatchMode(): Promise<void> {
         process.stderr.write(`[heimdall-watch] Webhook error: ${String(err)}\n`);
       });
     }
+  }
+
+  if (spawnError) throw spawnError;
+}
+
+export async function runWatchMode(): Promise<void> {
+  const config = loadConfig();
+  const watchCfg = config.watch;
+  const namespaces = watchCfg?.namespaces ?? [];
+  const cooldownSeconds = watchCfg?.cooldownSeconds ?? 300;
+  const maxAttempts = watchCfg?.maxReconnectAttempts ?? null;
+  const cooldownState: CooldownState = new Map();
+
+  // Watch a single namespace explicitly, or all namespaces (-A).
+  const kubectlArgs =
+    namespaces.length === 1
+      ? ['get', 'events', '--watch', '-o', 'json', '-n', namespaces[0]]
+      : ['get', 'events', '--watch', '-o', 'json', '-A'];
+
+  process.stderr.write('[heimdall-watch] Starting Kubernetes Warning event monitor...\n');
+  if (namespaces.length > 0) {
+    process.stderr.write(`[heimdall-watch] Watching namespaces: ${namespaces.join(', ')}\n`);
+  }
+  if (watchCfg?.reasons?.length) {
+    process.stderr.write(`[heimdall-watch] Filtering reasons: ${watchCfg.reasons.join(', ')}\n`);
+  }
+  process.stderr.write(`[heimdall-watch] Cooldown: ${cooldownSeconds}s per (object, reason)\n`);
+
+  let attempt = 0;
+  let shuttingDown = false;
+
+  const onSignal = () => { shuttingDown = true; };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+
+  while (true) {
+    const streamStartMs = Date.now();
+
+    try {
+      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, () => shuttingDown);
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[heimdall-watch] Stream error: ${detail}\n`);
+    }
+
+    if (shuttingDown) {
+      process.stderr.write('[heimdall-watch] Shutting down cleanly.\n');
+      process.removeListener('SIGINT', onSignal);
+      process.removeListener('SIGTERM', onSignal);
+      return;
+    }
+
+    const uptimeMs = Date.now() - streamStartMs;
+    if (shouldResetBackoff(uptimeMs, BACKOFF_RESET_THRESHOLD_MS)) {
+      attempt = 0;
+      process.stderr.write('[heimdall-watch] Stream was healthy; resetting reconnect counter.\n');
+    }
+
+    if (maxAttempts !== null && attempt >= maxAttempts) {
+      process.stderr.write(`[heimdall-watch] Max reconnect attempts (${maxAttempts}) reached. Exiting.\n`);
+      process.exit(1);
+    }
+
+    const delayMs = computeBackoffMs(attempt, BACKOFF_OPTS);
+    process.stderr.write(
+      `[heimdall-watch] Stream ended. Reconnecting in ${delayMs}ms` +
+      ` (attempt ${attempt + 1}${maxAttempts !== null ? `/${maxAttempts}` : ''})...\n`,
+    );
+    await new Promise<void>(r => setTimeout(r, delayMs));
+    attempt++;
   }
 }
 

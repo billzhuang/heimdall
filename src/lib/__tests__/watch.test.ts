@@ -6,6 +6,8 @@ import {
   formatFinding,
   eventCooldownKey,
   shouldDiagnose,
+  computeBackoffMs,
+  shouldResetBackoff,
   type K8sEventObject,
   type WatchFilterConfig,
   type CooldownState,
@@ -392,5 +394,69 @@ describe('shouldDiagnose', () => {
     shouldDiagnose(original, state, 1_000, 300);
     // Even immediately after, the recreated pod with a different uid is a fresh key
     expect(shouldDiagnose(recreated, state, 1_001, 300)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeBackoffMs
+// ---------------------------------------------------------------------------
+
+describe('computeBackoffMs', () => {
+  it('returns baseMs for attempt 0 with zero jitter', () => {
+    expect(computeBackoffMs(0, { baseMs: 1_000, capMs: 30_000, jitter: 0 }, () => 0)).toBe(1_000);
+  });
+
+  it('doubles on each attempt (exponential growth)', () => {
+    const opts = { baseMs: 1_000, capMs: 30_000, jitter: 0 };
+    expect(computeBackoffMs(1, opts, () => 0)).toBe(2_000);
+    expect(computeBackoffMs(2, opts, () => 0)).toBe(4_000);
+    expect(computeBackoffMs(3, opts, () => 0)).toBe(8_000);
+  });
+
+  it('caps at capMs', () => {
+    const opts = { baseMs: 1_000, capMs: 5_000, jitter: 0 };
+    expect(computeBackoffMs(10, opts, () => 0)).toBe(5_000);
+    expect(computeBackoffMs(100, opts, () => 0)).toBe(5_000);
+  });
+
+  it('applies jitter: random=0 gives the minimum (raw × (1 - jitter))', () => {
+    const opts = { baseMs: 1_000, capMs: 30_000, jitter: 0.3 };
+    expect(computeBackoffMs(0, opts, () => 0)).toBe(700); // 1000 × 0.7
+  });
+
+  it('applies jitter: random=1 gives the maximum (raw × (1 + jitter))', () => {
+    const opts = { baseMs: 1_000, capMs: 30_000, jitter: 0.3 };
+    expect(computeBackoffMs(0, opts, () => 1)).toBe(1_300); // 1000 × 1.3
+  });
+
+  it('result is within [raw*(1-jitter), raw*(1+jitter)] for all attempts', () => {
+    const opts = { baseMs: 1_000, capMs: 30_000, jitter: 0.25 };
+    for (const attempt of [0, 1, 2, 3, 5]) {
+      const raw = Math.min(opts.baseMs * (2 ** attempt), opts.capMs);
+      const lo = Math.floor(raw * (1 - opts.jitter));
+      const hi = Math.ceil(raw * (1 + opts.jitter));
+      for (const r of [0, 0.25, 0.5, 0.75, 1]) {
+        const result = computeBackoffMs(attempt, opts, () => r);
+        expect(result).toBeGreaterThanOrEqual(lo);
+        expect(result).toBeLessThanOrEqual(hi);
+      }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shouldResetBackoff
+// ---------------------------------------------------------------------------
+
+describe('shouldResetBackoff', () => {
+  it('returns true when uptime meets the threshold', () => {
+    expect(shouldResetBackoff(60_000, 60_000)).toBe(true);
+    expect(shouldResetBackoff(61_000, 60_000)).toBe(true);
+    expect(shouldResetBackoff(1_000_000, 60_000)).toBe(true);
+  });
+
+  it('returns false when uptime is below the threshold', () => {
+    expect(shouldResetBackoff(59_999, 60_000)).toBe(false);
+    expect(shouldResetBackoff(0, 60_000)).toBe(false);
   });
 });
