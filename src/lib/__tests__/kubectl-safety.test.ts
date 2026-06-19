@@ -223,7 +223,7 @@ describe('applyNamespaceLockdown', () => {
   it('blocks -A', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-A'], NS);
     expect(result.blocked).toBe(true);
-    expect(result.reason).toMatch(/--all-namespaces/);
+    expect(result.reason).toMatch(/-A/);
     expect(result.reason).toContain(NS);
   });
 
@@ -265,5 +265,54 @@ describe('applyNamespaceLockdown', () => {
     expect(result.blocked).toBe(false);
     expect(original).toHaveLength(2);
     expect(result.argv).not.toBe(original);
+  });
+
+  // --- Bypass-vector tests ---
+
+  it('blocks -n=<other> (shorthand with attached = value)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-n=other'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('other');
+  });
+
+  it('allows -n=<locked> (shorthand with attached = value matching locked ns)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', `-n=${NS}`], NS);
+    expect(result.blocked).toBe(false);
+  });
+
+  it('blocks -nother (shorthand with attached value, no equals)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-nother'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('other');
+  });
+
+  it('allows -n<locked> (shorthand attached value matching locked ns)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', `-n${NS}`], NS);
+    expect(result.blocked).toBe(false);
+  });
+
+  it('blocks -An (grouped shorthand containing A)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-An', NS], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('-A');
+  });
+
+  it('blocks -nA (grouped shorthand where A is not first)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-nA'], NS);
+    // 'A' is part of the namespace value — but 'A' as a namespace value ≠ lockedNs
+    // or it could be interpreted as grouped (depends on kubectl's pflag).
+    // Either way it should not match lockedNs and be blocked.
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks mixed flags that bypass via overwrite (--namespace=<locked> then -n=other)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', `--namespace=${NS}`, '-n=other'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('other');
+  });
+
+  it('blocks mixed flags in reverse order (-n=other then --namespace=<locked>)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-n=other', `--namespace=${NS}`], NS);
+    expect(result.blocked).toBe(true);
   });
 });

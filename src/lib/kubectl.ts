@@ -266,7 +266,8 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
 
   // Enforce namespace lockdown: block cross-namespace reads and inject the
   // locked namespace when no -n/--namespace flag is present.
-  if (options.lockedNamespace) {
+  // Use typeof check (not truthiness) so an empty string doesn't silently bypass.
+  if (typeof options.lockedNamespace === 'string') {
     const lockdown = applyNamespaceLockdown(argv, options.lockedNamespace);
     if (lockdown.blocked) {
       await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);

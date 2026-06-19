@@ -219,21 +219,23 @@ export interface NamespaceLockdownResult {
 /**
  * Enforce namespace lockdown on a tokenized kubectl argv.
  *
- * When a locked namespace is configured:
- * - `-A` / `--all-namespaces` → blocked.
- * - `-n <other>` / `--namespace=<other>` → blocked.
- * - `-n <lockedNs>` / `--namespace=<lockedNs>` → allowed unchanged.
- * - No namespace flag → `--namespace=<lockedNs>` is appended.
+ * Handles all flag forms that kubectl/pflag accepts:
+ * - Long:      `--all-namespaces`, `--namespace <val>`, `--namespace=<val>`
+ * - Shorthand: `-A`, `-n <val>`, `-n=<val>`, `-n<val>` (attached), `-An` (grouped)
+ *
+ * Collects *every* namespace specified across all flags and blocks if any
+ * differs from the locked namespace, so mixed-flag bypass attempts are caught.
  *
  * Pure function: no I/O.
  */
 export function applyNamespaceLockdown(argv: string[], lockedNs: string): NamespaceLockdownResult {
   let hasNamespaceFlag = false;
+  const specifiedNamespaces: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
 
-    if (arg === '-A' || arg === '--all-namespaces') {
+    if (arg === '--all-namespaces') {
       return {
         blocked: true,
         reason: `namespace lockdown is active — '--all-namespaces' is not allowed; only namespace '${lockedNs}' is accessible`,
@@ -241,23 +243,55 @@ export function applyNamespaceLockdown(argv: string[], lockedNs: string): Namesp
       };
     }
 
-    let nsValue: string | undefined;
-    if ((arg === '-n' || arg === '--namespace') && i + 1 < argv.length) {
-      nsValue = argv[i + 1];
-      i++; // consume the value token
-    } else if (arg.startsWith('--namespace=')) {
-      nsValue = arg.slice('--namespace='.length);
-    }
+    if (arg.startsWith('--')) {
+      if (arg === '--namespace') {
+        hasNamespaceFlag = true;
+        specifiedNamespaces.push(i + 1 < argv.length ? argv[++i] : '');
+      } else if (arg.startsWith('--namespace=')) {
+        hasNamespaceFlag = true;
+        specifiedNamespaces.push(arg.slice('--namespace='.length));
+      }
+    } else if (arg.startsWith('-') && arg !== '-') {
+      // Split on first `=` to separate the flag cluster from an attached value.
+      const eqIdx = arg.indexOf('=');
+      const flags = (eqIdx === -1 ? arg : arg.slice(0, eqIdx)).slice(1);
+      const eqValue = eqIdx === -1 ? undefined : arg.slice(eqIdx + 1);
 
-    if (nsValue !== undefined) {
-      hasNamespaceFlag = true;
-      if (nsValue !== lockedNs) {
+      // Any flag cluster containing 'A' triggers all-namespaces.
+      if (flags.includes('A')) {
         return {
           blocked: true,
-          reason: `namespace lockdown is active — only '${lockedNs}' is accessible; '${nsValue}' is not allowed`,
+          reason: `namespace lockdown is active — '-A' is not allowed; only namespace '${lockedNs}' is accessible`,
           argv,
         };
       }
+
+      const nIdx = flags.indexOf('n');
+      if (nIdx !== -1) {
+        hasNamespaceFlag = true;
+        if (nIdx < flags.length - 1) {
+          // `-n<value>` form: characters after 'n' are the namespace value.
+          specifiedNamespaces.push(flags.slice(nIdx + 1) + (eqValue !== undefined ? `=${eqValue}` : ''));
+        } else if (eqValue !== undefined) {
+          // `-n=<value>` form.
+          specifiedNamespaces.push(eqValue);
+        } else if (i + 1 < argv.length) {
+          // `-n <value>` form: consume the next token.
+          specifiedNamespaces.push(argv[++i]);
+        } else {
+          specifiedNamespaces.push('');
+        }
+      }
+    }
+  }
+
+  for (const ns of specifiedNamespaces) {
+    if (ns !== lockedNs) {
+      return {
+        blocked: true,
+        reason: `namespace lockdown is active — only '${lockedNs}' is accessible; '${ns}' is not allowed`,
+        argv,
+      };
     }
   }
 
