@@ -51,7 +51,7 @@ Examples:
   heimdall -p "Why is my frontend deployment crash-looping in prod?"
   heimdall --watch                        # monitor all namespaces
   heimdall --watch 2>/dev/null | jq .     # pretty-print findings
-  heimdall triage                         # full health sweep (all namespaces)
+  heimdall triage                         # full health sweep (default namespace)
   heimdall triage -A                      # sweep all namespaces
   heimdall triage -n prod                 # sweep only the prod namespace
 

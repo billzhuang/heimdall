@@ -158,7 +158,7 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Work through checks in a fixed order: Nodes → Pods → Workloads → Events → PVCs → Jobs.
 - Classify each finding as critical (cluster-impacting / service down), warning (degraded / at-risk), or info (advisory).
 - For each finding: identify the affected resource, describe the problem clearly, and suggest the exact remediation command the operator should run — never execute it yourself.
-- Use \`kubectl get -o wide\` for nodes and pods; \`kubectl rollout status\` to detect stuck rollouts; \`kubectl get events --sort-by='.lastTimestamp'\` for recent warnings.
+- Use \`kubectl get -o wide\` for nodes and pods; \`kubectl rollout status --timeout=5s\` to detect stuck rollouts (timeout keeps the command within the tool's execution budget); \`kubectl get events --sort-by='.lastTimestamp'\` for recent warnings.
 - Flag: NotReady nodes; pressure conditions; CrashLoopBackOff, ImagePullBackOff, OOMKilled, high-restart, or stuck pods; unavailable replicas; Pending/Lost PVCs; failed jobs.
 - End with a summary line: "Triage complete: X critical, Y warning, Z info findings."`,
   ),

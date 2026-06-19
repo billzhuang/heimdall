@@ -45,10 +45,10 @@ describe('buildTriagePrompt', () => {
     expect(prompt).toContain('-A');
   });
 
-  it('uses all-namespaces scope when no options given', () => {
+  it('uses default-namespace scope when no options given', () => {
     const prompt = buildTriagePrompt();
-    expect(prompt).toContain('all namespaces');
-    expect(prompt).toContain('-A');
+    expect(prompt).toContain('default namespace');
+    expect(prompt).not.toContain('-A');
   });
 
   it('defines all three severity levels', () => {
@@ -68,10 +68,11 @@ describe('buildTriagePrompt', () => {
     expect(prompt).toContain('Triage complete:');
   });
 
-  it('namespace option overrides allNamespaces', () => {
+  it('namespace option takes precedence over allNamespaces', () => {
     // When namespace is set, we use -n <ns> not -A
     const prompt = buildTriagePrompt({ namespace: 'staging', allNamespaces: true });
     expect(prompt).toContain('-n staging');
+    expect(prompt).not.toContain('-A');
   });
 });
 
