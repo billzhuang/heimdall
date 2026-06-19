@@ -21,7 +21,7 @@ const ToolsSchema = v.nullish(
   { kubectl: true, listContexts: true, listNamespaces: true },
 );
 
-const KNOWN_TOOL_KEYS = new Set(['kubectl', 'listContexts', 'listNamespaces']);
+const KNOWN_TOOL_KEYS = new Set(Object.keys(ToolsSchema.wrapped.entries));
 
 // Common snake_case mistakes (the model sees these names, operators may copy them verbatim).
 const SNAKE_CASE_ALIASES: Record<string, string> = {
