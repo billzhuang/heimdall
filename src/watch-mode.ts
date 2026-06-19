@@ -97,20 +97,16 @@ async function diagnoseEvent(prompt: string): Promise<string> {
  * Processes each Warning event: filters, applies cooldown, diagnoses, and
  * emits a JSON finding line.  Returns normally when the stream closes.
  * Throws when kubectl fails to start.
- * Returns early (without throwing) when `isShuttingDown()` becomes true.
  *
- * @param onAbortReady - called once readline is ready with a function that
- *   closes the readline and kills kubectl.  The outer loop uses this to
- *   unblock the for-await immediately on SIGINT/SIGTERM rather than waiting
- *   for the next event line (which may never arrive on an idle cluster).
+ * Aborting `signal` immediately closes the readline interface and kills
+ * kubectl, unblocking the for-await loop even when no events are arriving.
  */
 async function runWatchStream(
   kubectlArgs: string[],
   watchCfg: HeimdallConfig['watch'],
   cooldownState: CooldownState,
   cooldownSeconds: number,
-  isShuttingDown: () => boolean,
-  onAbortReady: (abort: () => void) => void,
+  signal: AbortSignal,
 ): Promise<void> {
   const kubectl = spawn('kubectl', kubectlArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -132,12 +128,13 @@ async function runWatchStream(
 
   const rl = createInterface({ input: kubectl.stdout, crlfDelay: Infinity });
 
-  // Expose an abort handle so the outer loop can close this stream immediately
-  // on SIGINT/SIGTERM without waiting for the next event line.
-  onAbortReady(() => {
+  // Abort handler: close readline and kill kubectl immediately so the
+  // for-await loop unblocks even when the cluster is idle.
+  const onAbort = () => {
     rl.close();
     kubectl.kill('SIGTERM');
-  });
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
 
   // Close readline when kubectl fails to start so the for-await loop exits.
   kubectl.on('error', (err: Error) => {
@@ -148,11 +145,7 @@ async function runWatchStream(
   // Process events serially: one diagnosis at a time keeps memory bounded and
   // avoids hammering the API server during burst events.
   for await (const line of rl) {
-    if (isShuttingDown()) {
-      rl.close();
-      kubectl.kill('SIGTERM');
-      return;
-    }
+    if (signal.aborted) return;
 
     const event = parseEventLine(line);
     if (!event) continue;
@@ -186,6 +179,7 @@ async function runWatchStream(
     }
   }
 
+  signal.removeEventListener('abort', onAbort);
   if (spawnError) throw spawnError;
 }
 
@@ -213,37 +207,24 @@ export async function runWatchMode(): Promise<void> {
   process.stderr.write(`[heimdall-watch] Cooldown: ${cooldownSeconds}s per (object, reason)\n`);
 
   let attempt = 0;
-  let shuttingDown = false;
-  let activeAbort: (() => void) | null = null;
+  const controller = new AbortController();
 
-  const onSignal = () => {
-    shuttingDown = true;
-    activeAbort?.(); // immediately unblock the readline for-await loop
-  };
+  const onSignal = () => { controller.abort(); };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
 
-  while (true) {
+  while (!controller.signal.aborted) {
     const streamStartMs = Date.now();
-    activeAbort = null;
 
     try {
-      await runWatchStream(
-        kubectlArgs, watchCfg, cooldownState, cooldownSeconds,
-        () => shuttingDown,
-        (abort) => { activeAbort = abort; },
-      );
+      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal);
     } catch (err: unknown) {
+      if (controller.signal.aborted) break;
       const detail = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[heimdall-watch] Stream error: ${detail}\n`);
     }
 
-    if (shuttingDown) {
-      process.stderr.write('[heimdall-watch] Shutting down cleanly.\n');
-      process.removeListener('SIGINT', onSignal);
-      process.removeListener('SIGTERM', onSignal);
-      return;
-    }
+    if (controller.signal.aborted) break;
 
     const uptimeMs = Date.now() - streamStartMs;
     if (shouldResetBackoff(uptimeMs, BACKOFF_RESET_THRESHOLD_MS)) {
@@ -261,9 +242,22 @@ export async function runWatchMode(): Promise<void> {
       `[heimdall-watch] Stream ended. Reconnecting in ${delayMs}ms` +
       ` (attempt ${attempt + 1}${maxAttempts !== null ? `/${maxAttempts}` : ''})...\n`,
     );
-    await new Promise<void>(r => setTimeout(r, delayMs));
+
+    // Interruptible sleep: resolves early if the abort signal fires.
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, delayMs);
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    });
+
     attempt++;
   }
+
+  process.stderr.write('[heimdall-watch] Shutting down cleanly.\n');
+  process.removeListener('SIGINT', onSignal);
+  process.removeListener('SIGTERM', onSignal);
 }
 
 runWatchMode().catch((err: unknown) => {
