@@ -1,0 +1,99 @@
+# Heimdall in-cluster Deployment.
+#
+# Prerequisites:
+#   1. Apply deploy/rbac.yaml first (creates Namespace + ServiceAccount).
+#   2. Create the API key Secret (see below).
+#   3. Build and push the image, then update `image:` to your registry.
+#
+# Create the API key Secret:
+#   kubectl create secret generic heimdall-api-key \
+#     --namespace heimdall \
+#     --from-literal=ANTHROPIC_API_KEY=<your-key>
+#
+# Apply:
+#   kubectl apply -f deploy/rbac.yaml
+#   kubectl apply -f deploy/deployment.yaml
+
+# API key Secret — create via `kubectl create secret` as shown above; the
+# template below is a placeholder only (no plaintext key committed here).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: heimdall-api-key
+  namespace: heimdall
+type: Opaque
+# stringData:
+#   ANTHROPIC_API_KEY: "<never commit a real key here; use kubectl create secret>"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: heimdall
+  namespace: heimdall
+  labels:
+    app: heimdall
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: heimdall
+  template:
+    metadata:
+      labels:
+        app: heimdall
+    spec:
+      serviceAccountName: heimdall
+      automountServiceAccountToken: true
+      # seccomp: block uncommon syscalls while allowing normal Node.js execution
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: heimdall
+          # Replace with your registry/tag after `docker build -t <registry>/heimdall:<tag> .`
+          image: ghcr.io/billzhuang/heimdall:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: heimdall-api-key
+                  key: ANTHROPIC_API_KEY
+            # Write the kubectl JSON cache to the writable /tmp volume.
+            - name: HEIMDALL_KUBECTL_CACHE_DIR
+              value: /tmp/heimdall-cache
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # TCP probe: verifies the Flue HTTP server is accepting connections.
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            # /tmp is the only writable location; covers Node.js and kubectl cache.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

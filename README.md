@@ -168,6 +168,60 @@ docker run ... \
   heimdall
 ```
 
+## Deploy in-cluster
+
+The `deploy/` directory contains ready-to-apply Kubernetes manifests for running
+Heimdall inside the cluster it diagnoses.
+
+### RBAC (least-privilege, read-only)
+
+Heimdall needs `get`, `list`, and `watch` on common API resources. Secrets are
+excluded from the default role; apply the opt-in extension if you need Helm
+release inspection.
+
+```bash
+# Recommended: create Namespace + ServiceAccount + ClusterRole (no Secrets) + ClusterRoleBinding
+kubectl apply -f deploy/rbac.yaml
+
+# Optional: also grant read access to Secrets (needed for Helm release inspection)
+kubectl apply -f deploy/rbac-with-secrets.yaml
+
+# Alternative: scope Heimdall to a single namespace instead of the whole cluster
+# (edit the two namespace: fields in the file first)
+kubectl apply -f deploy/rbac-namespaced.yaml
+```
+
+> **Why no Secrets by default?** Granting an AI agent access to all cluster
+> Secrets (credentials, tokens, TLS keys) is a significant blast-radius decision.
+> The default role is deliberately secrets-free; apply `rbac-with-secrets.yaml`
+> only if you understand and accept that risk.
+
+### Deployment
+
+```bash
+# 1. Create the API key Secret
+kubectl create secret generic heimdall-api-key \
+  --namespace heimdall \
+  --from-literal=ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+
+# 2. Build and push the image to your registry, then edit image: in deployment.yaml
+
+# 3. Apply
+kubectl apply -f deploy/deployment.yaml
+```
+
+The Deployment is hardened by default:
+
+| Security control | Setting |
+| --- | --- |
+| Runs as non-root | `runAsNonRoot: true` |
+| No privilege escalation | `allowPrivilegeEscalation: false` |
+| Read-only root filesystem | `readOnlyRootFilesystem: true` |
+| All Linux capabilities dropped | `capabilities: drop: [ALL]` |
+| Seccomp profile | `RuntimeDefault` |
+| Writable `/tmp` | `emptyDir` volume (kubectl cache + Node.js temp) |
+| In-cluster auth | `automountServiceAccountToken: true` (uses the ServiceAccount above) |
+
 ## Configuration
 
 All configuration is via environment variables (see `.env.example`):
