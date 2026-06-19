@@ -50,6 +50,9 @@ export const ALLOWED_KUBECTL_COMMANDS = [
   'api-versions',
   'version',
   'cluster-info',
+  // Server-side dry-run: compares live state against a manifest, no writes.
+  // In practice the agent can only use this with inline manifests passed via -f.
+  'diff',
 ] as const;
 
 /**
