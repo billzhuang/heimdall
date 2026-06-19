@@ -51,7 +51,7 @@ describe('buildInstructions', () => {
 
   it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
     const allEnabled = buildInstructions();
-    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease']));
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery']));
     expect(allEnabled).toBe(explicit);
   });
 
@@ -63,6 +63,16 @@ describe('buildInstructions', () => {
   it('omits helm_release when helmRelease is disabled', () => {
     const out = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces']));
     expect(out).not.toMatch(/`helm_release`/);
+  });
+
+  it('includes prometheus_query tool description when prometheusQuery is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery']));
+    expect(out).toMatch(/`prometheus_query`/);
+  });
+
+  it('omits prometheus_query when prometheusQuery is disabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease']));
+    expect(out).not.toMatch(/`prometheus_query`/);
   });
 });
 

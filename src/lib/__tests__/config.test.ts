@@ -18,7 +18,7 @@ describe('loadConfig', () => {
 
   it('returns all-enabled defaults when no config file exists', () => {
     const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('defaults audit to disabled when no audit section is present', () => {
@@ -54,41 +54,42 @@ describe('loadConfig', () => {
     expect(config.tools.listNamespaces).toBe(false);
   });
 
-  it('fills in missing tool keys with true', () => {
+  it('fills in missing tool keys with their defaults (most true, prometheusQuery false)', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, `tools:\n  kubectl: false\n`);
     const config = loadConfig(configPath);
     expect(config.tools.kubectl).toBe(false);
     expect(config.tools.listContexts).toBe(true);
     expect(config.tools.listNamespaces).toBe(true);
+    expect(config.tools.prometheusQuery).toBe(false);
   });
 
   it('returns defaults for an empty config file', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('returns defaults when the YAML is malformed', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, ': bad yaml: [\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('returns defaults when the config fails schema validation', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, `tools:\n  kubectl: "yes"\n`); // string instead of boolean
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('enables all tools when the tools section is omitted', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '# no tools key\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('handles null tools block (empty YAML key like `tools:`) gracefully', () => {
@@ -96,14 +97,14 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'tools:\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('returns defaults and warns when config is a scalar (not a mapping)', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'true\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false });
   });
 
   it('each call returns an independent object (no shared mutable default)', () => {
@@ -214,6 +215,45 @@ describe('loadConfig', () => {
       expect(config.tools.listContexts).toBe(true);
       expect(config.tools.listNamespaces).toBe(true);
       warnSpy.mockRestore();
+    });
+
+    it('accepts prometheus_query as an alias for prometheusQuery', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  prometheus_query: true\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const config = loadConfig(configPath);
+      expect(config.tools.prometheusQuery).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe('prometheus config block', () => {
+    it('defaults prometheus to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.prometheus).toBeUndefined();
+    });
+
+    it('loads prometheus url and timeoutMs', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `prometheus:\n  url: http://prom:9090\n  timeoutMs: 5000\n`);
+      const config = loadConfig(configPath);
+      expect(config.prometheus?.url).toBe('http://prom:9090');
+      expect(config.prometheus?.timeoutMs).toBe(5000);
+    });
+
+    it('defaults prometheusQuery tool to false even when prometheus block is present', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `prometheus:\n  url: http://prom:9090\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.prometheusQuery).toBe(false);
+    });
+
+    it('allows enabling prometheusQuery independently of prometheus block', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  prometheusQuery: true\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.prometheusQuery).toBe(true);
     });
   });
 });
