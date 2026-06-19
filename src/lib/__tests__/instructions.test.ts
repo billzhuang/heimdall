@@ -67,12 +67,13 @@ describe('buildInstructions', () => {
 });
 
 describe('SUBAGENT_INSTRUCTIONS', () => {
-  it('defines all four read-only specialists', () => {
+  it('defines all five specialists', () => {
     expect(Object.keys(SUBAGENT_INSTRUCTIONS).sort()).toEqual([
       'log-analyzer',
       'network-debugger',
       'resource-analyzer',
       'security-auditor',
+      'triage',
     ]);
   });
 

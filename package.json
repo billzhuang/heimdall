@@ -12,6 +12,7 @@
     "connect": "flue connect heimdall local --target node",
     "prompt": "bin/heimdall",
     "watch": "tsx src/watch-mode.ts",
+    "triage": "tsx src/triage-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -7,7 +7,8 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 ## Features
 
 - **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`, and `kubectl config` is blocked entirely.
-- **Specialist subagents** — delegates deep investigations to focused profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`.
+- **Specialist subagents** — delegates deep investigations to focused profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`, `triage`.
+- **Triage mode** — `heimdall triage` runs a structured, repeatable whole-cluster health sweep (nodes → pods → workloads → events → PVCs → jobs) and produces a severity-ranked report (critical / warning / info).
 - **Cluster discovery** — `list_contexts` and `list_namespaces` tools let it find what's available.
 - **kubectl JSON cache** — short‑TTL on-disk cache for `kubectl get … -o json` to avoid hammering the API server during tight diagnostic loops.
 - **Deploy anywhere** — Flue agents run locally via the CLI or deploy to Node.js, Cloudflare, and more.
@@ -43,6 +44,29 @@ heimdall -p "List all deployments with fewer than 2 replicas"
 heimdall -p "Audit RBAC for the payments service account"
 heimdall --help
 ```
+
+### Triage mode
+
+Run a structured, whole-cluster health sweep with severity-ranked findings:
+
+```bash
+heimdall triage               # sweep the default namespace
+heimdall triage -A            # sweep all namespaces
+heimdall triage -n prod       # sweep only the prod namespace
+
+npm run triage                # via npm (all namespaces)
+npm run triage -- -n staging  # scope to a namespace
+```
+
+Triage checks, in order:
+1. **Nodes** — NotReady status, MemoryPressure, DiskPressure, PIDPressure, Unschedulable
+2. **Pods** — CrashLoopBackOff, ImagePullBackOff, OOMKilled, Pending, high restart counts
+3. **Workloads** — unavailable replicas in Deployments/StatefulSets/DaemonSets, stuck rollouts
+4. **Events** — Warning-type events from the last hour
+5. **PVCs** — Pending or Lost persistent volume claims
+6. **Jobs** — failed completions or hung jobs
+
+Each finding includes a severity label, a description, and a suggested remediation command. The agent never executes remediation itself.
 
 ### Interactive mode
 
