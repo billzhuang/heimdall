@@ -6,7 +6,7 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 
 ## Features
 
-- **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …).
+- **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`, and `kubectl config` is blocked entirely.
 - **Specialist subagents** — delegates deep investigations to focused profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`.
 - **Cluster discovery** — `list_contexts` and `list_namespaces` tools let it find what's available.
 - **kubectl JSON cache** — short‑TTL on-disk cache for `kubectl get … -o json` to avoid hammering the API server during tight diagnostic loops.
@@ -101,9 +101,13 @@ npm run build            # build deployable artifact
 
 The read-only guarantee is enforced in code, not just in the prompt:
 
-1. The agent's **only** cluster tool is `kubectl`, which calls `validateCommand` before running anything. Unknown and destructive subcommands are denied (default-deny).
-2. Commands are executed with `execFile` (no shell), so model-supplied arguments cannot inject pipes, redirects, or command substitution.
-3. The default in-memory sandbox keeps the model's general shell off the host — real cluster access only happens through the validated tool.
+1. The agent's **only** cluster tool is `kubectl`, which calls `validateCommand` on the exact tokenized command before running anything. It is **default-deny**: only an explicit allow-list of read-only subcommands passes, everything else (including unknown subcommands) is blocked.
+2. Command families that mix read-only and mutating verbs are gated by nested verb — `auth` permits only `can-i`/`whoami` (e.g. `auth reconcile` is blocked), and `config` (which can mutate the kubeconfig or expose credentials) is blocked entirely. Use the `list_contexts` tool for context discovery instead.
+3. Commands are executed with `execFile` (no shell), so model-supplied arguments cannot inject pipes, redirects, or command substitution.
+4. The default in-memory sandbox keeps the model's general shell off the host — real cluster access only happens through the validated tool.
+5. The JSON cache is keyed by the full argv plus kubeconfig and effective context, and stored in a per-user directory, so reads can't collide or leak across clusters or users.
+
+The policy is covered by unit and property-based tests (`fast-check`) asserting these invariants hold for all inputs.
 
 ## License
 

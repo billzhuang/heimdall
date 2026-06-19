@@ -25,7 +25,7 @@ src/
 └── lib/
     ├── kubectl-safety.ts # PURE read-only policy: parseKubectlCommand, validateCommand
     ├── kubectl.ts        # runKubectl: tokenize (no shell) + exec + JSON cache
-    ├── kubeconfig.ts     # kubeconfig parsing + fetchNamespaces
+    ├── kubeconfig.ts     # kubeconfig parsing helpers
     ├── instructions.ts   # buildInstructions() + SUBAGENT_INSTRUCTIONS
     ├── model.ts          # DEFAULT_MODEL
     └── __tests__/        # unit + property-based tests
@@ -37,7 +37,7 @@ flue.config.ts           # defineConfig({ target: 'node' })
 | Layer | Technology |
 |-------|------------|
 | Runtime | Node.js ≥ 22.19.0 (ESM) |
-| Language | TypeScript 5.x (strict) |
+| Language | TypeScript 6.x (strict, `moduleResolution: bundler`) |
 | Agent framework | Flue (`@flue/runtime`, `@flue/cli`) |
 | Schemas | valibot |
 | Config parsing | js-yaml |
@@ -63,7 +63,13 @@ The read-only guarantee does **not** depend on the prompt:
   which subcommands are allowed. It is **default-deny**: anything not on
   `ALLOWED_KUBECTL_COMMANDS` is blocked, and everything on
   `DESTRUCTIVE_KUBECTL_COMMANDS` is always blocked.
-- The `kubectl` tool calls `validateCommand` before executing anything.
+- Command families that mix read-only and mutating verbs are gated by nested
+  verb via `NESTED_ALLOWED_VERBS` (e.g. `auth` → only `can-i`/`whoami`). `config`
+  is deliberately not allowed at all — it can mutate the kubeconfig or expose
+  credentials; context discovery goes through the `list_contexts` tool.
+- `runKubectl` validates the **exact tokenized argv** it will execute (it
+  tokenizes first, then validates the rejoined command), so validation and
+  execution can never diverge.
 - Never weaken this policy. If you add an allowed subcommand, it must be
   genuinely read-only, and you must add tests.
 
@@ -98,9 +104,14 @@ This lives in `src/lib/instructions.ts`.
 - **Pure logic** (`kubectl-safety`, `kubeconfig`, tokenizer/cache helpers): unit tests.
 - **Property-based tests** (fast-check): the read-only policy must hold for all
   inputs — destructive subcommands always blocked, non-kubectl always rejected,
-  even behind value-taking global flags (e.g. `kubectl --v 5 delete`).
-- Tests live in `src/lib/__tests__/*.test.ts`. Keep them free of cluster/network
-  dependencies (no live `kubectl`).
+  even behind value-taking global flags (e.g. `kubectl --v 5 delete`) and for
+  nested verbs (`auth reconcile` blocked, `auth can-i` allowed).
+- Tests live in `src/lib/__tests__/*.test.ts` and `src/tools/__tests__/*.test.ts`.
+- **Never spawn a real `kubectl` in tests.** The runners (and CI) have `kubectl`
+  installed; an allowed command would try to reach a cluster and hang past the
+  test timeout. Assert the *policy decision* against `validateCommand`/the
+  blocked paths of `runKubectl` (which return before exec), and **mock
+  `runKubectl`** when testing the tool layer (`src/tools/__tests__/tools.test.ts`).
 
 ## 🔄 Common Workflows
 
@@ -117,7 +128,8 @@ This lives in `src/lib/instructions.ts`.
    the `subagents` array. Give it the read-only `clusterTools`.
 
 ### Change allowed/blocked kubectl subcommands
-1. Edit `ALLOWED_KUBECTL_COMMANDS` / `DESTRUCTIVE_KUBECTL_COMMANDS` in
+1. Edit `ALLOWED_KUBECTL_COMMANDS` / `DESTRUCTIVE_KUBECTL_COMMANDS` (or
+   `NESTED_ALLOWED_VERBS` for verbs within a mixed family) in
    `src/lib/kubectl-safety.ts`.
 2. Update tests (including the property tests) to cover the change.
 
@@ -127,5 +139,6 @@ This lives in `src/lib/instructions.ts`.
 - ❌ Bypassing `validateCommand` / `runKubectl` for cluster access.
 - ❌ Putting credentials or tenant identifiers in model-selected tool arguments.
 - ❌ Adding a subcommand to the allow-list without tests.
+- ❌ Spawning a real `kubectl` in tests (mock `runKubectl` / assert the policy decision instead).
 - ❌ Forgetting the `.ts` extension on local imports inside `src/`.
 - ❌ Committing `.env` or provider credentials.
