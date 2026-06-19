@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   ALLOWED_KUBECTL_COMMANDS,
   DESTRUCTIVE_KUBECTL_COMMANDS,
+  applyNamespaceLockdown,
   isDestructiveCommand,
   parseKubectlCommand,
   validateCommand,
@@ -193,5 +194,76 @@ describe('isDestructiveCommand', () => {
     expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
     expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
     expect(validateCommand('kubectl --context=prod rollout restart deploy/api').allowed).toBe(false);
+  });
+});
+
+describe('applyNamespaceLockdown', () => {
+  const NS = 'prod';
+
+  it('injects --namespace=<locked> when no namespace flag is present', () => {
+    const result = applyNamespaceLockdown(['get', 'pods'], NS);
+    expect(result.blocked).toBe(false);
+    expect(result.argv).toContain(`--namespace=${NS}`);
+  });
+
+  it('leaves argv unchanged when -n already matches the locked namespace', () => {
+    const argv = ['get', 'pods', '-n', NS];
+    const result = applyNamespaceLockdown(argv, NS);
+    expect(result.blocked).toBe(false);
+    expect(result.argv).toEqual(argv);
+  });
+
+  it('leaves argv unchanged when --namespace=<locked> is already present', () => {
+    const argv = ['get', 'pods', `--namespace=${NS}`];
+    const result = applyNamespaceLockdown(argv, NS);
+    expect(result.blocked).toBe(false);
+    expect(result.argv).toEqual(argv);
+  });
+
+  it('blocks -A', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-A'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toMatch(/--all-namespaces/);
+    expect(result.reason).toContain(NS);
+  });
+
+  it('blocks --all-namespaces', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--all-namespaces'], NS);
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks -n with a different namespace', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-n', 'other'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('other');
+    expect(result.reason).toContain(NS);
+  });
+
+  it('blocks --namespace=<other>', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--namespace=kube-system'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('kube-system');
+  });
+
+  it('blocks --namespace <other> (two-token form)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--namespace', 'staging'], NS);
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toContain('staging');
+  });
+
+  it('does not double-inject when called twice on already-injected argv', () => {
+    const first = applyNamespaceLockdown(['get', 'pods'], NS);
+    const second = applyNamespaceLockdown(first.argv, NS);
+    expect(second.blocked).toBe(false);
+    const count = second.argv.filter((a) => a === `--namespace=${NS}`).length;
+    expect(count).toBe(1);
+  });
+
+  it('returns a new array for injection, does not mutate input', () => {
+    const original = ['get', 'pods'];
+    const result = applyNamespaceLockdown(original, NS);
+    expect(result.blocked).toBe(false);
+    expect(original).toHaveLength(2);
+    expect(result.argv).not.toBe(original);
   });
 });

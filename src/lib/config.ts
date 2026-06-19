@@ -78,6 +78,13 @@ const WatchSchema = v.nullish(
   }),
 );
 
+// Namespace lockdown — restricts the agent to a single namespace enforced in code.
+const NamespaceSchema = v.nullish(
+  v.object({
+    locked: v.nullish(v.string()),
+  }),
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
@@ -87,6 +94,7 @@ const HeimdallConfigSchema = v.object({
   prometheus: PrometheusSchema,
   // User-configurable regex redaction rules (disabled by default).
   redaction: RedactionSchema,
+  namespace: NamespaceSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;

@@ -30,7 +30,7 @@ const regexRedactionRules = config.redaction?.enabled ? compileRules(config.reda
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
 // without adding the tool (or vice versa) is a compile-time error.
 const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules),
+  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules, config.namespace?.locked),
   listContexts,
   listNamespaces,
   helmRelease,
@@ -64,7 +64,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default createAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(enabledToolKeys),
+  instructions: buildInstructions(enabledToolKeys, config.namespace?.locked),
   tools: clusterTools,
   subagents,
 }));

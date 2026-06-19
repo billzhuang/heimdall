@@ -208,6 +208,66 @@ export function isDestructiveCommand(command: string): boolean {
   return false;
 }
 
+/** Result of applying namespace lockdown to a tokenized argv. */
+export interface NamespaceLockdownResult {
+  blocked: boolean;
+  reason?: string;
+  /** The (potentially modified) argv to use for execution. */
+  argv: string[];
+}
+
+/**
+ * Enforce namespace lockdown on a tokenized kubectl argv.
+ *
+ * When a locked namespace is configured:
+ * - `-A` / `--all-namespaces` → blocked.
+ * - `-n <other>` / `--namespace=<other>` → blocked.
+ * - `-n <lockedNs>` / `--namespace=<lockedNs>` → allowed unchanged.
+ * - No namespace flag → `--namespace=<lockedNs>` is appended.
+ *
+ * Pure function: no I/O.
+ */
+export function applyNamespaceLockdown(argv: string[], lockedNs: string): NamespaceLockdownResult {
+  let hasNamespaceFlag = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+
+    if (arg === '-A' || arg === '--all-namespaces') {
+      return {
+        blocked: true,
+        reason: `namespace lockdown is active — '--all-namespaces' is not allowed; only namespace '${lockedNs}' is accessible`,
+        argv,
+      };
+    }
+
+    let nsValue: string | undefined;
+    if ((arg === '-n' || arg === '--namespace') && i + 1 < argv.length) {
+      nsValue = argv[i + 1];
+      i++; // consume the value token
+    } else if (arg.startsWith('--namespace=')) {
+      nsValue = arg.slice('--namespace='.length);
+    }
+
+    if (nsValue !== undefined) {
+      hasNamespaceFlag = true;
+      if (nsValue !== lockedNs) {
+        return {
+          blocked: true,
+          reason: `namespace lockdown is active — only '${lockedNs}' is accessible; '${nsValue}' is not allowed`,
+          argv,
+        };
+      }
+    }
+  }
+
+  if (!hasNamespaceFlag) {
+    return { blocked: false, argv: [...argv, `--namespace=${lockedNs}`] };
+  }
+
+  return { blocked: false, argv };
+}
+
 /**
  * Validate a kubectl command against the read-only policy. Non-kubectl
  * commands are out of scope (the tool only ever runs kubectl), unknown

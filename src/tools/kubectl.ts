@@ -6,7 +6,10 @@ import * as v from 'valibot';
 import { runKubectl, type AuditConfig } from '../lib/kubectl.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 
-export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean, regexRedactionRules?: CompiledRedactionRule[]) {
+export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean, regexRedactionRules?: CompiledRedactionRule[], lockedNamespace?: string | null) {
+  const lockdownNote = lockedNamespace
+    ? ` NAMESPACE LOCKDOWN ACTIVE: all queries are restricted to namespace '${lockedNamespace}'; '-A'/--all-namespaces and other namespaces are blocked.`
+    : '';
   return defineTool({
     name: 'kubectl',
     description:
@@ -18,7 +21,8 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean,
       'port-forward, ...) are blocked. For rollout: only "status" and "history" are allowed; ' +
       'restart/undo/pause/resume are blocked. There is no shell, so pipes/redirects do not work — ' +
       'use label selectors, --field-selector, or -o jsonpath to filter output. ' +
-      'Treat Secret .data and .stringData values as sensitive regardless of output format.',
+      'Treat Secret .data and .stringData values as sensitive regardless of output format.' +
+      lockdownNote,
     parameters: v.object({
       args: v.pipe(
         v.string(),
@@ -29,7 +33,8 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean,
         v.description('Optional cluster context to target (added as --context=...). Defaults to the configured/current context.'),
       ),
     }),
-    execute: async ({ args, context }) => runKubectl(args, { context, audit, redactSecrets, regexRedactionRules }),
+    execute: async ({ args, context }) =>
+      runKubectl(args, { context, audit, redactSecrets, regexRedactionRules, lockedNamespace: lockedNamespace ?? undefined }),
   });
 }
 

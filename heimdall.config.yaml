@@ -39,3 +39,10 @@ tools:
 #       pattern: '-----BEGIN( RSA| EC| OPENSSH)? PRIVATE KEY-----'
 #     - name: generic_token
 #       pattern: '(?i)(bearer|token|api[_-]?key)["\s:=]+[A-Za-z0-9/+._-]{20,}'
+
+# Namespace lockdown — restrict the agent to a single namespace (code-enforced).
+# When set, every kubectl call is automatically scoped to this namespace;
+# -A/--all-namespaces and other namespaces are blocked.
+#
+# namespace:
+#   locked: prod-payments

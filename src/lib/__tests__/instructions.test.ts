@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SUBAGENT_INSTRUCTIONS, buildInstructions } from '../instructions.ts';
 import { DEFAULT_MODEL } from '../model.ts';
 
+
 describe('buildInstructions', () => {
   it('describes the agent, its tools, the read-only policy, and the response format', () => {
     const out = buildInstructions();
@@ -97,6 +98,33 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       expect(text).toMatch(/read-only/i);
       expect(text).toMatch(/Thinking Summary/);
     }
+  });
+});
+
+describe('buildInstructions — namespace lockdown', () => {
+  it('includes lockdown notice when lockedNamespace is set', () => {
+    const out = buildInstructions(undefined, 'prod-payments');
+    expect(out).toMatch(/NAMESPACE LOCKDOWN/);
+    expect(out).toContain("'prod-payments'");
+  });
+
+  it('suppresses "No namespace is pinned" when lockedNamespace is set', () => {
+    const out = buildInstructions(undefined, 'prod');
+    expect(out).not.toMatch(/No namespace is pinned/);
+  });
+
+  it('does not include lockdown notice when lockedNamespace is absent', () => {
+    const out = buildInstructions();
+    expect(out).not.toMatch(/NAMESPACE LOCKDOWN/);
+    expect(out).toMatch(/No namespace is pinned/);
+  });
+
+  it('lockdown notice appears even when listContexts and listNamespaces are disabled', () => {
+    const out = buildInstructions(new Set(['kubectl']), 'staging');
+    expect(out).toMatch(/NAMESPACE LOCKDOWN/);
+    expect(out).toContain("'staging'");
+    // Connection section still appears because lockdown line is present
+    expect(out).toMatch(/## Connection/);
   });
 });
 
