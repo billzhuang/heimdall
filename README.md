@@ -45,6 +45,46 @@ heimdall -p "Audit RBAC for the payments service account"
 heimdall --help
 ```
 
+#### Machine-readable JSON output
+
+Add `--json` (or `--format json`) to get a structured envelope instead of prose —
+ideal for CI gates, alert pipelines, and scripts that need to parse the result:
+
+```bash
+heimdall -p "Why is my api pod crash-looping?" --json
+```
+
+Output (single JSON line):
+
+```json
+{
+  "summary": "- Checked api deployment in prod\n- Found ImagePullBackOff on new pods\n…",
+  "answer": "The `api` deployment is failing because …",
+  "severity": "warning",
+  "suggestedCommands": [
+    "kubectl rollout undo deploy/api -n prod",
+    "kubectl describe pod -l app=api -n prod"
+  ],
+  "model": "anthropic/claude-sonnet-4-6"
+}
+```
+
+Pipe to `jq` for pretty-printing, or feed directly to scripts:
+
+```bash
+# Extract just the severity
+heimdall -p "Check the ingress in prod" --json | jq -r '.severity'
+
+# Gate a CI job on diagnosis
+result=$(heimdall -p "Are all pods healthy in prod?" --json)
+if [[ $(echo "$result" | jq -r '.severity') == "critical" ]]; then
+  echo "Critical issue detected — aborting deploy" >&2
+  exit 1
+fi
+```
+
+`--json` is not compatible with `--watch` (watch mode already emits JSON lines) or `triage`.
+
 ### Triage mode
 
 Run a structured, whole-cluster health sweep with severity-ranked findings:
