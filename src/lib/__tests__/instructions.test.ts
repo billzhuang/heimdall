@@ -22,6 +22,38 @@ describe('buildInstructions', () => {
     expect(out).toMatch(/No context is pinned/);
     expect(out).toMatch(/No namespace is pinned/);
   });
+
+  it('omits list_contexts references when listContexts is disabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listNamespaces']));
+    expect(out).not.toMatch(/`list_contexts`/);
+    expect(out).not.toMatch(/No context is pinned/);
+    expect(out).toMatch(/`list_namespaces`/);
+    expect(out).toMatch(/No namespace is pinned/);
+    expect(out).toMatch(/`kubectl`/);
+  });
+
+  it('omits list_namespaces references when listNamespaces is disabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listContexts']));
+    expect(out).not.toMatch(/`list_namespaces`/);
+    expect(out).not.toMatch(/No namespace is pinned/);
+    expect(out).toMatch(/`list_contexts`/);
+    expect(out).toMatch(/No context is pinned/);
+    expect(out).toMatch(/`kubectl`/);
+  });
+
+  it('omits the Connection section entirely when both discovery tools are disabled', () => {
+    const out = buildInstructions(new Set(['kubectl']));
+    expect(out).not.toMatch(/## Connection/);
+    expect(out).not.toMatch(/`list_contexts`/);
+    expect(out).not.toMatch(/`list_namespaces`/);
+    expect(out).toMatch(/`kubectl`/);
+  });
+
+  it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
+    const allEnabled = buildInstructions();
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces']));
+    expect(allEnabled).toBe(explicit);
+  });
 });
 
 describe('SUBAGENT_INSTRUCTIONS', () => {

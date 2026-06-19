@@ -15,7 +15,7 @@ import type { ToolDefinition } from '@flue/runtime';
 import { kubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
-import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName } from '../lib/instructions.ts';
+import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
 import type { HeimdallConfig } from '../lib/config.ts';
 
@@ -30,8 +30,12 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   listNamespaces,
 };
 
-const clusterTools = (Object.keys(ALL_TOOLS) as Array<keyof typeof ALL_TOOLS>)
-  .filter((key) => config.tools[key])
+const enabledToolKeys = new Set(
+  (Object.keys(ALL_TOOLS) as ToolConfigKey[]).filter((key) => config.tools[key]),
+);
+
+const clusterTools = (Object.keys(ALL_TOOLS) as ToolConfigKey[])
+  .filter((key) => enabledToolKeys.has(key))
   .map((key) => ALL_TOOLS[key]);
 
 if (clusterTools.length === 0) {
@@ -52,7 +56,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default createAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(),
+  instructions: buildInstructions(enabledToolKeys),
   tools: clusterTools,
   subagents,
 }));
