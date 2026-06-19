@@ -11,6 +11,7 @@ import {
   resolveKubeconfigPath,
 } from '../lib/kubeconfig.ts';
 import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
+import { BLOCKED_PREFIX } from '../lib/harness.ts';
 
 export const listContexts = defineTool({
   name: 'list_contexts',
@@ -60,7 +61,7 @@ export function makeListNamespaces(lockedNamespace?: string | null) {
       }
       const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
       // Surface policy/execution errors verbatim rather than parsing them as data.
-      if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
+      if (output.startsWith(BLOCKED_PREFIX) || output.startsWith('kubectl exited')) {
         return output;
       }
       const empty = 'No namespaces found (or insufficient permissions to list them).';

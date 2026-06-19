@@ -4,6 +4,7 @@
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runHelm } from '../lib/helm.ts';
+import { BLOCKED_PREFIX } from '../lib/harness.ts';
 
 export function makeHelmRelease(lockedNamespace?: string | null) {
   const lockdownNote = lockedNamespace
@@ -47,10 +48,10 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
     execute: async ({ action, release, namespace, getType, allNamespaces }) => {
       if (lockedNamespace) {
         if (allNamespaces) {
-          return `BLOCKED: namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`;
+          return `${BLOCKED_PREFIX}namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`;
         }
         if (namespace && namespace !== lockedNamespace) {
-          return `BLOCKED: namespace lockdown is active — only '${lockedNamespace}' is accessible; '${namespace}' is not allowed`;
+          return `${BLOCKED_PREFIX}namespace lockdown is active — only '${lockedNamespace}' is accessible; '${namespace}' is not allowed`;
         }
         return runHelm(action, { release, namespace: namespace ?? lockedNamespace, getType, allNamespaces: false });
       }
