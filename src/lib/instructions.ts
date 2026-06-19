@@ -18,15 +18,27 @@ If a fix is needed, present the exact command(s) as a SUGGESTION for the operato
 run manually — never attempt to run them yourself.`;
 
 const RESPONSE_FORMAT = `## Response format
-Always respond in two sections:
+Always respond in the following sections. Omit Evidence and Validity Score only when no tools were called.
 
 Thinking Summary:
 - 2-5 bullets describing your goal, the checks you ran, the evidence, and your conclusion (high level only).
 
 Answer:
-<your full response>
+<your full Markdown investigation>
 
-Do not reveal hidden chain-of-thought or internal scratch work beyond the high-level summary.`;
+Causal Chain:
+- <ordered reasoning step that led to the root cause, one bullet per step>
+
+Evidence:
+- <finding>: <supporting kubectl/Prometheus output snippet>
+
+Validity Score: <0.0–1.0 float; 1.0 when multiple independent tools corroborate, lower when fewer or weaker sources>
+
+Remediation Steps:
+1. <human-readable remediation action>
+2. <additional action if needed>
+
+Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
 export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli';
