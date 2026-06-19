@@ -98,6 +98,11 @@ async function diagnoseEvent(prompt: string): Promise<string> {
  * emits a JSON finding line.  Returns normally when the stream closes.
  * Throws when kubectl fails to start.
  * Returns early (without throwing) when `isShuttingDown()` becomes true.
+ *
+ * @param onAbortReady - called once readline is ready with a function that
+ *   closes the readline and kills kubectl.  The outer loop uses this to
+ *   unblock the for-await immediately on SIGINT/SIGTERM rather than waiting
+ *   for the next event line (which may never arrive on an idle cluster).
  */
 async function runWatchStream(
   kubectlArgs: string[],
@@ -105,6 +110,7 @@ async function runWatchStream(
   cooldownState: CooldownState,
   cooldownSeconds: number,
   isShuttingDown: () => boolean,
+  onAbortReady: (abort: () => void) => void,
 ): Promise<void> {
   const kubectl = spawn('kubectl', kubectlArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -125,6 +131,13 @@ async function runWatchStream(
   }
 
   const rl = createInterface({ input: kubectl.stdout, crlfDelay: Infinity });
+
+  // Expose an abort handle so the outer loop can close this stream immediately
+  // on SIGINT/SIGTERM without waiting for the next event line.
+  onAbortReady(() => {
+    rl.close();
+    kubectl.kill('SIGTERM');
+  });
 
   // Close readline when kubectl fails to start so the for-await loop exits.
   kubectl.on('error', (err: Error) => {
@@ -201,16 +214,25 @@ export async function runWatchMode(): Promise<void> {
 
   let attempt = 0;
   let shuttingDown = false;
+  let activeAbort: (() => void) | null = null;
 
-  const onSignal = () => { shuttingDown = true; };
+  const onSignal = () => {
+    shuttingDown = true;
+    activeAbort?.(); // immediately unblock the readline for-await loop
+  };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
 
   while (true) {
     const streamStartMs = Date.now();
+    activeAbort = null;
 
     try {
-      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, () => shuttingDown);
+      await runWatchStream(
+        kubectlArgs, watchCfg, cooldownState, cooldownSeconds,
+        () => shuttingDown,
+        (abort) => { activeAbort = abort; },
+      );
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : String(err);
       process.stderr.write(`[heimdall-watch] Stream error: ${detail}\n`);
