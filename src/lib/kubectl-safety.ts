@@ -208,6 +208,101 @@ export function isDestructiveCommand(command: string): boolean {
   return false;
 }
 
+/** Result of applying namespace lockdown to a tokenized argv. */
+export interface NamespaceLockdownResult {
+  blocked: boolean;
+  reason?: string;
+  /** The (potentially modified) argv to use for execution. */
+  argv: string[];
+}
+
+/**
+ * Enforce namespace lockdown on a tokenized kubectl argv.
+ *
+ * Handles all flag forms that kubectl/pflag accepts:
+ * - Long:      `--all-namespaces`, `--namespace <val>`, `--namespace=<val>`
+ * - Shorthand: `-A`, `-n <val>`, `-n=<val>`, `-n<val>` (attached), `-An` (grouped)
+ *
+ * Collects *every* namespace specified across all flags and blocks if any
+ * differs from the locked namespace, so mixed-flag bypass attempts are caught.
+ *
+ * Pure function: no I/O.
+ */
+export function applyNamespaceLockdown(argv: string[], lockedNs: string): NamespaceLockdownResult {
+  let hasNamespaceFlag = false;
+  const specifiedNamespaces: string[] = [];
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+
+    // Block --all-namespaces in all forms: bare, boolean (--all-namespaces=true/1), etc.
+    if (arg === '--all-namespaces' || arg.startsWith('--all-namespaces=')) {
+      return {
+        blocked: true,
+        reason: `namespace lockdown is active — '--all-namespaces' is not allowed; only namespace '${lockedNs}' is accessible`,
+        argv,
+      };
+    }
+
+    if (arg.startsWith('--')) {
+      if (arg === '--namespace') {
+        hasNamespaceFlag = true;
+        specifiedNamespaces.push(i + 1 < argv.length ? argv[++i] : '');
+      } else if (arg.startsWith('--namespace=')) {
+        hasNamespaceFlag = true;
+        specifiedNamespaces.push(arg.slice('--namespace='.length));
+      }
+    } else if (arg.startsWith('-') && arg !== '-') {
+      // Split on first `=` to separate the flag cluster from an attached value.
+      const eqIdx = arg.indexOf('=');
+      const flags = (eqIdx === -1 ? arg : arg.slice(0, eqIdx)).slice(1);
+      const eqValue = eqIdx === -1 ? undefined : arg.slice(eqIdx + 1);
+
+      // Any flag cluster containing 'A' triggers all-namespaces.
+      if (flags.includes('A')) {
+        return {
+          blocked: true,
+          reason: `namespace lockdown is active — '-A' is not allowed; only namespace '${lockedNs}' is accessible`,
+          argv,
+        };
+      }
+
+      const nIdx = flags.indexOf('n');
+      if (nIdx !== -1) {
+        hasNamespaceFlag = true;
+        if (nIdx < flags.length - 1) {
+          // `-n<value>` form: characters after 'n' are the namespace value.
+          specifiedNamespaces.push(flags.slice(nIdx + 1) + (eqValue !== undefined ? `=${eqValue}` : ''));
+        } else if (eqValue !== undefined) {
+          // `-n=<value>` form.
+          specifiedNamespaces.push(eqValue);
+        } else if (i + 1 < argv.length) {
+          // `-n <value>` form: consume the next token.
+          specifiedNamespaces.push(argv[++i]);
+        } else {
+          specifiedNamespaces.push('');
+        }
+      }
+    }
+  }
+
+  for (const ns of specifiedNamespaces) {
+    if (ns !== lockedNs) {
+      return {
+        blocked: true,
+        reason: `namespace lockdown is active — only '${lockedNs}' is accessible; '${ns}' is not allowed`,
+        argv,
+      };
+    }
+  }
+
+  if (!hasNamespaceFlag) {
+    return { blocked: false, argv: [...argv, `--namespace=${lockedNs}`] };
+  }
+
+  return { blocked: false, argv };
+}
+
 /**
  * Validate a kubectl command against the read-only policy. Non-kubectl
  * commands are out of scope (the tool only ever runs kubectl), unknown

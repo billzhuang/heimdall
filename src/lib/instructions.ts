@@ -36,14 +36,17 @@ export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'hel
  *
  * @param enabledTools - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
  *   When omitted, all tools are assumed enabled (backwards-compatible default).
+ * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
  */
-export function buildInstructions(enabledTools?: Set<ToolConfigKey>): string {
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null): string {
   const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
 
   const connectionLines = [
+    lockedNamespace &&
+      `- NAMESPACE LOCKDOWN: this instance is restricted to namespace '${lockedNamespace}'. All kubectl queries are automatically scoped to this namespace; '-A'/--all-namespaces and other namespaces are blocked in code.`,
     has('listContexts') &&
       '- No context is pinned. Use `list_contexts` to discover clusters and the kubeconfig current-context by default. Ask the user if it is ambiguous.',
-    has('listNamespaces') &&
+    !lockedNamespace && has('listNamespaces') &&
       '- No namespace is pinned. Use `list_namespaces` when you need to discover them; scope queries with `-n <namespace>` or `-A` for all namespaces.',
   ].filter(Boolean) as string[];
 

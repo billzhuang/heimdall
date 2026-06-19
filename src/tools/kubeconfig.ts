@@ -38,29 +38,42 @@ export const listContexts = defineTool({
   },
 });
 
-export const listNamespaces = defineTool({
-  name: 'list_namespaces',
-  description: 'List the namespaces in a cluster context. Defaults to the current/configured context.',
-  parameters: v.object({
-    context: v.pipe(
-      v.optional(v.string()),
-      v.description('Cluster context to query. Defaults to the configured/current context.'),
-    ),
-  }),
-  execute: async ({ context }) => {
-    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
-    // Surface policy/execution errors verbatim rather than parsing them as data.
-    if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
-      return output;
-    }
-    const empty = 'No namespaces found (or insufficient permissions to list them).';
-    if (output === NO_OUTPUT_MESSAGE) {
-      return empty;
-    }
-    const namespaces = output.split(/\s+/).filter(Boolean);
-    if (namespaces.length === 0) {
-      return empty;
-    }
-    return `Namespaces (${namespaces.length}):\n${namespaces.map((n) => `  ${n}`).join('\n')}`;
-  },
-});
+export function makeListNamespaces(lockedNamespace?: string | null) {
+  const lockdownNote = lockedNamespace
+    ? ` NAMESPACE LOCKDOWN ACTIVE: only namespace '${lockedNamespace}' is accessible.`
+    : '';
+  return defineTool({
+    name: 'list_namespaces',
+    description:
+      'List the namespaces in a cluster context. Defaults to the current/configured context.' + lockdownNote,
+    parameters: v.object({
+      context: v.pipe(
+        v.optional(v.string()),
+        v.description('Cluster context to query. Defaults to the configured/current context.'),
+      ),
+    }),
+    execute: async ({ context }) => {
+      // When lockdown is active, return only the locked namespace without
+      // querying the cluster (which would list all namespaces).
+      if (lockedNamespace) {
+        return `Namespaces (1):\n  ${lockedNamespace}`;
+      }
+      const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
+      // Surface policy/execution errors verbatim rather than parsing them as data.
+      if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
+        return output;
+      }
+      const empty = 'No namespaces found (or insufficient permissions to list them).';
+      if (output === NO_OUTPUT_MESSAGE) {
+        return empty;
+      }
+      const namespaces = output.split(/\s+/).filter(Boolean);
+      if (namespaces.length === 0) {
+        return empty;
+      }
+      return `Namespaces (${namespaces.length}):\n${namespaces.map((n) => `  ${n}`).join('\n')}`;
+    },
+  });
+}
+
+export const listNamespaces = makeListNamespaces();

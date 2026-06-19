@@ -16,7 +16,7 @@ import { appendFile, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
-import { validateCommand } from './kubectl-safety.ts';
+import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -80,6 +80,8 @@ export interface RunKubectlOptions {
   redactSecrets?: boolean;
   /** User-configured regex redaction rules compiled at startup. */
   regexRedactionRules?: CompiledRedactionRule[];
+  /** When set, every kubectl call is restricted to this namespace (lockdown mode). */
+  lockedNamespace?: string;
 }
 
 /** Whether the on-disk JSON cache is enabled (disabled by `HEIMDALL_KUBECTL_CACHE=0`). */
@@ -250,7 +252,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   // Tokenize first so validation and execution agree on the command. The
   // model may or may not include a leading "kubectl" in `args`; tokenizeArgs
   // drops it, and we validate the exact argv we are about to execute.
-  const argv = tokenizeArgs(trimmed);
+  let argv = tokenizeArgs(trimmed);
   if (argv.length === 0) {
     return 'Error: no kubectl subcommand provided.';
   }
@@ -260,6 +262,18 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   if (!validation.allowed) {
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
     return `BLOCKED: ${validation.reason}`;
+  }
+
+  // Enforce namespace lockdown: block cross-namespace reads and inject the
+  // locked namespace when no -n/--namespace flag is present.
+  // Use typeof check (not truthiness) so an empty string doesn't silently bypass.
+  if (typeof options.lockedNamespace === 'string') {
+    const lockdown = applyNamespaceLockdown(argv, options.lockedNamespace);
+    if (lockdown.blocked) {
+      await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
+      return `BLOCKED: ${lockdown.reason}`;
+    }
+    argv = lockdown.argv;
   }
 
   // When running inside a Kubernetes pod, kubectl reads the mounted service account
