@@ -1,5 +1,6 @@
 # Stage 1: build
-FROM node:22-slim AS builder
+# Pin to immutable digest; update intentionally when pulling in base-image security patches.
+FROM node:22-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2 AS builder
 
 WORKDIR /app
 
@@ -10,7 +11,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: runtime
-FROM node:22-slim
+FROM node:22-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2
 
 # Install kubectl: detect arch, fetch binary + SHA-256, verify before install
 RUN apt-get update && \
