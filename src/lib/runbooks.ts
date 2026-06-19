@@ -68,10 +68,14 @@ export function loadRunbooks(configDir: string, configs: RunbookConfig[], query?
     if (budget <= 0) break;
 
     // Subtract marker length from the slice budget so the combined body never
-    // exceeds the remaining budget when truncation is applied.
+    // exceeds the remaining budget when truncation is applied. When the budget
+    // is smaller than the marker itself, use a partial marker rather than a
+    // negative slice index (which would trim from the end in JS).
     const body = text.length <= budget
       ? text
-      : text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+      : budget <= TRUNCATION_MARKER.length
+        ? TRUNCATION_MARKER.slice(0, budget)
+        : text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
     parts.push(header + body);
     totalChars += header.length + body.length;
   }
