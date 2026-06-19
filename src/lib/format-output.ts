@@ -136,6 +136,10 @@ export function extractKubectlCommands(text: string): string[] {
 export function inferSeverity(text: string): 'critical' | 'warning' | 'info' {
   const lower = text.toLowerCase();
   if (/\b(critical|outage|unavailable)\b/.test(lower)) return 'critical';
+  // Suppress false positives from healthy summaries like "no warning events" / "no errors".
+  if (/\b(?:no|without)\s+(?:warnings?|errors?|fail(?:ed|ing)?|degraded|back-?off|crashloop(?:backoff)?|oomkilled?)\b/.test(lower)) {
+    return 'info';
+  }
   if (/\b(warning|degraded|oomkilled?|crashloop(backoff)?|back-?off|failed|failing|error)\b/.test(lower)) {
     return 'warning';
   }

@@ -251,6 +251,18 @@ describe('inferSeverity', () => {
     expect(inferSeverity('Everything looks healthy. All pods are running.')).toBe('info');
   });
 
+  it('returns "info" for "no warning events" (negation suppresses false positive)', () => {
+    expect(inferSeverity('The cluster is healthy. No warning events in the last hour.')).toBe('info');
+  });
+
+  it('returns "info" for "no errors" (negation suppresses false positive)', () => {
+    expect(inferSeverity('All checks passed. No errors detected.')).toBe('info');
+  });
+
+  it('returns "info" for "without errors"', () => {
+    expect(inferSeverity('The pod started successfully without errors.')).toBe('info');
+  });
+
   it('prioritises "critical" over "warning" keywords when both are present', () => {
     expect(inferSeverity('Critical outage causing errors and failures.')).toBe('critical');
   });
