@@ -95,6 +95,21 @@ describe('loadRunbooks', () => {
     expect(result).toContain('General steps');
   });
 
+  it('does not match tag as a substring of a larger word (word boundaries)', () => {
+    const dir = makeTmpDir();
+    writeFileSync(join(dir, 'api.md'), '# API runbook');
+    writeFileSync(join(dir, 'oom.md'), '# OOM runbook');
+    expect(loadRunbooks(dir, [{ path: 'api.md', tags: ['api'] }], 'rapid deployment')).toBe('');
+    expect(loadRunbooks(dir, [{ path: 'oom.md', tags: ['oom'] }], 'room is full')).toBe('');
+  });
+
+  it('is case-insensitive when matching tags', () => {
+    const dir = makeTmpDir();
+    writeFileSync(join(dir, 'oom.md'), '# OOM runbook');
+    const result = loadRunbooks(dir, [{ path: 'oom.md', tags: ['OOM', 'Memory'] }], 'pod oom killed');
+    expect(result).toContain('OOM runbook');
+  });
+
   it('loads all runbooks when no query is given', () => {
     const dir = makeTmpDir();
     writeFileSync(join(dir, 'a.md'), 'Runbook A');
