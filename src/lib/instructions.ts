@@ -290,7 +290,7 @@ Never expose credentials, secret values, or access keys in output.`,
 - Check HPA configuration and current scaling activity: \`kubectl get hpa -n <ns>\`, \`kubectl describe hpa <name> -n <ns>\`.
 - Review container image tags for all containers and init-containers in the Deployment.
 - Check resource requests and limits for every container; flag missing or zero values.
-- Fetch Deployment-scoped events: \`kubectl get events -n <ns> --field-selector involvedObject.name=<deployment>,involvedObject.kind=Deployment\`.
+- Fetch Deployment-scoped events, but also retrieve events for the underlying ReplicaSets and Pods — root causes like \`ImagePullBackOff\`, \`CrashLoopBackOff\`, or scheduling failures are only recorded on those child resources, not on the Deployment itself.
 - Correlate with ReplicaSet and Pod status to explain why a rollout is progressing slowly or is stuck.
 
 ## Commands to use
@@ -299,7 +299,10 @@ Never expose credentials, secret values, or access keys in output.`,
 - \`kubectl rollout status deployment/<name> -n <ns> --timeout=5s\`
 - \`kubectl rollout history deployment/<name> -n <ns>\`
 - \`kubectl get replicaset -n <ns> -l <selector> -o wide\`
+- \`kubectl get pods -n <ns> -l <selector> -o wide\`
 - \`kubectl get hpa -n <ns>\`, \`kubectl describe hpa <name> -n <ns>\`
-- \`kubectl get events -n <ns> --field-selector ...\``,
+- \`kubectl get events -n <ns> --field-selector involvedObject.name=<deployment-name>,involvedObject.kind=Deployment\`
+- \`kubectl get events -n <ns> --field-selector involvedObject.name=<replicaset-name>,involvedObject.kind=ReplicaSet\`
+- \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod-name>,involvedObject.kind=Pod\``,
   ),
 };
