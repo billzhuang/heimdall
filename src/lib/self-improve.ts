@@ -130,8 +130,8 @@ export async function readLearningLog(logPath: string): Promise<LearningEntry[]>
  * persistent volume so it survives container restarts.
  */
 export function resolveLogPath(
-  cliLogPath: string | undefined,
-  configLogFile: string | undefined,
+  cliLogPath: string | null | undefined,
+  configLogFile: string | null | undefined,
   defaultPath: string,
 ): string {
   if (cliLogPath) return resolve(cliLogPath);
