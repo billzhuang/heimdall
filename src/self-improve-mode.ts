@@ -28,11 +28,13 @@ import {
   readLearningLog,
   buildReflectionPrompt,
 } from './lib/self-improve.ts';
+import { readTaskHistory } from './lib/task-history.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const EVAL_TIMEOUT_MS = 120_000;
 const LEARNING_LOG_NAME = 'learning-log.jsonl';
+const TASK_HISTORY_NAME = 'task-history.jsonl';
 
 interface EvalScenario {
   description: string;
@@ -233,6 +235,7 @@ Examples:
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const logPath = join(scenariosDir, LEARNING_LOG_NAME);
+  const taskHistoryPath = join(scenariosDir, TASK_HISTORY_NAME);
 
   // --from-log: skip running evals; reflect on existing log entries instead.
   if (fromLog) {
@@ -240,16 +243,22 @@ Examples:
       process.stderr.write('--from-log requires --reflect\n');
       process.exit(1);
     }
-    const entries = await readLearningLog(logPath);
-    if (entries.length === 0) {
+    const [entries, taskHistory] = await Promise.all([
+      readLearningLog(logPath),
+      readTaskHistory(taskHistoryPath),
+    ]);
+    if (entries.length === 0 && taskHistory.length === 0) {
       process.stdout.write(
-        `No entries found in ${logPath}.\nRun without --from-log first to generate learning entries.\n`,
+        `No entries found in ${logPath} or ${taskHistoryPath}.\nRun without --from-log first to generate learning entries.\n`,
       );
       process.exit(0);
     }
-    process.stdout.write(`\nReflecting on ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from the learning log...\n\n`);
+    process.stdout.write(
+      `\nReflecting on ${entries.length} eval entr${entries.length === 1 ? 'y' : 'ies'} and ` +
+      `${taskHistory.length} task history entr${taskHistory.length === 1 ? 'y' : 'ies'}...\n\n`,
+    );
     process.stdout.write('='.repeat(60) + '\n');
-    process.stdout.write(buildReflectionPrompt(entries) + '\n');
+    process.stdout.write(buildReflectionPrompt(entries, taskHistory) + '\n');
     process.stdout.write('='.repeat(60) + '\n');
     return;
   }
@@ -311,12 +320,13 @@ Examples:
     );
 
     if (reflect) {
+      const taskHistory = await readTaskHistory(taskHistoryPath);
       process.stdout.write('\n' + '='.repeat(60) + '\n');
       process.stdout.write(
         'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
       );
       process.stdout.write('='.repeat(60) + '\n\n');
-      process.stdout.write(buildReflectionPrompt(learningEntries) + '\n\n');
+      process.stdout.write(buildReflectionPrompt(learningEntries, taskHistory) + '\n\n');
       process.stdout.write('='.repeat(60) + '\n');
     } else {
       process.stdout.write(
