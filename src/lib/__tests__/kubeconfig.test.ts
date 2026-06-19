@@ -3,8 +3,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  IN_CLUSTER_CONTEXT,
   getContextNames,
   getDefaultKubeconfigPath,
+  inClusterConfig,
+  isInCluster,
   mergeKubeconfigs,
   parseKubeconfig,
   parseKubeconfigContent,
@@ -176,5 +179,37 @@ contexts:
 describe('resolveKubeconfigPath', () => {
   it('prefers an explicit path over the environment', () => {
     expect(resolveKubeconfigPath('/custom/config')).toBe('/custom/config');
+  });
+});
+
+describe('isInCluster', () => {
+  it('returns true when KUBERNETES_SERVICE_HOST is set', () => {
+    const prev = process.env.KUBERNETES_SERVICE_HOST;
+    try {
+      process.env.KUBERNETES_SERVICE_HOST = '10.0.0.1';
+      expect(isInCluster()).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.KUBERNETES_SERVICE_HOST;
+      else process.env.KUBERNETES_SERVICE_HOST = prev;
+    }
+  });
+
+  it('returns false when KUBERNETES_SERVICE_HOST is absent', () => {
+    const prev = process.env.KUBERNETES_SERVICE_HOST;
+    try {
+      delete process.env.KUBERNETES_SERVICE_HOST;
+      expect(isInCluster()).toBe(false);
+    } finally {
+      if (prev !== undefined) process.env.KUBERNETES_SERVICE_HOST = prev;
+    }
+  });
+});
+
+describe('inClusterConfig', () => {
+  it('returns a single in-cluster context as current', () => {
+    const cfg = inClusterConfig();
+    expect(cfg.currentContext).toBe(IN_CLUSTER_CONTEXT);
+    expect(cfg.contexts).toHaveLength(1);
+    expect(cfg.contexts[0].name).toBe(IN_CLUSTER_CONTEXT);
   });
 });

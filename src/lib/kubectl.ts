@@ -17,7 +17,8 @@ import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
-import { parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
+import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
+import { ensureEksKubeconfig, isEksMode } from './eks.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -182,14 +183,40 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return `BLOCKED: ${validation.reason}`;
   }
 
-  const context = options.context ?? process.env.HEIMDALL_CONTEXT;
+  // When running inside a Kubernetes pod, kubectl reads the mounted service account
+  // token automatically. Injecting --context or KUBECONFIG would override that
+  // mechanism, so we skip both when in-cluster.
+  const inCluster = isInCluster();
+
+  const context = !inCluster ? (options.context ?? process.env.HEIMDALL_CONTEXT) : undefined;
   if (context && !hasContextFlag(argv)) {
     argv.unshift(`--context=${context}`);
   }
 
+  // Resolve the effective kubeconfig path once so we can use it both to set
+  // env.KUBECONFIG and to compute the cache key without calling ensureEksKubeconfig twice.
+  // Failures here (e.g. AWS CLI unavailable) are returned as error strings, not exceptions.
+  let resolvedKubeconfig: string | undefined;
+  if (!inCluster) {
+    if (options.kubeconfig) {
+      resolvedKubeconfig = options.kubeconfig;
+    } else if (isEksMode()) {
+      try {
+        resolvedKubeconfig = await ensureEksKubeconfig();
+      } catch (err) {
+        const detail = ((err as { message?: string }).message || String(err)).trim();
+        return `kubectl exited with an error:\nFailed to obtain EKS kubeconfig: ${detail}`;
+      }
+    }
+  }
+
   const env = { ...process.env };
-  if (options.kubeconfig) {
-    env.KUBECONFIG = options.kubeconfig;
+  if (inCluster) {
+    // In-cluster: kubectl uses the mounted service account token automatically.
+    // Do not set KUBECONFIG — it would override the in-cluster config.
+    delete env.KUBECONFIG;
+  } else if (resolvedKubeconfig) {
+    env.KUBECONFIG = resolvedKubeconfig;
   }
 
   // Serve JSON `get` reads from the short-TTL cache when possible.
@@ -205,8 +232,13 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     // data for cluster B after a context switch.
     let effectiveContext = '';
     if (!hasContextFlag(argv)) {
-      const cfg = await parseKubeconfig(resolveKubeconfigPath(options.kubeconfig));
-      effectiveContext = cfg?.currentContext ?? '';
+      if (inCluster) {
+        effectiveContext = IN_CLUSTER_CONTEXT;
+      } else {
+        // resolvedKubeconfig was already computed above; reuse it for consistency.
+        const cfg = await parseKubeconfig(resolveKubeconfigPath(resolvedKubeconfig));
+        effectiveContext = cfg?.currentContext ?? '';
+      }
     }
     const identity = JSON.stringify({ argv, kubeconfig: env.KUBECONFIG ?? '', effectiveContext });
     const hash = createHash('sha256').update(identity).digest('hex');
