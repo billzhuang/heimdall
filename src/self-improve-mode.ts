@@ -78,18 +78,22 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
 
     const rawOutput = await new Promise<string>((resolve, reject) => {
       let settled = false;
-      const settle = (err?: Error) => {
-        if (!settled) {
-          settled = true;
-          if (err) reject(err);
-        }
+      const safeReject = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      };
+      const safeResolve = (val: string) => {
+        if (settled) return;
+        settled = true;
+        resolve(val);
       };
 
       const chunks: Buffer[] = [];
       const errChunks: Buffer[] = [];
 
       const child = spawn(binPath, ['-p', scenario.prompt, '--json'], {
-        env: { ...process.env, HEIMDALL_KUBECTL_MOCK: tmpFile },
+        env: { ...process.env, HEIMDALL_KUBECTL_MOCK: tmpFile, HEIMDALL_EVAL_MODE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
@@ -98,26 +102,23 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
 
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
-        settle(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
+        safeReject(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
       }, EVAL_TIMEOUT_MS);
 
       child.on('close', (code: number | null) => {
         clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          const out = Buffer.concat(chunks).toString('utf8').trim();
-          if (code !== 0) {
-            const errOut = Buffer.concat(errChunks).toString('utf8').trim();
-            reject(new Error(`agent exited with code ${code}: ${errOut || out}`));
-          } else {
-            resolve(out);
-          }
+        const out = Buffer.concat(chunks).toString('utf8').trim();
+        if (code !== 0) {
+          const errOut = Buffer.concat(errChunks).toString('utf8').trim();
+          safeReject(new Error(`agent exited with code ${code}: ${errOut || out}`));
+        } else {
+          safeResolve(out);
         }
       });
 
       child.on('error', (err: Error) => {
         clearTimeout(timer);
-        settle(err);
+        safeReject(err);
       });
     });
 
@@ -182,13 +183,13 @@ async function loadScenarios(
     throw new Error(`No scenario files matching "${filter}" found in ${scenariosDir}`);
   }
 
-  const results: Array<{ path: string; scenario: EvalScenario }> = [];
-  for (const file of matched) {
-    const filePath = join(scenariosDir, file);
-    const scenario = await loadScenario(filePath);
-    results.push({ path: filePath, scenario });
-  }
-  return results;
+  return Promise.all(
+    matched.map(async file => {
+      const filePath = join(scenariosDir, file);
+      const scenario = await loadScenario(filePath);
+      return { path: filePath, scenario };
+    }),
+  );
 }
 
 async function main(): Promise<void> {

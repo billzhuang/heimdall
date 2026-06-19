@@ -12,7 +12,7 @@
  *   heimdall eval --scenario oom
  */
 import { spawn } from 'node:child_process';
-import { writeFile, unlink, readdir } from 'node:fs/promises';
+import { writeFile, unlink, readdir, readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
@@ -42,7 +42,6 @@ interface EvalResult {
 
 /** Load a YAML file and parse it as an EvalScenario. */
 async function loadScenario(filePath: string): Promise<EvalScenario> {
-  const { readFile } = await import('node:fs/promises');
   const raw = await readFile(filePath, 'utf8');
   const parsed = loadYaml(raw);
   if (!parsed || typeof parsed !== 'object') {
@@ -65,11 +64,15 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
 
     const rawOutput = await new Promise<string>((resolve, reject) => {
       let settled = false;
-      const settle = (err?: Error) => {
-        if (!settled) {
-          settled = true;
-          if (err) reject(err);
-        }
+      const safeReject = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      };
+      const safeResolve = (val: string) => {
+        if (settled) return;
+        settled = true;
+        resolve(val);
       };
 
       const chunks: Buffer[] = [];
@@ -79,6 +82,7 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
         env: {
           ...process.env,
           HEIMDALL_KUBECTL_MOCK: tmpFile,
+          HEIMDALL_EVAL_MODE: '1',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -88,28 +92,23 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
 
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
-        settle(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
-        reject(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
+        safeReject(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
       }, EVAL_TIMEOUT_MS);
 
       child.on('close', (code: number | null) => {
         clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          const out = Buffer.concat(chunks).toString('utf8').trim();
-          if (code !== 0) {
-            const errOut = Buffer.concat(errChunks).toString('utf8').trim();
-            reject(new Error(`agent exited with code ${code}: ${errOut || out}`));
-          } else {
-            resolve(out);
-          }
+        const out = Buffer.concat(chunks).toString('utf8').trim();
+        if (code !== 0) {
+          const errOut = Buffer.concat(errChunks).toString('utf8').trim();
+          safeReject(new Error(`agent exited with code ${code}: ${errOut || out}`));
+        } else {
+          safeResolve(out);
         }
       });
 
       child.on('error', (err: Error) => {
         clearTimeout(timer);
-        settle(err);
-        reject(err);
+        safeReject(err);
       });
     });
 
@@ -178,13 +177,13 @@ async function loadScenarios(scenariosDir: string, filter?: string): Promise<Arr
     throw new Error(`No scenario files matching "${filter}" found in ${scenariosDir}`);
   }
 
-  const results: Array<{ path: string; scenario: EvalScenario }> = [];
-  for (const file of matched) {
-    const filePath = join(scenariosDir, file);
-    const scenario = await loadScenario(filePath);
-    results.push({ path: filePath, scenario });
-  }
-  return results;
+  return Promise.all(
+    matched.map(async file => {
+      const filePath = join(scenariosDir, file);
+      const scenario = await loadScenario(filePath);
+      return { path: filePath, scenario };
+    }),
+  );
 }
 
 async function main(): Promise<void> {
