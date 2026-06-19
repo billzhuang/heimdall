@@ -69,3 +69,12 @@ tools:
 #     tags: [latency, api, response-time]
 #   - path: ./runbooks/oom-killed.md
 #     tags: [oom, memory, oomkilled]
+
+# Self-learning — persist real investigation history for use with self-improve --reflect.
+# Enabled by default: every `heimdall -p "..." --json` appends the prompt and finding
+# summary to scenarios/task-history.jsonl (relative to the Heimdall package root).
+# Use `--no-learn` on individual invocations to skip logging for that run.
+#
+# learning:
+#   enabled: true
+#   file: /path/to/custom/task-history.jsonl   # optional; defaults to scenarios/task-history.jsonl

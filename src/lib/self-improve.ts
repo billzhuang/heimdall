@@ -10,6 +10,8 @@
  */
 import { appendFile, readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
+import type { TaskHistoryEntry } from './task-history.ts';
+import { buildTaskHistoryContext } from './task-history.ts';
 
 export interface LearningEntry {
   /** Unique entry ID (timestamp + random suffix). */
@@ -118,37 +120,72 @@ export async function readLearningLog(logPath: string): Promise<LearningEntry[]>
 
 /**
  * Build a meta-prompt that can be fed to any LLM to propose specific changes
- * to src/lib/instructions.ts based on recurring eval failures.
+ * to src/lib/instructions.ts based on recurring eval failures and real-task
+ * history.
  *
  * This closes the self-research loop: observe failures → generate a focused
  * prompt → use the model to propose improvements → review → apply → re-eval.
  */
-export function buildReflectionPrompt(entries: LearningEntry[]): string {
-  if (entries.length === 0) {
+export function buildReflectionPrompt(
+  entries: LearningEntry[],
+  taskHistory: TaskHistoryEntry[] = [],
+): string {
+  if (entries.length === 0 && taskHistory.length === 0) {
     return 'No failures to reflect on. All scenarios passed!';
   }
 
-  const scenarioList = entries
-    .map(
-      (e, i) =>
-        `### ${i + 1}. "${e.scenario}"\n` +
-        `**Prompt**: ${e.prompt}\n` +
-        `**Failures**:\n${e.failures.map(f => `- ${f}`).join('\n')}\n` +
-        `**Auto-suggestion**: ${e.suggestion}`,
-    )
-    .join('\n\n');
+  const hasFailures = entries.length > 0;
+  const hasHistory = taskHistory.length > 0;
 
-  return (
-    `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` +
-    `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
-    `For each failure, analyze the root cause and propose the **exact text change** to ` +
-    `\`src/lib/instructions.ts\` (or a specific \`SUBAGENT_INSTRUCTIONS\` entry) that would fix it. ` +
-    `Be specific: quote the line(s) to change and what to replace them with.\n\n` +
-    `---\n\n${scenarioList}\n\n---\n\n` +
-    `## Your task\n` +
-    `For each scenario, provide:\n` +
-    `1. **Root cause** — why did the agent fail this assertion?\n` +
-    `2. **Instruction fix** — which exact text in \`src/lib/instructions.ts\` should change, and how?\n\n` +
-    `Focus on changes with the highest impact-to-risk ratio. Prefer small, targeted edits over broad rewrites.`
-  );
+  const scenarioList = hasFailures
+    ? entries
+        .map(
+          (e, i) =>
+            `### ${i + 1}. "${e.scenario}"\n` +
+            `**Prompt**: ${e.prompt}\n` +
+            `**Failures**:\n${e.failures.map(f => `- ${f}`).join('\n')}\n` +
+            `**Auto-suggestion**: ${e.suggestion}`,
+        )
+        .join('\n\n')
+    : '';
+
+  const historySection = hasHistory
+    ? `## Recent Real-World Investigations (task history)\n\n` +
+      `The following are real prompts the agent handled recently. Review them for ` +
+      `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n` +
+      buildTaskHistoryContext(taskHistory)
+    : '';
+
+  const failurePart = hasFailures
+    ? `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
+      `For each failure, analyze the root cause and propose the **exact text change** to ` +
+      `\`src/lib/instructions.ts\` (or a specific \`SUBAGENT_INSTRUCTIONS\` entry) that would fix it. ` +
+      `Be specific: quote the line(s) to change and what to replace them with.`
+    : `No eval failures this run.`;
+
+  const sections: string[] = [
+    `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` + failurePart,
+    ...(hasFailures ? [scenarioList] : []),
+    ...(hasHistory ? [historySection] : []),
+  ];
+
+  const taskItems: string[] = [];
+  if (hasFailures) {
+    taskItems.push(
+      `For each eval failure, provide:\n` +
+      `1. **Root cause** — why did the agent fail this assertion?\n` +
+      `2. **Instruction fix** — which exact text in \`src/lib/instructions.ts\` should change, and how?`,
+    );
+  }
+  if (hasHistory) {
+    taskItems.push(
+      `For the task history, identify:\n` +
+      `3. **Coverage gaps** — are there prompt patterns that don't match any specialist subagent?\n` +
+      `4. **Severity calibration** — do any findings seem over- or under-triaged?`,
+    );
+  }
+  sections.push(`## Your task\n\n` + taskItems.join('\n\n'));
+  sections.push(`Focus on changes with the highest impact-to-risk ratio. Prefer small, targeted edits over broad rewrites.`);
+
+  return sections.join('\n\n---\n\n');
 }

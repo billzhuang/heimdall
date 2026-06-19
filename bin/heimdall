@@ -44,6 +44,7 @@ Options:
   -w, --watch           Start proactive Warning-event monitor (streams until interrupted)
       --json            Emit a single JSON object to stdout (one-shot mode only)
       --format json     Alias for --json
+      --no-learn        Skip appending this investigation to the task-history log
   -h, --help            Show this help message
 
 Subcommands:
@@ -91,6 +92,7 @@ EVAL_ARGS=()
 SELF_IMPROVE=false
 SELF_IMPROVE_ARGS=()
 JSON_OUTPUT=false
+NO_LEARN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -135,6 +137,10 @@ while [[ $# -gt 0 ]]; do
         *) echo "Error: unknown format '$2'; only 'json' is supported" >&2; exit 1 ;;
       esac
       shift 2
+      ;;
+    --no-learn)
+      NO_LEARN=true
+      shift
       ;;
     -h|--help)
       show_help
@@ -254,10 +260,17 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
   FORMAT_JSON_COMPILED="${ROOT_DIR}/dist/format-json.mjs"
   FORMAT_JSON_SOURCE="${ROOT_DIR}/src/format-json.ts"
 
+  # Pass the original prompt and no-learn flag to format-json so it can log
+  # task-history entries. HEIMDALL_NO_LEARN=1 skips logging for this run.
+  _LEARN_ENV_ARGS=()
+  [[ "$NO_LEARN" == "true" ]] && _LEARN_ENV_ARGS=("HEIMDALL_NO_LEARN=1")
+
   if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
-    printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | node "$FORMAT_JSON_COMPILED"
+    printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | \
+      env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
   elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
-    printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | "$TSX" "$FORMAT_JSON_SOURCE"
+    printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | \
+      env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
   else
     echo "Error: JSON formatter not available." >&2
     echo "  Production: run 'npm run build' first." >&2

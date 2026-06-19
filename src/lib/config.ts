@@ -91,6 +91,18 @@ const RunbookEntrySchema = v.object({
   tags: v.nullish(v.array(v.string()), []),
 });
 
+// Learning config — controls real-task history logging for self-improvement.
+const LearningSchema = v.nullish(
+  v.object({
+    // Set to false to disable task-history logging entirely. Defaults to true.
+    enabled: v.nullish(v.boolean(), true),
+    // Path for the task-history JSONL log. Defaults to scenarios/task-history.jsonl
+    // relative to the Heimdall package root. Set to an absolute path to redirect.
+    file: v.nullish(v.string()),
+  }),
+  { enabled: true },
+);
+
 // Slack notification sink — post investigation findings to a Slack channel.
 const SlackSchema = v.nullish(
   v.object({
@@ -122,6 +134,8 @@ const HeimdallConfigSchema = v.object({
   runbooks: v.nullish(v.array(RunbookEntrySchema), []),
   // Slack notification sink (disabled by default).
   slack: SlackSchema,
+  // Task-history learning log (enabled by default).
+  learning: LearningSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
