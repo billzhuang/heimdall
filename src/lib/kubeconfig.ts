@@ -52,14 +52,6 @@ export function isInCluster(): boolean {
   return !!process.env.KUBERNETES_SERVICE_HOST;
 }
 
-/** Synthetic single-context kubeconfig representing the pod's own cluster. */
-export function inClusterConfig(): ParsedKubeconfig {
-  return {
-    contexts: [{ name: IN_CLUSTER_CONTEXT, cluster: IN_CLUSTER_CONTEXT, user: IN_CLUSTER_CONTEXT }],
-    currentContext: IN_CLUSTER_CONTEXT,
-  };
-}
-
 /** Parse kubeconfig YAML content into contexts. Pure — used by tests. */
 export function parseKubeconfigContent(content: string): ParsedKubeconfig | null {
   try {

@@ -192,15 +192,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     argv.unshift(`--context=${context}`);
   }
 
-  // Resolve the effective kubeconfig path once so we can use it both to set
-  // env.KUBECONFIG and to compute the cache key without calling ensureEksKubeconfig twice.
-  // Failures here (e.g. AWS CLI unavailable) are returned as error strings, not exceptions.
-  let resolvedKubeconfig: string | undefined;
-  if (!inCluster) {
-    if (options.kubeconfig) {
-      resolvedKubeconfig = options.kubeconfig;
-    }
-  }
+  const resolvedKubeconfig = !inCluster ? options.kubeconfig : undefined;
 
   const env = { ...process.env };
   if (inCluster) {

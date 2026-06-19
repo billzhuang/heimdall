@@ -82,8 +82,6 @@ All configuration is via environment variables (see `.env.example`):
 | `ANTHROPIC_API_KEY` | Provider credential (required) | — |
 | `HEIMDALL_MODEL` | Flue `provider/model` specifier | `anthropic/claude-sonnet-4-6` |
 | `KUBECONFIG` | Path to kubeconfig | `~/.kube/config` |
-| `HEIMDALL_CONTEXT` | Pin a default cluster context | current-context |
-| `HEIMDALL_NAMESPACE` | Pin a default namespace | — |
 | `HEIMDALL_KUBECTL_CACHE` | Set to `0` to disable the JSON cache | enabled |
 | `HEIMDALL_KUBECTL_CACHE_TTL` | Cache TTL in seconds | `30` |
 | `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |

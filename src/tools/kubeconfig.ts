@@ -48,9 +48,9 @@ export const listNamespaces = defineTool({
     ),
   }),
   execute: async ({ context }) => {
-    // Route through runKubectl so the read-only policy (and any caching) apply
-    // uniformly to every cluster read.
-    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
+    // In-cluster: there is only one cluster (the pod's own). Context is not applicable.
+    const effectiveContext = isInCluster() ? undefined : context;
+    const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context: effectiveContext })).trim();
     // Surface policy/execution errors verbatim rather than parsing them as data.
     if (output.startsWith('BLOCKED:') || output.startsWith('kubectl exited')) {
       return output;
