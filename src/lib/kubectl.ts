@@ -18,7 +18,6 @@ import { join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
-import { ensureEksKubeconfig, isEksMode } from './eks.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -200,13 +199,6 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   if (!inCluster) {
     if (options.kubeconfig) {
       resolvedKubeconfig = options.kubeconfig;
-    } else if (isEksMode()) {
-      try {
-        resolvedKubeconfig = await ensureEksKubeconfig();
-      } catch (err) {
-        const detail = ((err as { message?: string }).message || String(err)).trim();
-        return `kubectl exited with an error:\nFailed to obtain EKS kubeconfig: ${detail}`;
-      }
     }
   }
 
