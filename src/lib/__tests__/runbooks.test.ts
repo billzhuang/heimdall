@@ -136,7 +136,7 @@ describe('loadRunbooks', () => {
     const longContent = 'x'.repeat(10_000);
     writeFileSync(join(dir, 'big.md'), longContent);
     const result = loadRunbooks(dir, [{ path: 'big.md' }]);
-    expect(result.length).toBeLessThanOrEqual(8_000 + 200); // header overhead
+    expect(result.length).toBeLessThanOrEqual(8_000);
     expect(result).toContain('[truncated]');
   });
 

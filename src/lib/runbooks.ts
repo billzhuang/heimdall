@@ -26,7 +26,7 @@ export function tagsMatch(tags: string[] | null | undefined, query: string): boo
   const q = query.toLowerCase();
   return tags.some((tag) => {
     const escaped = tag.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?<![a-z0-9_])${escaped}(?![a-z0-9_])`, 'i').test(q);
+    return new RegExp(`(?<![a-z0-9_])${escaped}(?![a-z0-9_])`).test(q);
   });
 }
 
