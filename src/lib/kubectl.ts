@@ -48,16 +48,21 @@ interface AuditEntry {
 }
 
 async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | undefined): Promise<void> {
-  if (!audit?.enabled) return;
-  const line = JSON.stringify(entry);
-  if (audit.file) {
-    try {
-      await appendFile(audit.file, line + '\n', 'utf8');
-    } catch {
+  try {
+    if (!audit?.enabled) return;
+    const line = JSON.stringify(entry);
+    if (audit.file) {
+      try {
+        await mkdir(dirname(audit.file), { recursive: true });
+        await appendFile(audit.file, line + '\n', 'utf8');
+      } catch {
+        process.stderr.write(line + '\n');
+      }
+    } else {
       process.stderr.write(line + '\n');
     }
-  } else {
-    process.stderr.write(line + '\n');
+  } catch {
+    // Audit failures must never disrupt the main execution path.
   }
 }
 
@@ -214,7 +219,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return 'Error: no kubectl subcommand provided.';
   }
 
-  const cmd = `kubectl ${argv.join(' ')}`;
+  const cmd = `kubectl ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
   const validation = validateCommand(cmd);
   if (!validation.allowed) {
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
