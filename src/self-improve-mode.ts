@@ -258,7 +258,7 @@ Examples:
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const config = loadConfig();
-  const logPath = resolveLogPath(cliLogPath, config.learning?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
+  const logPath = resolveLogPath(cliLogPath, config.learning?.logFile ?? undefined, join(scenariosDir, LEARNING_LOG_NAME));
   const taskHistoryPath = config.learning?.file
     ? resolve(config.learning.file)
     : join(scenariosDir, TASK_HISTORY_NAME);
