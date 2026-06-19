@@ -337,6 +337,18 @@ Examples:
     process.stdout.write(
       '\nAll scenarios passed — no learning entries added. Keep up the good work!\n',
     );
+    if (reflect) {
+      const taskHistory = await readTaskHistory(taskHistoryPath);
+      if (taskHistory.length > 0) {
+        process.stdout.write('\n' + '='.repeat(60) + '\n');
+        process.stdout.write(
+          'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
+        );
+        process.stdout.write('='.repeat(60) + '\n\n');
+        process.stdout.write(buildReflectionPrompt([], taskHistory) + '\n\n');
+        process.stdout.write('='.repeat(60) + '\n');
+      }
+    }
   }
 }
 

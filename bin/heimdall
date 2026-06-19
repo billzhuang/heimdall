@@ -262,15 +262,15 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
 
   # Pass the original prompt and no-learn flag to format-json so it can log
   # task-history entries. HEIMDALL_NO_LEARN=1 skips logging for this run.
-  _LEARN_ENV=""
-  [[ "$NO_LEARN" == "true" ]] && _LEARN_ENV="HEIMDALL_NO_LEARN=1 "
+  _LEARN_ENV_ARGS=()
+  [[ "$NO_LEARN" == "true" ]] && _LEARN_ENV_ARGS=("HEIMDALL_NO_LEARN=1")
 
   if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
     printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | \
-      env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV}node "$FORMAT_JSON_COMPILED"
+      env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
   elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
     printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | \
-      env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV}"$TSX" "$FORMAT_JSON_SOURCE"
+      env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
   else
     echo "Error: JSON formatter not available." >&2
     echo "  Production: run 'npm run build' first." >&2
