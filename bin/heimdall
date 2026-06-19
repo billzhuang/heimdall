@@ -33,6 +33,7 @@ show_help() {
   cat <<EOF
 Usage: heimdall -p <prompt>
        heimdall --watch
+       heimdall triage [-n <namespace>] [-A]
 
 Run the Heimdall Kubernetes SRE agent.
 
@@ -41,11 +42,18 @@ Options:
   -w, --watch           Start proactive Warning-event monitor (streams until interrupted)
   -h, --help            Show this help message
 
+Subcommands:
+  triage                Run a structured whole-cluster health sweep with severity-ranked findings
+    -n, --namespace <ns>  Scope the sweep to a single namespace
+    -A, --all-namespaces  Sweep all namespaces
+
 Examples:
-  heimdall -p "Check all pods in the default namespace"
   heimdall -p "Why is my frontend deployment crash-looping in prod?"
   heimdall --watch                        # monitor all namespaces
   heimdall --watch 2>/dev/null | jq .     # pretty-print findings
+  heimdall triage                         # full health sweep (default namespace)
+  heimdall triage -A                      # sweep all namespaces
+  heimdall triage -n prod                 # sweep only the prod namespace
 
 Watch mode reads the 'watch:' block from heimdall.config.yaml for
 namespace/reason filters and an optional webhook URL.
@@ -57,9 +65,18 @@ EOF
 
 PROMPT=""
 WATCH=false
+TRIAGE=false
+TRIAGE_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    triage)
+      TRIAGE=true
+      shift
+      # Pass remaining args to the triage script.
+      TRIAGE_ARGS=("$@")
+      break
+      ;;
     -p|--prompt)
       [[ $# -lt 2 ]] && { echo "Error: -p requires an argument" >&2; exit 1; }
       PROMPT="$2"
@@ -84,12 +101,29 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      echo "Error: unexpected argument '$1' — use -p to pass a prompt" >&2
+      echo "Error: unexpected argument '$1' — use -p to pass a prompt or 'triage' for a health sweep" >&2
       show_help >&2
       exit 1
       ;;
   esac
 done
+
+# --- Triage mode ----------------------------------------------------------
+if [[ "$TRIAGE" == "true" ]]; then
+  TRIAGE_COMPILED="${ROOT_DIR}/dist/triage-mode.mjs"
+  TRIAGE_SOURCE="${ROOT_DIR}/src/triage-mode.ts"
+
+  if [[ -f "$TRIAGE_COMPILED" ]]; then
+    exec node "$TRIAGE_COMPILED" "${TRIAGE_ARGS[@]}"
+  elif [[ -x "$TSX" ]] && [[ -f "$TRIAGE_SOURCE" ]]; then
+    exec "$TSX" "$TRIAGE_SOURCE" "${TRIAGE_ARGS[@]}"
+  else
+    echo "Error: triage mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
+fi
 
 # --- Watch mode -----------------------------------------------------------
 if [[ "$WATCH" == "true" ]]; then
@@ -112,7 +146,8 @@ fi
 
 # --- One-shot prompt mode -------------------------------------------------
 if [[ -z "$PROMPT" ]]; then
-  echo "Error: a prompt is required  (-p <text>)  or use --watch for event monitoring" >&2
+  echo "Error: a prompt is required  (-p <text>),  use --watch for event monitoring," >&2
+  echo "       or use 'triage' for a whole-cluster health sweep" >&2
   show_help >&2
   exit 1
 fi

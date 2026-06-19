@@ -82,7 +82,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
 - resource-analyzer — CPU/memory requests & limits, capacity, bottlenecks.
 - network-debugger — DNS, services, endpoints, ingress, connectivity.
-- security-auditor — RBAC, service accounts, security contexts, exposed secrets.`);
+- security-auditor — RBAC, service accounts, security contexts, exposed secrets.
+- triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -105,7 +106,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -113,6 +114,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'resource-analyzer': 'CPU/memory requests & limits, capacity planning, resource bottleneck analysis.',
   'network-debugger': 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
   'security-auditor': 'RBAC, service accounts, security contexts, and exposed-secret review.',
+  'triage': 'Whole-cluster health sweep: structured diagnostic triage with severity-ranked findings across nodes, pods, workloads, events, PVCs, and jobs.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -150,5 +152,16 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
   report metadata (name, namespace, keys present) only, and never attempt to
   decode or print secret values even if they appear in tool output.
 - Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.`,
+  ),
+  'triage': subagentInstructions(
+    'You are a Kubernetes cluster triage specialist.',
+    `## Focus
+- Run a structured, ordered health sweep covering nodes, pods, workloads, events, PVCs, and jobs.
+- Work through checks in a fixed order: Nodes → Pods → Workloads → Events → PVCs → Jobs.
+- Classify each finding as critical (cluster-impacting / service down), warning (degraded / at-risk), or info (advisory).
+- For each finding: identify the affected resource, describe the problem clearly, and suggest the exact remediation command the operator should run — never execute it yourself.
+- Use \`kubectl get -o wide\` for nodes and pods; \`kubectl rollout status --timeout=5s\` to detect stuck rollouts (timeout keeps the command within the tool's execution budget); \`kubectl get events --sort-by='.lastTimestamp'\` for recent warnings.
+- Flag: NotReady nodes; pressure conditions; CrashLoopBackOff, ImagePullBackOff, OOMKilled, high-restart, or stuck pods; unavailable replicas; Pending/Lost PVCs; failed jobs.
+- End with a summary line: "Triage complete: X critical, Y warning, Z info findings."`,
   ),
 };
