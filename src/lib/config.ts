@@ -48,6 +48,8 @@ const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
   watch: WatchSchema,
+  // Redact Secret .data / .stringData values in kubectl output (code-enforced, default on).
+  redactSecrets: v.nullish(v.boolean(), true),
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
