@@ -1,15 +1,18 @@
 /**
- * Heimdall eval mode.
+ * Heimdall self-improve mode.
  *
- * Runs synthetic RCA scenarios against the Heimdall agent without a real
- * cluster. kubectl responses are mocked via the HEIMDALL_KUBECTL_MOCK env var,
- * injected as a temp JSON file into a subprocess running `bin/heimdall --json`.
+ * Runs synthetic eval scenarios, captures assertion failures as structured
+ * learning entries (scenarios/learning-log.jsonl), and optionally prints a
+ * reflection prompt for proposing concrete changes to src/lib/instructions.ts.
+ *
+ * Inspired by Karpathy's self-research loop and loop-engineer patterns:
+ * run → evaluate → learn → improve → repeat.
  *
  * Usage:
- *   npm run eval
- *   npm run eval -- --scenario crashloop
- *   heimdall eval
- *   heimdall eval --scenario oom
+ *   heimdall self-improve
+ *   heimdall self-improve --scenario crashloop
+ *   heimdall self-improve --reflect
+ *   heimdall self-improve --reflect --from-log
  */
 import { spawn } from 'node:child_process';
 import { writeFile, unlink, readdir, readFile } from 'node:fs/promises';
@@ -19,12 +22,19 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 import type { OneShotFinding } from './lib/format-output.ts';
+import {
+  buildLearningEntry,
+  appendLearningEntry,
+  readLearningLog,
+  buildReflectionPrompt,
+} from './lib/self-improve.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const EVAL_TIMEOUT_MS = 120_000; // 2 minutes per scenario
+const EVAL_TIMEOUT_MS = 120_000;
+const LEARNING_LOG_NAME = 'learning-log.jsonl';
 
-export interface EvalScenario {
+interface EvalScenario {
   description: string;
   mocks: Record<string, string>;
   prompt: string;
@@ -35,24 +45,28 @@ export interface EvalScenario {
 
 interface EvalResult {
   scenario: string;
+  prompt: string;
   passed: boolean;
   failures: string[];
   output?: OneShotFinding;
 }
 
-/** Load a YAML file and parse it as an EvalScenario. */
 async function loadScenario(filePath: string): Promise<EvalScenario> {
   const raw = await readFile(filePath, 'utf8');
-  const parsed = loadYaml(raw);
+  const parsed = loadYaml(raw) as Record<string, unknown>;
   if (!parsed || typeof parsed !== 'object') {
     throw new Error(`Invalid scenario file: ${filePath} is not a valid YAML object`);
   }
-  return parsed as EvalScenario;
+  if (typeof parsed['prompt'] !== 'string' || !parsed['prompt']) {
+    throw new Error(`Invalid scenario file: ${filePath} — missing required field "prompt"`);
+  }
+  if (typeof parsed['description'] !== 'string') {
+    throw new Error(`Invalid scenario file: ${filePath} — missing required field "description"`);
+  }
+  return parsed as unknown as EvalScenario;
 }
 
-/** Run a single scenario: spawn the agent, parse output, check assertions. */
 async function runScenario(scenarioPath: string, scenario: EvalScenario): Promise<EvalResult> {
-  // Write mock fixtures to a uniquely-named temp file.
   const tmpFile = join(tmpdir(), `heimdall-eval-${randomBytes(8).toString('hex')}.json`);
   await writeFile(tmpFile, JSON.stringify(scenario.mocks), 'utf8');
 
@@ -79,11 +93,7 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
       const errChunks: Buffer[] = [];
 
       const child = spawn(binPath, ['-p', scenario.prompt, '--json'], {
-        env: {
-          ...process.env,
-          HEIMDALL_KUBECTL_MOCK: tmpFile,
-          HEIMDALL_EVAL_MODE: '1',
-        },
+        env: { ...process.env, HEIMDALL_KUBECTL_MOCK: tmpFile, HEIMDALL_EVAL_MODE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
@@ -112,7 +122,6 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
       });
     });
 
-    // Parse JSON output from the agent.
     try {
       const parsed = JSON.parse(rawOutput);
       if (!parsed || typeof parsed !== 'object') {
@@ -125,20 +134,15 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
     }
 
     if (finding) {
-      // Check severity.
       if (scenario.expectedSeverity && finding.severity !== scenario.expectedSeverity) {
         failures.push(`Severity: expected "${scenario.expectedSeverity}", got "${finding.severity}"`);
       }
-
-      // Check expected keywords (case-insensitive) anywhere in answer or summary.
       const fullText = `${finding.summary ?? ''} ${finding.answer ?? ''}`.toLowerCase();
       for (const kw of scenario.expectedKeywords ?? []) {
         if (!fullText.includes(kw.toLowerCase())) {
           failures.push(`Missing expected keyword: "${kw}"`);
         }
       }
-
-      // Check forbidden keywords.
       for (const kw of scenario.forbiddenKeywords ?? []) {
         if (fullText.includes(kw.toLowerCase())) {
           failures.push(`Found forbidden keyword: "${kw}"`);
@@ -148,7 +152,6 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
   } catch (err) {
     failures.push(`Agent error: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
-    // Clean up temp file.
     try {
       await unlink(tmpFile);
     } catch {
@@ -158,14 +161,17 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
 
   return {
     scenario: scenario.description,
+    prompt: scenario.prompt,
     passed: failures.length === 0,
     failures,
     output: finding,
   };
 }
 
-/** Load all scenario YAML files from the scenarios directory. */
-async function loadScenarios(scenariosDir: string, filter?: string): Promise<Array<{ path: string; scenario: EvalScenario }>> {
+async function loadScenarios(
+  scenariosDir: string,
+  filter?: string,
+): Promise<Array<{ path: string; scenario: EvalScenario }>> {
   const files = await readdir(scenariosDir);
   const yamlFiles = files.filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
 
@@ -189,38 +195,73 @@ async function loadScenarios(scenariosDir: string, filter?: string): Promise<Arr
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let scenarioFilter: string | undefined;
+  let reflect = false;
+  let fromLog = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
       scenarioFilter = args[++i];
     } else if (args[i].startsWith('--scenario=')) {
       scenarioFilter = args[i].slice('--scenario='.length);
+    } else if (args[i] === '--reflect') {
+      reflect = true;
+    } else if (args[i] === '--from-log') {
+      fromLog = true;
     } else if (args[i] === '-h' || args[i] === '--help') {
-      process.stdout.write(`Usage: heimdall eval [--scenario <name-substring>]
+      process.stdout.write(`Usage: heimdall self-improve [--scenario <name>] [--reflect] [--from-log]
 
-Run synthetic RCA evaluation scenarios against the Heimdall agent.
-No real cluster is needed — kubectl responses are mocked.
+Run eval scenarios and record failures as structured learning entries.
 
 Options:
-  --scenario, -s <name>   Run only scenarios whose filename contains <name>
-  -h, --help              Show this help message
+  --scenario, -s <name>  Run only scenarios whose filename contains <name>
+  --reflect              After running, print a meta-prompt for instruction improvements
+  --from-log             Reflect on existing learning-log.jsonl instead of running new evals
+  -h, --help             Show this help message
+
+The learning log is written to scenarios/learning-log.jsonl.
+Review it after each run to track what the agent is getting wrong and why.
 
 Examples:
-  heimdall eval                       # run all scenarios
-  heimdall eval --scenario crashloop  # run only the CrashLoop scenario
-  npm run eval
+  heimdall self-improve                       # run all scenarios, record failures
+  heimdall self-improve --reflect             # run evals + print reflection prompt
+  heimdall self-improve --reflect --from-log  # reflect on prior failures in the log
+  heimdall self-improve --scenario crashloop  # run only matching scenarios
 `);
       process.exit(0);
     }
   }
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
+  const logPath = join(scenariosDir, LEARNING_LOG_NAME);
 
+  // --from-log: skip running evals; reflect on existing log entries instead.
+  if (fromLog) {
+    if (!reflect) {
+      process.stderr.write('--from-log requires --reflect\n');
+      process.exit(1);
+    }
+    const entries = await readLearningLog(logPath);
+    if (entries.length === 0) {
+      process.stdout.write(
+        `No entries found in ${logPath}.\nRun without --from-log first to generate learning entries.\n`,
+      );
+      process.exit(0);
+    }
+    process.stdout.write(`\nReflecting on ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} from the learning log...\n\n`);
+    process.stdout.write('='.repeat(60) + '\n');
+    process.stdout.write(buildReflectionPrompt(entries) + '\n');
+    process.stdout.write('='.repeat(60) + '\n');
+    return;
+  }
+
+  // Normal flow: run eval scenarios and record any failures.
   let scenarios: Array<{ path: string; scenario: EvalScenario }>;
   try {
     scenarios = await loadScenarios(scenariosDir, scenarioFilter);
   } catch (err) {
-    process.stderr.write(`Error loading scenarios: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(
+      `Error loading scenarios: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
     process.exit(1);
   }
 
@@ -229,19 +270,20 @@ Examples:
     process.exit(1);
   }
 
-  process.stdout.write(`\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'}...\n\n`);
+  process.stdout.write(
+    `\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'} (self-improve mode)...\n\n`,
+  );
 
   const results: EvalResult[] = [];
   for (const { path: scenarioPath, scenario } of scenarios) {
-    const name = scenario.description;
-    process.stdout.write(`  Running: ${name}\n`);
+    process.stdout.write(`  Running: ${scenario.description}\n`);
     const result = await runScenario(scenarioPath, scenario);
     results.push(result);
 
     if (result.passed) {
-      process.stdout.write(`  ✓ PASS  ${name}\n`);
+      process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
     } else {
-      process.stdout.write(`  ✗ FAIL  ${name}\n`);
+      process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
       for (const failure of result.failures) {
         process.stdout.write(`         - ${failure}\n`);
       }
@@ -251,15 +293,45 @@ Examples:
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;
 
-  process.stdout.write(`\nResults: ${passed} passed, ${failed} failed out of ${results.length} scenarios\n`);
+  process.stdout.write(
+    `\nResults: ${passed} passed, ${failed} failed out of ${results.length} scenarios\n`,
+  );
 
-  if (failed > 0) {
-    process.exit(1);
+  // Append a learning entry for every failing scenario.
+  const failedResults = results.filter(r => !r.passed);
+  if (failedResults.length > 0) {
+    const learningEntries = failedResults.map(r =>
+      buildLearningEntry(r.scenario, r.prompt, r.failures),
+    );
+    for (const entry of learningEntries) {
+      await appendLearningEntry(entry, logPath);
+    }
+    process.stdout.write(
+      `\n${failedResults.length} learning entr${failedResults.length === 1 ? 'y' : 'ies'} written to ${logPath}\n`,
+    );
+
+    if (reflect) {
+      process.stdout.write('\n' + '='.repeat(60) + '\n');
+      process.stdout.write(
+        'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
+      );
+      process.stdout.write('='.repeat(60) + '\n\n');
+      process.stdout.write(buildReflectionPrompt(learningEntries) + '\n\n');
+      process.stdout.write('='.repeat(60) + '\n');
+    } else {
+      process.stdout.write(
+        `\nTip: run with --reflect to generate a meta-prompt for instruction improvements.\n`,
+      );
+    }
+  } else {
+    process.stdout.write(
+      '\nAll scenarios passed — no learning entries added. Keep up the good work!\n',
+    );
   }
 }
 
 main().catch((err: unknown) => {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-eval] Fatal error: ${detail}\n`);
+  process.stderr.write(`[heimdall-self-improve] Fatal error: ${detail}\n`);
   process.exit(1);
 });

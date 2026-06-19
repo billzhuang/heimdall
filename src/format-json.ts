@@ -28,6 +28,10 @@ process.stdin.on('end', () => {
   const finding = parseOneShotOutput(raw, model);
   process.stdout.write(JSON.stringify(finding) + '\n');
 
+  // Suppress Slack notifications during synthetic eval/self-improve runs to avoid
+  // posting fake findings to real webhooks.
+  if (process.env.HEIMDALL_EVAL_MODE === '1') return;
+
   const config = loadConfig();
   const slackCfg = config.slack;
   if (slackCfg?.enabled) {
