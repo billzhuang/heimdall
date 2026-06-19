@@ -9,8 +9,13 @@
  *
  * Exit code mirrors the pipe: the script exits 0 on success; the wrapping
  * shell's pipefail propagates a non-zero exit from the upstream flue process.
+ *
+ * When a `slack` block is configured (and enabled), the finding is also posted
+ * to the configured Slack incoming webhook URL.
  */
 import { parseOneShotOutput } from './lib/format-output.ts';
+import { loadConfig } from './lib/config.ts';
+import { sendSlackNotification } from './lib/slack.ts';
 
 const model = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-sonnet-4-6';
 
@@ -22,4 +27,20 @@ process.stdin.on('data', (chunk: string) => {
 process.stdin.on('end', () => {
   const finding = parseOneShotOutput(raw, model);
   process.stdout.write(JSON.stringify(finding) + '\n');
+
+  const config = loadConfig();
+  const slackCfg = config.slack;
+  if (slackCfg?.enabled) {
+    const webhookUrl = slackCfg.webhookUrl || process.env.SLACK_WEBHOOK_URL || '';
+    if (webhookUrl) {
+      sendSlackNotification(finding, {
+        webhookUrl,
+        channel: slackCfg.channel,
+        minSeverity: (slackCfg.minSeverity ?? 'warning') as 'info' | 'warning' | 'critical',
+        timeoutMs: slackCfg.timeoutMs ?? 10_000,
+      }).catch(() => {
+        // sendSlackNotification never throws, but the Promise rejection is caught defensively.
+      });
+    }
+  }
 });

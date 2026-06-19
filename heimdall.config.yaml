@@ -47,6 +47,17 @@ tools:
 # namespace:
 #   locked: prod-payments
 
+# Slack notification sink — post investigation findings to a Slack incoming webhook.
+# Disabled by default. Enable by setting `enabled: true` and providing the webhook URL.
+# The webhook URL can also come from the SLACK_WEBHOOK_URL environment variable.
+#
+# slack:
+#   enabled: true
+#   webhookUrl: ${SLACK_WEBHOOK_URL}    # or hard-code the URL (not recommended)
+#   channel: '#sre-alerts'              # optional override; uses webhook default when omitted
+#   minSeverity: warning                # only post 'warning' and 'critical' findings (default)
+#   timeoutMs: 10000                    # optional, default 10000
+
 # Runbook integration — load local markdown playbooks into the system prompt.
 # Paths are resolved relative to this config file's directory.
 # Untagged runbooks always load; tagged ones load only when their tags match the
