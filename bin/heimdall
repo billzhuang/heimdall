@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# One-shot Heimdall CLI — send a single prompt and exit.
+# Usage: heimdall -p "Why is my api pod crash-looping?"
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FLUE="${SCRIPT_DIR}/../node_modules/.bin/flue"
+
+if [[ ! -x "$FLUE" ]]; then
+  echo "Error: flue CLI not found. Run 'npm install' in the project root first." >&2
+  exit 1
+fi
+
+show_help() {
+  cat <<EOF
+Usage: heimdall -p <prompt>
+
+Run the Heimdall Kubernetes SRE agent with a single prompt and exit.
+
+Options:
+  -p, --prompt <text>   Prompt to send to the agent
+  -h, --help            Show this help message
+
+Examples:
+  heimdall -p "Check all pods in the default namespace"
+  heimdall -p "Why is my frontend deployment crash-looping in prod?"
+  heimdall -p "Audit RBAC for the payments service account"
+
+Environment variables are read from .env (see .env.example).
+For interactive mode use: npm run connect
+EOF
+}
+
+PROMPT=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--prompt)
+      [[ $# -lt 2 ]] && { echo "Error: -p requires an argument" >&2; exit 1; }
+      PROMPT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      show_help
+      exit 0
+      ;;
+    --)
+      shift
+      PROMPT="${*:-}"
+      break
+      ;;
+    -*)
+      echo "Error: unknown option: $1" >&2
+      show_help >&2
+      exit 1
+      ;;
+    *)
+      PROMPT="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$PROMPT" ]]; then
+  echo "Error: a prompt is required  (-p <text>)" >&2
+  show_help >&2
+  exit 1
+fi
+
+printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node
