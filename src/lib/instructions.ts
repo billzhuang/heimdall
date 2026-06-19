@@ -26,38 +26,63 @@ Answer:
 
 Do not reveal hidden chain-of-thought or internal scratch work beyond the high-level summary.`;
 
-/** Build the top-level Heimdall instructions. */
-export function buildInstructions(): string {
-  return `You are Heimdall, an expert Kubernetes assistant and SRE agent. You help engineers
-diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
+/** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces';
 
-## Connection
-- No context is pinned. Use \`list_contexts\` to discover clusters and the kubeconfig current-context by default. Ask the user if it is ambiguous.
-- No namespace is pinned. Use \`list_namespaces\` when you need to discover them; scope queries with \`-n <namespace>\` or \`-A\` for all namespaces.
+/**
+ * Build the top-level Heimdall instructions.
+ *
+ * @param enabledTools - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
+ *   When omitted, all tools are assumed enabled (backwards-compatible default).
+ */
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>): string {
+  const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
 
-## Tools
-- \`kubectl\`: run a single READ-ONLY kubectl command. Pass everything after \`kubectl\`
-  as the \`args\` string (e.g. "get pods -n kube-system -o json"). No shell pipes —
-  prefer label selectors, field selectors, and jsonpath to narrow output.
-- \`list_contexts\`: list available cluster contexts from the kubeconfig.
-- \`list_namespaces\`: list namespaces in a context.
+  const connectionLines = [
+    has('listContexts') &&
+      '- No context is pinned. Use `list_contexts` to discover clusters and the kubeconfig current-context by default. Ask the user if it is ambiguous.',
+    has('listNamespaces') &&
+      '- No namespace is pinned. Use `list_namespaces` when you need to discover them; scope queries with `-n <namespace>` or `-A` for all namespaces.',
+  ].filter(Boolean) as string[];
 
-## Working principles
+  const toolLines = [
+    has('kubectl') &&
+      '- `kubectl`: run a single READ-ONLY kubectl command. Pass everything after `kubectl`\n  as the `args` string (e.g. "get pods -n kube-system -o json"). No shell pipes —\n  prefer label selectors, field selectors, and jsonpath to narrow output.',
+    has('listContexts') && '- `list_contexts`: list available cluster contexts from the kubeconfig.',
+    has('listNamespaces') && '- `list_namespaces`: list namespaces in a context.',
+  ].filter(Boolean) as string[];
+
+  const sections: string[] = [
+    `You are Heimdall, an expert Kubernetes assistant and SRE agent. You help engineers
+diagnose cluster issues quickly by combining kubectl with disciplined reasoning.`,
+  ];
+
+  if (connectionLines.length > 0) {
+    sections.push(`## Connection\n${connectionLines.join('\n')}`);
+  }
+
+  sections.push(
+    `## Tools\n${toolLines.length > 0 ? toolLines.join('\n') : 'No cluster tools are enabled.'}`,
+  );
+
+  sections.push(`## Working principles
 - Answer ONLY the specific question asked. Do not run a broad health check unless asked.
 - Be efficient: run the minimum number of commands needed to reach a conclusion.
 - Prefer targeted reads (describe a specific resource, get with a selector) over dumping everything.
-- Delegate deep, focused investigations to a specialist subagent when it clearly helps.
+- Delegate deep, focused investigations to a specialist subagent when it clearly helps.`);
 
-${READ_ONLY_POLICY}
+  sections.push(READ_ONLY_POLICY);
 
-## Specialist subagents
+  sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
 - resource-analyzer — CPU/memory requests & limits, capacity, bottlenecks.
 - network-debugger — DNS, services, endpoints, ingress, connectivity.
-- security-auditor — RBAC, service accounts, security contexts, exposed secrets.
+- security-auditor — RBAC, service accounts, security contexts, exposed secrets.`);
 
-${RESPONSE_FORMAT}`;
+  sections.push(RESPONSE_FORMAT);
+
+  return sections.join('\n\n');
 }
 
 /** Instructions shared by every read-only specialist subagent. */
