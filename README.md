@@ -1,126 +1,113 @@
 # Heimdall
 
-AI-powered Kubernetes assistant and SRE agent using the Claude Agent SDK.
+AI-powered, **read-only** Kubernetes SRE agent built on the [Flue](https://flueframework.com) agent framework.
 
-Heimdall is an interactive TUI for Kubernetes diagnostics - ask questions in natural language and get intelligent answers powered by AI.
+Heimdall helps SREs and developers diagnose Kubernetes issues faster by combining `kubectl` with AI reasoning. It runs entirely in advisory mode: it can investigate a cluster but can never mutate it.
 
 ## Features
 
-- **Interactive TUI** - Natural language interface for K8s diagnostics
-- **Auto-load Context** - Automatically uses current-context from kubeconfig
-- **Multi-Model Support** - Claude Sonnet/Opus/Haiku, GPT, Gemini
-- **Web Search** - Search for error messages, CVEs, deprecated APIs
-- **Cancellable Queries** - Press ESC to cancel running queries
-- **Thinking Summary** - Each response includes a brief high-level reasoning summary
-- **Kubectl JSON Cache** - Short TTL cache reduces repeated `kubectl get -o json` calls
+- **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`, and `kubectl config` is blocked entirely.
+- **Specialist subagents** — delegates deep investigations to focused profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`.
+- **Cluster discovery** — `list_contexts` and `list_namespaces` tools let it find what's available.
+- **kubectl JSON cache** — short‑TTL on-disk cache for `kubectl get … -o json` to avoid hammering the API server during tight diagnostic loops.
+- **Deploy anywhere** — Flue agents run locally via the CLI or deploy to Node.js, Cloudflare, and more.
 
 ## Prerequisites
 
-- Node.js 18+
-- `kubectl` configured with access to your Kubernetes cluster
-- `ANTHROPIC_API_KEY` environment variable
+- **Node.js ≥ 22.19.0** (required by Flue)
+- `kubectl` configured with access to your cluster
+- `ANTHROPIC_API_KEY` in your environment
 
-## Installation
+## Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/heimdall.git
-cd heimdall
-
-# Install dependencies
 npm install
-
-# Set up environment variable
-export ANTHROPIC_API_KEY="your-api-key-here"
+cp .env.example .env   # then set ANTHROPIC_API_KEY
 ```
 
 ## Usage
 
+Talk to the agent interactively:
+
 ```bash
-# Development
-npm run dev
-
-# Or build and run
-npm run build
-npm start
+npm run connect          # = flue connect heimdall local --target node
 ```
-
-### Auto-load Behavior
-
-On launch, Heimdall automatically:
-- Loads the `current-context` from your kubeconfig
-- Uses the default namespace for that context (or `kube-system` if none)
-
-### Slash Commands
-
-| Command | Description |
-|---------|-------------|
-| `/ctx` | Switch Kubernetes context |
-| `/ns` | Switch namespace |
-| `/model` | Change AI model |
-| `/resume` | Browse and resume saved sessions |
-| `/continue` | Continue most recent session |
-| `/rename <name>` | Name current session |
-| `/context` | Show current session info |
-| `/new` | Start a new session |
-| `/clear` | Clear conversation history |
-| `/help` | Show available commands |
-| `/exit` | Exit Heimdall |
-
-### Example Queries
 
 ```text
-heimdall> check pdb configuration
-heimdall> why is my pod in CrashLoopBackOff?
-heimdall> list all deployments with less than 2 replicas
-heimdall> explain the network policies in this namespace
+[flue] Connected to heimdall/local. Enter a prompt per line; Ctrl-D to exit.
+why is my api pod in CrashLoopBackOff? namespace prod
 ```
 
-### CLI Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-k, --kubeconfig <path>` | Path to kubeconfig file | `~/.kube/config` |
-| `-v, --verbose` | Show verbose output including tool calls | `false` |
-
-### Session Memory
-
-Heimdall resumes the active session by default, so short follow-ups like "3" keep context.
-Use `/new` to start fresh, or `/resume`/`/continue` to switch sessions.
-
-### Kubectl Cache
-
-By default, Heimdall caches `kubectl get ... -o json` outputs for 30 seconds to reduce
-repeat API calls in tight tool loops.
-
-Environment variables:
+Run the dev server (HTTP + hot reload), or build a deployable artifact:
 
 ```bash
-HEIMDALL_KUBECTL_CACHE=0        # disable cache
-HEIMDALL_KUBECTL_CACHE_TTL=30   # TTL in seconds (default: 30)
-HEIMDALL_KUBECTL_CACHE_DIR=/tmp # override cache directory
+npm run dev              # flue dev --target node
+npm run build            # flue build --target node  -> dist/
+```
+
+### Example prompts
+
+```text
+check pdb configuration in kube-system
+list all deployments with fewer than 2 replicas
+explain the network policies in the payments namespace
+audit RBAC for the default service account
+```
+
+## Configuration
+
+All configuration is via environment variables (see `.env.example`):
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Provider credential (required) | — |
+| `HEIMDALL_MODEL` | Flue `provider/model` specifier | `anthropic/claude-sonnet-4-6` |
+| `KUBECONFIG` | Path to kubeconfig | `~/.kube/config` |
+| `HEIMDALL_CONTEXT` | Pin a default cluster context | current-context |
+| `HEIMDALL_NAMESPACE` | Pin a default namespace | — |
+| `HEIMDALL_KUBECTL_CACHE` | Set to `0` to disable the JSON cache | enabled |
+| `HEIMDALL_KUBECTL_CACHE_TTL` | Cache TTL in seconds | `30` |
+| `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |
+
+## Project layout
+
+```
+src/
+├── agents/
+│   └── heimdall.ts      # the agent (default export) + read-only subagents
+├── tools/
+│   ├── kubectl.ts       # read-only kubectl tool
+│   └── kubeconfig.ts    # list_contexts / list_namespaces tools
+└── lib/
+    ├── kubectl-safety.ts # pure read-only policy (parse + validate)
+    ├── kubectl.ts        # command execution (no shell) + JSON cache
+    ├── kubeconfig.ts     # kubeconfig parsing + namespace listing
+    ├── instructions.ts   # system + subagent instructions
+    ├── model.ts          # default model specifier
+    └── __tests__/        # unit + property-based tests
+flue.config.ts           # Flue build config (target: node)
 ```
 
 ## Development
 
 ```bash
-npm run dev        # Run in development mode
-npm run typecheck  # Type check
-npm run build      # Build
-npm test           # Run tests
-npm run test:coverage  # Run tests with coverage
+npm run typecheck        # tsc --noEmit
+npm test                 # vitest
+npm run test:coverage    # coverage report
+npm run build            # build deployable artifact
 ```
 
-## How It Works
+## Safety model
 
-Heimdall uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents) to:
+The read-only guarantee is enforced in code, not just in the prompt:
 
-1. Run kubectl commands via the built-in Bash tool
-2. Search the web for error messages and documentation
-3. Analyze output using AI understanding of Kubernetes
-4. Provide focused answers to your specific questions
+1. The agent's **only** cluster tool is `kubectl`, which calls `validateCommand` on the exact tokenized command before running anything. It is **default-deny**: only an explicit allow-list of read-only subcommands passes, everything else (including unknown subcommands) is blocked.
+2. Command families that mix read-only and mutating verbs are gated by nested verb — `auth` permits only `can-i`/`whoami` (e.g. `auth reconcile` is blocked), and `config` (which can mutate the kubeconfig or expose credentials) is blocked entirely. Use the `list_contexts` tool for context discovery instead.
+3. Commands are executed with `execFile` (no shell), so model-supplied arguments cannot inject pipes, redirects, or command substitution.
+4. The default in-memory sandbox keeps the model's general shell off the host — real cluster access only happens through the validated tool.
+5. The JSON cache is keyed by the full argv plus kubeconfig and effective context, and stored in a per-user directory, so reads can't collide or leak across clusters or users.
 
-The agent operates in **advisory mode** - it runs read-only commands and provides information to help you make decisions.
+The policy is covered by unit and property-based tests (`fast-check`) asserting these invariants hold for all inputs.
 
 ## License
 

@@ -4,15 +4,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/tui/**/*.ts', 'src/tui/**/*.tsx'],
+      include: ['src/lib/**/*.ts', 'src/tools/**/*.ts'],
+      exclude: ['src/**/__tests__/**'],
     },
-  },
-  esbuild: {
-    jsx: 'automatic',
-    jsxImportSource: 'react',
   },
 });
