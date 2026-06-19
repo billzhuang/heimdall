@@ -174,6 +174,36 @@ function hasContextFlag(argv: string[]): boolean {
   return argv.some((a) => a === '--context' || a.startsWith('--context='));
 }
 
+/**
+ * Parse a Kubernetes/Go duration string (e.g. "30s", "2m", "1h30m") to milliseconds.
+ * Returns null for unrecognised formats; 0-ms durations also return null.
+ * Exported so tests can cover it without spawning kubectl.
+ */
+export function parseDurationMs(s: string): number | null {
+  if (!s) return null;
+  const m = s.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
+  if (!m || m[0] === '') return null;
+  const h = parseInt(m[1] ?? '0', 10) || 0;
+  const min = parseInt(m[2] ?? '0', 10) || 0;
+  const sec = parseInt(m[3] ?? '0', 10) || 0;
+  const total = h * 3600_000 + min * 60_000 + sec * 1_000;
+  return total > 0 ? total : null;
+}
+
+/**
+ * Extract the --timeout flag value (in ms) from a kubectl wait argv.
+ * Returns null when no --timeout is present.
+ * Exported so tests can cover it without spawning kubectl.
+ */
+export function getWaitTimeoutMs(argv: string[]): number | null {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--timeout' && i + 1 < argv.length) return parseDurationMs(argv[i + 1]);
+    if (arg.startsWith('--timeout=')) return parseDurationMs(arg.slice('--timeout='.length));
+  }
+  return null;
+}
+
 /** Cap very large output so a single read can't blow past the model's context. */
 function truncate(text: string): string {
   if (text.length <= MAX_RESULT_CHARS) return text;
@@ -278,11 +308,24 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     }
   }
 
+  // For `kubectl wait`, extend the exec timeout to match --timeout so Node
+  // doesn't kill the process before kubectl can exit cleanly. Add a 5 s buffer
+  // for the process to flush output and exit; fall back to EXEC_TIMEOUT_MS for
+  // all other subcommands (or when no --timeout is present).
+  const EXEC_TIMEOUT_BUFFER_MS = 5_000;
+  const execTimeoutMs = (() => {
+    if (validation.subcommand === 'wait') {
+      const waitMs = getWaitTimeoutMs(argv);
+      if (waitMs) return Math.max(EXEC_TIMEOUT_MS, waitMs + EXEC_TIMEOUT_BUFFER_MS);
+    }
+    return EXEC_TIMEOUT_MS;
+  })();
+
   try {
     const { stdout, stderr } = await execFileAsync('kubectl', argv, {
       encoding: 'utf8',
       env,
-      timeout: EXEC_TIMEOUT_MS,
+      timeout: execTimeoutMs,
       maxBuffer: MAX_BUFFER_BYTES,
     });
 
