@@ -19,8 +19,10 @@ const ToolsSchema = v.nullish(
     listNamespaces: v.nullish(v.boolean(), true),
     helmRelease: v.nullish(v.boolean(), true),
     prometheusQuery: v.nullish(v.boolean(), false),
+    // Disabled by default: requires AWS CLI credentials in the environment.
+    awsCli: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
@@ -31,7 +33,6 @@ const PrometheusSchema = v.nullish(
     // Request timeout in milliseconds (default 10 000).
     timeoutMs: v.nullish(v.number(), 10_000),
   }),
-);
 
 const AuditSchema = v.nullish(
   v.object({
@@ -81,6 +82,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   listNamespaces: true,
   helmRelease: true,
   prometheusQuery: true,
+  awsCli: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -94,6 +96,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   list_namespaces: 'listNamespaces',
   helm_release: 'helmRelease',
   prometheus_query: 'prometheusQuery',
+  aws_cli: 'awsCli',
 };
 
 /**
