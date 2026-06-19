@@ -31,7 +31,7 @@ process.stdin.on('end', () => {
   const config = loadConfig();
   const slackCfg = config.slack;
   if (slackCfg?.enabled) {
-    const webhookUrl = slackCfg.webhookUrl ?? process.env.SLACK_WEBHOOK_URL ?? '';
+    const webhookUrl = slackCfg.webhookUrl || process.env.SLACK_WEBHOOK_URL || '';
     if (webhookUrl) {
       sendSlackNotification(finding, {
         webhookUrl,

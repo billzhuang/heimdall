@@ -60,9 +60,11 @@ function buildBlockKitPayload(finding: OneShotFinding, channel?: string | null):
   }
 
   // Main answer — capped at 2 000 chars to stay within Slack block limits.
+  // Fallback to a placeholder if the answer is empty: Slack rejects empty text fields.
+  const answerText = finding.answer.trim().slice(0, 2_000) || '_No answer provided._';
   blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: finding.answer.slice(0, 2_000) },
+    text: { type: 'mrkdwn', text: answerText },
   });
 
   // Top-3 suggested kubectl commands as a fenced code block.
