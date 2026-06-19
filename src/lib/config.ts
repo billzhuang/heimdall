@@ -30,9 +30,23 @@ const AuditSchema = v.nullish(
   { enabled: false },
 );
 
+// Watch mode config — controls the proactive K8s Warning event monitor.
+const WatchSchema = v.nullish(
+  v.object({
+    // Namespaces to watch. Omit (or empty) to watch all namespaces (-A).
+    namespaces: v.nullish(v.array(v.string())),
+    // Webhook URL to POST JSON finding lines to (e.g. a Slack incoming webhook).
+    webhook: v.nullish(v.string()),
+    // Only diagnose events whose Reason matches one of these strings.
+    // Omit (or empty) to diagnose all Warning events.
+    reasons: v.nullish(v.array(v.string())),
+  }),
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
+  watch: WatchSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# One-shot Heimdall CLI — send a single prompt and exit.
+# Heimdall CLI — one-shot prompt or proactive watch mode.
 # Usage: heimdall -p "Why is my api pod crash-looping?"
+#        heimdall --watch
 set -euo pipefail
 
 # Resolve symlinks so this works when invoked via `npm install -g` / `npm link`.
@@ -13,8 +14,10 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$_src")" && pwd)"
 unset _src _dir
 
+ROOT_DIR="${SCRIPT_DIR}/.."
+
 # Prefer the project-local flue binary; fall back to PATH (global install).
-FLUE="${SCRIPT_DIR}/../node_modules/.bin/flue"
+FLUE="${ROOT_DIR}/node_modules/.bin/flue"
 if [[ ! -x "$FLUE" ]]; then
   FLUE="$(command -v flue 2>/dev/null || true)"
 fi
@@ -23,20 +26,29 @@ if [[ -z "$FLUE" ]] || [[ ! -x "$FLUE" ]]; then
   exit 1
 fi
 
+# tsx is used to run the TypeScript watch-mode script directly in development.
+TSX="${ROOT_DIR}/node_modules/.bin/tsx"
+
 show_help() {
   cat <<EOF
 Usage: heimdall -p <prompt>
+       heimdall --watch
 
-Run the Heimdall Kubernetes SRE agent with a single prompt and exit.
+Run the Heimdall Kubernetes SRE agent.
 
 Options:
-  -p, --prompt <text>   Prompt to send to the agent
+  -p, --prompt <text>   Send a single prompt to the agent and exit
+  -w, --watch           Start proactive Warning-event monitor (streams until interrupted)
   -h, --help            Show this help message
 
 Examples:
   heimdall -p "Check all pods in the default namespace"
   heimdall -p "Why is my frontend deployment crash-looping in prod?"
-  heimdall -p "Audit RBAC for the payments service account"
+  heimdall --watch                        # monitor all namespaces
+  heimdall --watch 2>/dev/null | jq .     # pretty-print findings
+
+Watch mode reads the 'watch:' block from heimdall.config.yaml for
+namespace/reason filters and an optional webhook URL.
 
 Environment variables are read from .env (see .env.example).
 For interactive mode use: npm run connect
@@ -44,6 +56,7 @@ EOF
 }
 
 PROMPT=""
+WATCH=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -51,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -lt 2 ]] && { echo "Error: -p requires an argument" >&2; exit 1; }
       PROMPT="$2"
       shift 2
+      ;;
+    -w|--watch)
+      WATCH=true
+      shift
       ;;
     -h|--help)
       show_help
@@ -74,8 +91,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# --- Watch mode -----------------------------------------------------------
+if [[ "$WATCH" == "true" ]]; then
+  WATCH_SCRIPT="${ROOT_DIR}/src/watch-mode.ts"
+  if [[ ! -f "$WATCH_SCRIPT" ]]; then
+    echo "Error: watch-mode script not found at ${WATCH_SCRIPT}" >&2
+    exit 1
+  fi
+  if [[ ! -x "$TSX" ]]; then
+    echo "Error: tsx not found at ${TSX}. Run 'npm install' first." >&2
+    exit 1
+  fi
+  exec "$TSX" "$WATCH_SCRIPT"
+fi
+
+# --- One-shot prompt mode -------------------------------------------------
 if [[ -z "$PROMPT" ]]; then
-  echo "Error: a prompt is required  (-p <text>)" >&2
+  echo "Error: a prompt is required  (-p <text>)  or use --watch for event monitoring" >&2
   show_help >&2
   exit 1
 fi

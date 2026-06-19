@@ -11,6 +11,7 @@
     "build": "flue build --target node",
     "connect": "flue connect heimdall local --target node",
     "prompt": "bin/heimdall",
+    "watch": "tsx src/watch-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -38,6 +39,7 @@
     "@types/node": "^25.9.3",
     "@vitest/coverage-v8": "^4.1.9",
     "fast-check": "^4.8.0",
+    "tsx": "^4.19.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
   },
