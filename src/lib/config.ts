@@ -44,7 +44,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
 };
 
 function warnUnknownToolKeys(tools: unknown, filePath: string): void {
-  if (tools === null || tools === undefined || typeof tools !== 'object') return;
+  if (tools === null || tools === undefined || typeof tools !== 'object' || Array.isArray(tools)) return;
   for (const key of Object.keys(tools as object)) {
     if (KNOWN_TOOL_KEYS.has(key)) continue;
     const alias = SNAKE_CASE_ALIASES[key];

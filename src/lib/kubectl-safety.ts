@@ -23,7 +23,6 @@ export const DESTRUCTIVE_KUBECTL_COMMANDS = [
   'cordon',
   'uncordon',
   'taint',
-  'rollout',
   // Commands that can execute arbitrary code or exfiltrate data
   'exec',
   'port-forward',
@@ -60,6 +59,16 @@ export const ALLOWED_KUBECTL_COMMANDS = [
  */
 export const NESTED_ALLOWED_VERBS: Record<string, readonly string[]> = {
   auth: ['can-i', 'whoami'],
+  // rollout mixes read-only verbs (status, history) with mutating ones (restart, undo, pause, resume).
+  rollout: ['status', 'history'],
+};
+
+/**
+ * Mutating nested verbs for command families in NESTED_ALLOWED_VERBS.
+ * Used by isDestructiveCommand to identify state-mutating nested commands.
+ */
+export const NESTED_DESTRUCTIVE_VERBS: Record<string, readonly string[]> = {
+  rollout: ['restart', 'undo', 'pause', 'resume'],
 };
 
 export type DestructiveCommand = (typeof DESTRUCTIVE_KUBECTL_COMMANDS)[number];
@@ -179,7 +188,15 @@ export function isDestructiveCommand(command: string): boolean {
   if (!parsed.isKubectl || !parsed.subcommand) {
     return false;
   }
-  return DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand);
+  if (DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand)) {
+    return true;
+  }
+  const nestedDestructive = NESTED_DESTRUCTIVE_VERBS[parsed.subcommand];
+  if (nestedDestructive) {
+    const verb = parsed.args[0]?.toLowerCase() ?? '';
+    return nestedDestructive.includes(verb);
+  }
+  return false;
 }
 
 /**
