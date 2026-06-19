@@ -32,6 +32,7 @@ TSX="${ROOT_DIR}/node_modules/.bin/tsx"
 show_help() {
   cat <<EOF
 Usage: heimdall -p <prompt>
+       heimdall -p <prompt> --json
        heimdall --watch
        heimdall triage [-n <namespace>] [-A]
 
@@ -40,6 +41,8 @@ Run the Heimdall Kubernetes SRE agent.
 Options:
   -p, --prompt <text>   Send a single prompt to the agent and exit
   -w, --watch           Start proactive Warning-event monitor (streams until interrupted)
+      --json            Emit structured JSON instead of Markdown (one-shot mode only)
+      --format <fmt>    Output format: text (default) or json
   -h, --help            Show this help message
 
 Subcommands:
@@ -49,11 +52,17 @@ Subcommands:
 
 Examples:
   heimdall -p "Why is my frontend deployment crash-looping in prod?"
+  heimdall -p "Why is the api pod OOMKilled?" --json
+  heimdall -p "Check pod status" --format json | jq .severity
   heimdall --watch                        # monitor all namespaces
   heimdall --watch 2>/dev/null | jq .     # pretty-print findings
   heimdall triage                         # full health sweep (default namespace)
   heimdall triage -A                      # sweep all namespaces
   heimdall triage -n prod                 # sweep only the prod namespace
+
+JSON output schema (--json):
+  { summary: string[], answer: string, severity: string,
+    suggestedCommands: string[], model: string }
 
 Watch mode reads the 'watch:' block from heimdall.config.yaml for
 namespace/reason filters and an optional webhook URL.
@@ -66,6 +75,7 @@ EOF
 PROMPT=""
 WATCH=false
 TRIAGE=false
+FORMAT="text"
 TRIAGE_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -85,6 +95,17 @@ while [[ $# -gt 0 ]]; do
     -w|--watch)
       WATCH=true
       shift
+      ;;
+    --json)
+      FORMAT="json"
+      shift
+      ;;
+    --format)
+      [[ $# -lt 2 ]] && { echo "Error: --format requires an argument (text or json)" >&2; exit 1; }
+      case "$2" in
+        json|text) FORMAT="$2"; shift 2 ;;
+        *) echo "Error: unknown format '$2' — must be 'text' or 'json'" >&2; exit 1 ;;
+      esac
       ;;
     -h|--help)
       show_help
@@ -107,6 +128,16 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Validate flag combinations.
+if [[ "$FORMAT" == "json" ]] && [[ "$WATCH" == "true" ]]; then
+  echo "Error: --json/--format json is not compatible with --watch (watch mode already outputs JSON lines)" >&2
+  exit 1
+fi
+if [[ "$FORMAT" == "json" ]] && [[ "$TRIAGE" == "true" ]]; then
+  echo "Error: --json/--format json is not compatible with triage mode" >&2
+  exit 1
+fi
 
 # --- Triage mode ----------------------------------------------------------
 if [[ "$TRIAGE" == "true" ]]; then
@@ -150,6 +181,23 @@ if [[ -z "$PROMPT" ]]; then
   echo "       or use 'triage' for a whole-cluster health sweep" >&2
   show_help >&2
   exit 1
+fi
+
+# JSON output mode: capture agent text response and re-emit as structured JSON.
+if [[ "$FORMAT" == "json" ]]; then
+  ONE_SHOT_COMPILED="${ROOT_DIR}/dist/one-shot-mode.mjs"
+  ONE_SHOT_SOURCE="${ROOT_DIR}/src/one-shot-mode.ts"
+
+  if [[ -f "$ONE_SHOT_COMPILED" ]]; then
+    exec node "$ONE_SHOT_COMPILED" --prompt "$PROMPT"
+  elif [[ -x "$TSX" ]] && [[ -f "$ONE_SHOT_SOURCE" ]]; then
+    exec "$TSX" "$ONE_SHOT_SOURCE" --prompt "$PROMPT"
+  else
+    echo "Error: JSON mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
 fi
 
 printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node

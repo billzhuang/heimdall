@@ -45,6 +45,57 @@ heimdall -p "Audit RBAC for the payments service account"
 heimdall --help
 ```
 
+### JSON output mode
+
+Add `--json` (or `--format json`) to get a single structured JSON line on stdout instead of Markdown — ideal for CI gates, alert pipelines, and scripts:
+
+```bash
+heimdall -p "Why is my api pod OOMKilled?" --json
+```
+
+Example output:
+
+```json
+{
+  "summary": [
+    "Checked pod events and resource usage in the prod namespace.",
+    "Found OOMKilled restarts; memory limit is 256 Mi, peak usage ~300 Mi."
+  ],
+  "answer": "The pod `api-7d9c8` is OOMKilled because its memory limit (256 Mi) is too low…",
+  "severity": "critical",
+  "suggestedCommands": [
+    "kubectl describe pod api-7d9c8 -n prod",
+    "kubectl top pod api-7d9c8 -n prod"
+  ],
+  "model": "anthropic/claude-sonnet-4-6"
+}
+```
+
+Pipe to `jq` for scripting:
+
+```bash
+# Extract only the severity field
+heimdall -p "Check prod namespace health" --json | jq -r .severity
+
+# Exit non-zero when the severity is critical
+heimdall -p "Check prod" --json | jq -e '.severity == "critical"'
+
+# Feed the answer into another tool
+heimdall -p "Check the api deployment" --json | jq -r .answer
+```
+
+**Schema fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `summary` | `string[]` | Thinking Summary bullets from the agent |
+| `answer` | `string` | Full Answer section text |
+| `severity` | `"critical"\|"warning"\|"info"\|"healthy"` | Keyword-derived severity |
+| `suggestedCommands` | `string[]` | Advisory kubectl commands extracted from the answer |
+| `model` | `string` | Model specifier used (e.g. `anthropic/claude-sonnet-4-6`) |
+
+`--json` is not compatible with `--watch` (watch mode already outputs JSON lines) or `triage` mode.
+
 ### Triage mode
 
 Run a structured, whole-cluster health sweep with severity-ranked findings:
