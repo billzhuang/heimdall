@@ -37,22 +37,39 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
 
-// Common snake_case mistakes (the model sees these names, operators may copy them verbatim).
+// Accepted snake_case aliases → canonical camelCase key.
+// Operators often copy the tool name the model sees (e.g. `list_contexts`)
+// instead of the camelCase config key; accept both and convert silently.
+// Typed against the schema key union so TypeScript enforces valid alias targets.
 const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools']>> = {
   list_contexts: 'listContexts',
   list_namespaces: 'listNamespaces',
 };
 
-function warnUnknownToolKeys(tools: unknown, filePath: string): void {
-  if (tools === null || tools === undefined || typeof tools !== 'object' || Array.isArray(tools)) return;
-  for (const key of Object.keys(tools as object)) {
-    if (KNOWN_TOOL_KEYS.has(key)) continue;
+/**
+ * Normalise and validate the raw tools block before schema validation:
+ * - Convert snake_case aliases → camelCase so `list_contexts: false` works correctly.
+ * - Warn for unknown keys; pass them through so valibot can handle future additions.
+ */
+function normalizeToolsBlock(
+  tools: unknown,
+  filePath: string,
+): Record<string, unknown> | undefined {
+  if (tools === null || tools === undefined || typeof tools !== 'object' || Array.isArray(tools)) return undefined;
+  const normalized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(tools as Record<string, unknown>)) {
     const alias = SNAKE_CASE_ALIASES[key];
-    const hint = alias
-      ? ` — did you mean "${alias}"?`
-      : `. Known keys: ${[...KNOWN_TOOL_KEYS].join(', ')}`;
-    console.warn(`[heimdall] Config ${filePath}: unknown tools key "${key}"${hint}`);
+    if (alias) {
+      normalized[alias] = value;
+    } else if (KNOWN_TOOL_KEYS.has(key)) {
+      normalized[key] = value;
+    } else {
+      const knownList = [...KNOWN_TOOL_KEYS, ...Object.keys(SNAKE_CASE_ALIASES)].join(', ');
+      console.warn(`[heimdall] Config ${filePath}: unknown tools key "${key}". Known keys: ${knownList}`);
+      normalized[key] = value; // pass through for forward-compat with future schema additions
+    }
   }
+  return normalized;
 }
 
 function resolveConfigPath(): string {
@@ -90,9 +107,12 @@ export function loadConfig(configPath?: string): HeimdallConfig {
   }
 
   const rawObj = (raw ?? {}) as Record<string, unknown>;
-  warnUnknownToolKeys(rawObj['tools'], filePath);
+  const tools = normalizeToolsBlock(rawObj['tools'], filePath);
 
-  const result = v.safeParse(HeimdallConfigSchema, rawObj);
+  const result = v.safeParse(HeimdallConfigSchema, {
+    ...rawObj,
+    ...(tools !== undefined ? { tools } : {}),
+  });
   if (!result.success) {
     console.warn(`[heimdall] Invalid config at ${filePath}:`, result.issues);
     return defaultConfig();
