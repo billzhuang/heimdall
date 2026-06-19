@@ -3,7 +3,14 @@
  */
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
-import { getContextNames, parseKubeconfig, resolveKubeconfigPath } from '../lib/kubeconfig.ts';
+import {
+  IN_CLUSTER_CONTEXT,
+  getContextNames,
+  isInCluster,
+  parseKubeconfig,
+  resolveKubeconfigPath,
+} from '../lib/kubeconfig.ts';
+import { ensureEksKubeconfig, isEksMode } from '../lib/eks.ts';
 import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
 
 export const listContexts = defineTool({
@@ -13,10 +20,27 @@ export const listContexts = defineTool({
     'Use this to discover which clusters you can target.',
   parameters: v.object({}),
   execute: async () => {
-    const path = resolveKubeconfigPath();
-    const config = await parseKubeconfig(path);
+    // In-cluster: kubectl reads the pod's service account token automatically.
+    if (isInCluster()) {
+      return `Contexts (1):\n* ${IN_CLUSTER_CONTEXT} (current)`;
+    }
+
+    // EKS mode: generate kubeconfig dynamically via `aws eks update-kubeconfig`.
+    // ensureEksKubeconfig caches the result so this doesn't re-run on every call.
+    let kubeconfigPath: string;
+    if (isEksMode()) {
+      try {
+        kubeconfigPath = await ensureEksKubeconfig();
+      } catch (err) {
+        return `Failed to generate EKS kubeconfig: ${(err as Error).message}`;
+      }
+    } else {
+      kubeconfigPath = resolveKubeconfigPath();
+    }
+
+    const config = await parseKubeconfig(kubeconfigPath);
     if (!config) {
-      return `No kubeconfig contexts found at ${path}.`;
+      return `No kubeconfig contexts found at ${kubeconfigPath}.`;
     }
     const names = getContextNames(config);
     const lines = names.map((name) =>
