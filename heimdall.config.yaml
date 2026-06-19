@@ -12,3 +12,12 @@ tools:
 
   # Enumerate namespaces in a context
   listNamespaces: true
+
+  # Prometheus read-only PromQL queries — disabled by default.
+  # Enable when Prometheus is reachable and set prometheus.url below.
+  # prometheus_query: true
+
+# Prometheus HTTP API (required when tools.prometheus_query is enabled).
+# prometheus:
+#   url: http://prometheus-operated.monitoring:9090
+#   timeoutMs: 10000   # optional, default 10000

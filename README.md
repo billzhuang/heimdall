@@ -235,6 +235,30 @@ All configuration is via environment variables (see `.env.example`):
 | `HEIMDALL_KUBECTL_CACHE` | Set to `0` to disable the JSON cache | enabled |
 | `HEIMDALL_KUBECTL_CACHE_TTL` | Cache TTL in seconds | `30` |
 | `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |
+| `PROMETHEUS_URL` | Prometheus base URL (overrides `prometheus.url` in config) | — |
+
+### Prometheus integration
+
+Heimdall can query Prometheus for time-series metrics (golden signals, resource trends) via PromQL.
+It is **disabled by default**. To enable, add to `heimdall.config.yaml`:
+
+```yaml
+tools:
+  prometheus_query: true   # or prometheusQuery: true
+
+prometheus:
+  url: http://prometheus-operated.monitoring:9090   # required
+  timeoutMs: 10000                                   # optional, default 10000
+```
+
+The base URL can also be set via the `PROMETHEUS_URL` environment variable (takes precedence over config).
+
+The tool supports:
+- **Instant queries** — evaluate a PromQL expression at a single point in time (defaults to now).
+- **Range queries** — evaluate over a time window with a resolution step (e.g. `step: "1m"`).
+
+Only read-only GET endpoints (`/api/v1/query`, `/api/v1/query_range`) are called.
+Results are capped at 20 000 characters to avoid overflowing the model's context.
 
 ## Project layout
 

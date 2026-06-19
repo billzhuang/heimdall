@@ -18,8 +18,19 @@ const ToolsSchema = v.nullish(
     listContexts: v.nullish(v.boolean(), true),
     listNamespaces: v.nullish(v.boolean(), true),
     helmRelease: v.nullish(v.boolean(), true),
+    prometheusQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false },
+);
+
+// Prometheus HTTP API config — optional, disabled by default.
+const PrometheusSchema = v.nullish(
+  v.object({
+    // Base URL for the Prometheus HTTP API. Also readable from PROMETHEUS_URL env var.
+    url: v.nullish(v.string()),
+    // Request timeout in milliseconds (default 10 000).
+    timeoutMs: v.nullish(v.number(), 10_000),
+  }),
 );
 
 const AuditSchema = v.nullish(
@@ -57,6 +68,7 @@ const HeimdallConfigSchema = v.object({
   watch: WatchSchema,
   // Redact Secret .data / .stringData values in kubectl output (code-enforced, default on).
   redactSecrets: v.nullish(v.boolean(), true),
+  prometheus: PrometheusSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
@@ -68,6 +80,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   listContexts: true,
   listNamespaces: true,
   helmRelease: true,
+  prometheusQuery: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -80,6 +93,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   list_contexts: 'listContexts',
   list_namespaces: 'listNamespaces',
   helm_release: 'helmRelease',
+  prometheus_query: 'prometheusQuery',
 };
 
 /**

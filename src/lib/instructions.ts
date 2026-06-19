@@ -29,7 +29,7 @@ Answer:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the high-level summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -54,6 +54,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>): string {
     has('listNamespaces') && '- `list_namespaces`: list namespaces in a context.',
     has('helmRelease') &&
       '- `helm_release`: read-only Helm release inspection. Actions: list (all releases in a namespace or cluster-wide), status (release health), get (values / manifest / notes for a release).',
+    has('prometheusQuery') &&
+      '- `prometheus_query`: query Prometheus for time-series metrics using PromQL. Query types: instant (single point in time) or range (time window with step). Use for golden signals — request rate, error rate, latency, saturation — and resource trends.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
