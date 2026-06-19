@@ -37,12 +37,21 @@ async function diagnoseEvent(prompt: string): Promise<string> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
 
   return new Promise((resolve) => {
+    let settled = false;
+    const settle = (value: string) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+
     const child = spawn(binPath, ['-p', prompt], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     const timer = setTimeout(() => {
       child.kill('SIGTERM');
+      settle('(diagnosis timed out)');
     }, DIAGNOSIS_TIMEOUT_MS);
 
     let output = '';
@@ -52,12 +61,12 @@ async function diagnoseEvent(prompt: string): Promise<string> {
 
     child.on('close', () => {
       clearTimeout(timer);
-      resolve(output.trim() || '(no diagnosis)');
+      settle(output.trim() || '(no diagnosis)');
     });
 
     child.on('error', (err: Error) => {
       clearTimeout(timer);
-      resolve(`(diagnosis failed: ${err.message})`);
+      settle(`(diagnosis failed: ${err.message})`);
     });
   });
 }
@@ -137,6 +146,7 @@ export async function runWatchMode(): Promise<void> {
 }
 
 runWatchMode().catch((err: unknown) => {
-  process.stderr.write(`[heimdall-watch] Fatal error: ${String(err)}\n`);
+  const detail = err instanceof Error ? err.stack ?? err.message : String(err);
+  process.stderr.write(`[heimdall-watch] Fatal error: ${detail}\n`);
   process.exit(1);
 });
