@@ -1,4 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { isJsonOutput, runKubectl, tokenizeArgs } from '../kubectl.ts';
 
 describe('tokenizeArgs', () => {
@@ -112,4 +115,60 @@ describe('runKubectl (policy enforcement)', () => {
   // kubectl-safety.test.ts against validateCommand, without spawning kubectl —
   // executing an allowed command here would depend on a live cluster and the
   // runner's kubectl, which is exactly what makes such tests flaky/slow.
+});
+
+describe('runKubectl audit logging', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('does not write to stderr when audit is disabled (default)', async () => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await runKubectl('delete pod web -n prod');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('writes a blocked audit entry to stderr when enabled', async () => {
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    await runKubectl('delete pod web -n prod', { audit: { enabled: true } });
+    expect(lines).toHaveLength(1);
+    const entry = JSON.parse(lines[0]);
+    expect(entry.level).toBe('audit');
+    expect(entry.allowed).toBe(false);
+    expect(entry.outcome).toBe('blocked');
+    expect(entry.cmd).toContain('delete');
+  });
+
+  it('writes audit entry to a file when file path is configured', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'heimdall-audit-test-'));
+    const filePath = join(dir, 'audit.jsonl');
+    try {
+      await runKubectl('delete pod web -n prod', { audit: { enabled: true, file: filePath } });
+      const content = await readFile(filePath, 'utf8');
+      const entry = JSON.parse(content.trim());
+      expect(entry.level).toBe('audit');
+      expect(entry.allowed).toBe(false);
+      expect(entry.outcome).toBe('blocked');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('includes ts, cmd, allowed, and outcome in every audit entry', async () => {
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    await runKubectl('exec mypod -- sh', { audit: { enabled: true } });
+    const entry = JSON.parse(lines[0]);
+    expect(entry.ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(typeof entry.cmd).toBe('string');
+    expect(typeof entry.allowed).toBe('boolean');
+    expect(entry.outcome).toBeDefined();
+  });
 });

@@ -12,7 +12,7 @@
  */
 import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
-import { kubectl } from '../tools/kubectl.ts';
+import { makeKubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
@@ -25,7 +25,7 @@ const config = loadConfig();
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
 // without adding the tool (or vice versa) is a compile-time error.
 const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl,
+  kubectl: makeKubectl(config.audit),
   listContexts,
   listNamespaces,
 };

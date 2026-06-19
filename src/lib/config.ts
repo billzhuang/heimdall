@@ -21,8 +21,18 @@ const ToolsSchema = v.nullish(
   { kubectl: true, listContexts: true, listNamespaces: true },
 );
 
+const AuditSchema = v.nullish(
+  v.object({
+    enabled: v.nullish(v.boolean(), false),
+    // Omit `file` (or set it to null/empty) to write to stderr.
+    file: v.nullish(v.string()),
+  }),
+  { enabled: false },
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
+  audit: AuditSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
