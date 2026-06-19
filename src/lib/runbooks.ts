@@ -15,6 +15,7 @@ export interface RunbookConfig {
 }
 
 const MAX_RUNBOOK_CHARS = 8_000;
+const TRUNCATION_MARKER = '\n[truncated]';
 
 /**
  * True when any of the given tags appears as a case-insensitive whole-word token
@@ -66,7 +67,11 @@ export function loadRunbooks(configDir: string, configs: RunbookConfig[], query?
     const budget = MAX_RUNBOOK_CHARS - totalChars - header.length;
     if (budget <= 0) break;
 
-    const body = text.length <= budget ? text : text.slice(0, budget) + '\n[truncated]';
+    // Subtract marker length from the slice budget so the combined body never
+    // exceeds the remaining budget when truncation is applied.
+    const body = text.length <= budget
+      ? text
+      : text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
     parts.push(header + body);
     totalChars += header.length + body.length;
   }

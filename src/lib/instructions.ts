@@ -37,7 +37,7 @@ export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'hel
  * @param enabledTools    - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
  *   When omitted, all tools are assumed enabled (backwards-compatible default).
  * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
- * @param runbookContext  - pre-loaded runbook text to append as a context section.
+ * @param runbookContext  - pre-loaded runbook text to inject as a context section (before Tools).
  */
 export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string): string {
   const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
@@ -73,6 +73,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     sections.push(`## Connection\n${connectionLines.join('\n')}`);
   }
 
+  if (runbookContext) {
+    sections.push(`## Runbook context\nThe following runbooks describe team-specific investigation playbooks. Refer to them when diagnosing issues that match their domain.\n\n${runbookContext}`);
+  }
+
   sections.push(
     `## Tools\n${toolLines.length > 0 ? toolLines.join('\n') : 'No cluster tools are enabled.'}`,
   );
@@ -102,10 +106,6 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
-
-  if (runbookContext) {
-    sections.push(`## Runbook context\nThe following team runbooks are relevant to this session. Follow their guidance when diagnosing issues that match their scope.${runbookContext}`);
-  }
 
   return sections.join('\n\n');
 }
