@@ -9,7 +9,7 @@
  * run → evaluate → learn → improve → repeat.
  */
 import { appendFile, readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 
 export interface LearningEntry {
   /** Unique entry ID (timestamp + random suffix). */
@@ -80,7 +80,7 @@ export function buildLearningEntry(
 ): LearningEntry {
   const now = new Date();
   return {
-    id: `${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `${now.getTime()}-${randomBytes(6).toString('hex')}`,
     timestamp: now.toISOString(),
     scenario,
     prompt,
@@ -96,8 +96,13 @@ export async function appendLearningEntry(entry: LearningEntry, logPath: string)
 
 /** Read all learning entries from a JSONL log file. Returns [] if the file does not exist. */
 export async function readLearningLog(logPath: string): Promise<LearningEntry[]> {
-  if (!existsSync(logPath)) return [];
-  const raw = await readFile(logPath, 'utf8');
+  let raw: string;
+  try {
+    raw = await readFile(logPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
   const entries: LearningEntry[] = [];
   for (const line of raw.split('\n')) {
     const trimmed = line.trim();

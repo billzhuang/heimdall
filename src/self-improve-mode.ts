@@ -15,7 +15,7 @@
  *   heimdall self-improve --reflect --from-log
  */
 import { spawn } from 'node:child_process';
-import { writeFile, unlink, readdir } from 'node:fs/promises';
+import { writeFile, unlink, readdir, readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
@@ -52,13 +52,18 @@ interface EvalResult {
 }
 
 async function loadScenario(filePath: string): Promise<EvalScenario> {
-  const { readFile } = await import('node:fs/promises');
   const raw = await readFile(filePath, 'utf8');
-  const parsed = loadYaml(raw);
+  const parsed = loadYaml(raw) as Record<string, unknown>;
   if (!parsed || typeof parsed !== 'object') {
     throw new Error(`Invalid scenario file: ${filePath} is not a valid YAML object`);
   }
-  return parsed as EvalScenario;
+  if (typeof parsed['prompt'] !== 'string' || !parsed['prompt']) {
+    throw new Error(`Invalid scenario file: ${filePath} — missing required field "prompt"`);
+  }
+  if (typeof parsed['description'] !== 'string') {
+    throw new Error(`Invalid scenario file: ${filePath} — missing required field "description"`);
+  }
+  return parsed as unknown as EvalScenario;
 }
 
 async function runScenario(scenarioPath: string, scenario: EvalScenario): Promise<EvalResult> {
@@ -94,7 +99,6 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
         settle(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
-        reject(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
       }, EVAL_TIMEOUT_MS);
 
       child.on('close', (code: number | null) => {
@@ -114,7 +118,6 @@ async function runScenario(scenarioPath: string, scenario: EvalScenario): Promis
       child.on('error', (err: Error) => {
         clearTimeout(timer);
         settle(err);
-        reject(err);
       });
     });
 
