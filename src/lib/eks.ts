@@ -35,7 +35,12 @@ let _eksKubeconfigPromise: Promise<string> | null = null;
  */
 export function ensureEksKubeconfig(): Promise<string> {
   if (!_eksKubeconfigPromise) {
-    _eksKubeconfigPromise = generateEksKubeconfig();
+    // Clear the cache on failure so the next call retries rather than permanently
+    // returning the same rejected promise (e.g. after a transient AWS CLI error).
+    _eksKubeconfigPromise = generateEksKubeconfig().catch((err: unknown) => {
+      _eksKubeconfigPromise = null;
+      throw err;
+    });
   }
   return _eksKubeconfigPromise;
 }

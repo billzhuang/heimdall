@@ -193,17 +193,30 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     argv.unshift(`--context=${context}`);
   }
 
+  // Resolve the effective kubeconfig path once so we can use it both to set
+  // env.KUBECONFIG and to compute the cache key without calling ensureEksKubeconfig twice.
+  // Failures here (e.g. AWS CLI unavailable) are returned as error strings, not exceptions.
+  let resolvedKubeconfig: string | undefined;
+  if (!inCluster) {
+    if (options.kubeconfig) {
+      resolvedKubeconfig = options.kubeconfig;
+    } else if (isEksMode()) {
+      try {
+        resolvedKubeconfig = await ensureEksKubeconfig();
+      } catch (err) {
+        const detail = ((err as { message?: string }).message || String(err)).trim();
+        return `kubectl exited with an error:\nFailed to obtain EKS kubeconfig: ${detail}`;
+      }
+    }
+  }
+
   const env = { ...process.env };
   if (inCluster) {
     // In-cluster: kubectl uses the mounted service account token automatically.
     // Do not set KUBECONFIG — it would override the in-cluster config.
     delete env.KUBECONFIG;
-  } else if (options.kubeconfig) {
-    env.KUBECONFIG = options.kubeconfig;
-  } else if (isEksMode()) {
-    // EKS mode: wire the generated kubeconfig into every kubectl call so
-    // runKubectl doesn't fall back to ~/.kube/config.
-    env.KUBECONFIG = await ensureEksKubeconfig();
+  } else if (resolvedKubeconfig) {
+    env.KUBECONFIG = resolvedKubeconfig;
   }
 
   // Serve JSON `get` reads from the short-TTL cache when possible.
@@ -222,9 +235,8 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       if (inCluster) {
         effectiveContext = IN_CLUSTER_CONTEXT;
       } else {
-        // Use the same kubeconfig resolution that env.KUBECONFIG was set to above.
-        const cfgPath = options.kubeconfig ?? (isEksMode() ? await ensureEksKubeconfig() : undefined);
-        const cfg = await parseKubeconfig(resolveKubeconfigPath(cfgPath));
+        // resolvedKubeconfig was already computed above; reuse it for consistency.
+        const cfg = await parseKubeconfig(resolveKubeconfigPath(resolvedKubeconfig));
         effectiveContext = cfg?.currentContext ?? '';
       }
     }
