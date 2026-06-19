@@ -46,7 +46,11 @@ async function diagnoseEvent(prompt: string): Promise<string> {
     };
 
     const child = spawn(binPath, ['-p', prompt], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stderr is inherited so the agent's diagnostic output is visible on the
+      // watch-mode process's stderr alongside our own status messages.  Using
+      // 'pipe' without draining would risk a buffer deadlock if the agent
+      // writes a lot of diagnostic text.
+      stdio: ['ignore', 'pipe', 'inherit'],
     });
 
     const timer = setTimeout(() => {

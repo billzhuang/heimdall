@@ -93,16 +93,21 @@ done
 
 # --- Watch mode -----------------------------------------------------------
 if [[ "$WATCH" == "true" ]]; then
-  WATCH_SCRIPT="${ROOT_DIR}/src/watch-mode.ts"
-  if [[ ! -f "$WATCH_SCRIPT" ]]; then
-    echo "Error: watch-mode script not found at ${WATCH_SCRIPT}" >&2
+  WATCH_COMPILED="${ROOT_DIR}/dist/watch-mode.mjs"
+  WATCH_SOURCE="${ROOT_DIR}/src/watch-mode.ts"
+
+  if [[ -f "$WATCH_COMPILED" ]]; then
+    # Production path: use the pre-built JS bundle (npm run build).
+    exec node "$WATCH_COMPILED"
+  elif [[ -x "$TSX" ]] && [[ -f "$WATCH_SOURCE" ]]; then
+    # Development path: run the TypeScript source directly via tsx.
+    exec "$TSX" "$WATCH_SOURCE"
+  else
+    echo "Error: watch mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
     exit 1
   fi
-  if [[ ! -x "$TSX" ]]; then
-    echo "Error: tsx not found at ${TSX}. Run 'npm install' first." >&2
-    exit 1
-  fi
-  exec "$TSX" "$WATCH_SCRIPT"
 fi
 
 # --- One-shot prompt mode -------------------------------------------------
