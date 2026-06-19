@@ -14,17 +14,6 @@
 #   kubectl apply -f deploy/rbac.yaml
 #   kubectl apply -f deploy/deployment.yaml
 
-# API key Secret — create via `kubectl create secret` as shown above; the
-# template below is a placeholder only (no plaintext key committed here).
-apiVersion: v1
-kind: Secret
-metadata:
-  name: heimdall-api-key
-  namespace: heimdall
-type: Opaque
-# stringData:
-#   ANTHROPIC_API_KEY: "<never commit a real key here; use kubectl create secret>"
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
