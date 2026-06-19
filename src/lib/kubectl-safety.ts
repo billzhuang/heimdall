@@ -56,6 +56,9 @@ export const ALLOWED_KUBECTL_COMMANDS = [
   // Read-only event listing (kubectl ≥ 1.26). --watch streams indefinitely;
   // the tool's exec timeout will kill it, so no special flag blocking is needed.
   'events',
+  // Polls until a resource condition is met and exits; never mutates state.
+  // Long-running invocations are killed by EXEC_TIMEOUT_MS before they can hang.
+  'wait',
 ] as const;
 
 /**
