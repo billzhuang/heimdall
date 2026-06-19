@@ -68,6 +68,13 @@ describe('parseAgentResponse', () => {
     const r = parseAgentResponse(FULL_RESPONSE, MODEL);
     expect(r.summary.some((s) => /thinking summary/i.test(s))).toBe(false);
   });
+
+  it('parses a response that starts directly with Answer: (no Thinking Summary)', () => {
+    const text = 'Answer:\nThe cluster looks healthy.';
+    const r = parseAgentResponse(text, MODEL);
+    expect(r.summary).toHaveLength(0);
+    expect(r.answer).toBe('The cluster looks healthy.');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -105,8 +112,38 @@ describe('deriveSeverity', () => {
     expect(deriveSeverity('Cluster looks good, no issues found')).toBe('healthy');
   });
 
+  it('healthy beats critical when both signals appear (e.g. summary sentence)', () => {
+    // "No critical issues; all pods are healthy" — healthy keyword wins
+    expect(deriveSeverity('No critical issues; all pods are healthy.')).toBe('healthy');
+    expect(deriveSeverity('All nodes are ready and all good — no errors detected.')).toBe('healthy');
+  });
+
   it('returns info as the default', () => {
     expect(deriveSeverity('The deployment has 3 replicas configured')).toBe('info');
+  });
+
+  it('does not false-positive on directly negated critical phrases', () => {
+    // "no error" — lookbehind skips "error"; HEALTHY_RE matches "all.*running"
+    expect(deriveSeverity('No error found, all pods are running.')).toBe('healthy');
+    // "zero failed" — lookbehind skips "failed"
+    expect(deriveSeverity('Zero failed jobs were detected.')).toBe('info');
+    // "not error" — lookbehind skips "error"
+    expect(deriveSeverity('Not error prone, the deployment is stable.')).toBe('info');
+  });
+
+  it('does not false-positive on directly negated warning phrases', () => {
+    expect(deriveSeverity('No warnings detected in the namespace.')).toBe('info');
+    expect(deriveSeverity('Zero pending pods remain.')).toBe('info');
+  });
+
+  it('still detects critical in un-negated contexts', () => {
+    expect(deriveSeverity('Pod is in CrashLoopBackOff')).toBe('critical');
+    expect(deriveSeverity('The job has failed repeatedly')).toBe('critical');
+  });
+
+  it('"not running" is critical (explicit unavailability phrase)', () => {
+    // "not running" is listed explicitly in CRITICAL_RE — it means pods are down
+    expect(deriveSeverity('The api service is not running')).toBe('critical');
   });
 });
 

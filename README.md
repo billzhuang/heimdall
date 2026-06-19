@@ -78,7 +78,7 @@ Pipe to `jq` for scripting:
 heimdall -p "Check prod namespace health" --json | jq -r .severity
 
 # Exit non-zero when the severity is critical
-heimdall -p "Check prod" --json | jq -e '.severity == "critical"'
+heimdall -p "Check prod" --json | jq -e '.severity != "critical"'
 
 # Feed the answer into another tool
 heimdall -p "Check the api deployment" --json | jq -r .answer
