@@ -252,7 +252,7 @@ slack:
   timeoutMs: 10000                   # optional, default 10000 ms
 ```
 
-The webhook URL can also be set via the `SLACK_WEBHOOK_URL` environment variable, which takes precedence over the config file value.
+Alternatively, set the `SLACK_WEBHOOK_URL` environment variable and omit `webhookUrl` from the config — the env var is used when the config does not specify a URL.
 
 When a finding is generated via `heimdall -p "..." --json`, a [Block Kit](https://api.slack.com/block-kit) message is posted containing:
 - A severity header with emoji (`:rotating_light:` / `:warning:` / `:information_source:`)
