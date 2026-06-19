@@ -13,7 +13,8 @@ RUN npm run build
 # Stage 2: runtime
 FROM node:22-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2
 
-# Install kubectl: detect arch, fetch binary + SHA-256, verify before install
+# Install kubectl: detect arch, fetch binary + SHA-256, verify before install.
+# Install helm: fetch the official install script and run it (pinned to latest stable).
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates && \
     KUBECTL_VERSION=$(curl --fail -sL https://dl.k8s.io/release/stable.txt) && \
@@ -23,6 +24,13 @@ RUN apt-get update && \
     echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check && \
     chmod +x kubectl && mv kubectl /usr/local/bin/kubectl && \
     rm kubectl.sha256 && \
+    HELM_VERSION=v3.17.3 && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    sha256sum --check "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    tar -zxf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    mv "linux-${ARCH}/helm" /usr/local/bin/helm && \
+    rm -rf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" "linux-${ARCH}" && \
     apt-get purge -y curl && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 

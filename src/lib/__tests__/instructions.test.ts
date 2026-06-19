@@ -51,8 +51,18 @@ describe('buildInstructions', () => {
 
   it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
     const allEnabled = buildInstructions();
-    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces']));
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease']));
     expect(allEnabled).toBe(explicit);
+  });
+
+  it('includes helm_release tool description when helmRelease is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease']));
+    expect(out).toMatch(/`helm_release`/);
+  });
+
+  it('omits helm_release when helmRelease is disabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces']));
+    expect(out).not.toMatch(/`helm_release`/);
   });
 });
 

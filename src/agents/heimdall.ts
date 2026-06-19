@@ -14,6 +14,7 @@ import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { makeKubectl } from '../tools/kubectl.ts';
 import { listContexts, listNamespaces } from '../tools/kubeconfig.ts';
+import { helmRelease } from '../tools/helm.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
@@ -28,6 +29,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   kubectl: makeKubectl(config.audit),
   listContexts,
   listNamespaces,
+  helmRelease,
 };
 
 const enabledToolKeys = new Set(

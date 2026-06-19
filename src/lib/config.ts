@@ -17,8 +17,9 @@ const ToolsSchema = v.nullish(
     kubectl: v.nullish(v.boolean(), true),
     listContexts: v.nullish(v.boolean(), true),
     listNamespaces: v.nullish(v.boolean(), true),
+    helmRelease: v.nullish(v.boolean(), true),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true },
 );
 
 const AuditSchema = v.nullish(
@@ -57,6 +58,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   kubectl: true,
   listContexts: true,
   listNamespaces: true,
+  helmRelease: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -68,6 +70,7 @@ const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
 const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools']>> = {
   list_contexts: 'listContexts',
   list_namespaces: 'listNamespaces',
+  helm_release: 'helmRelease',
 };
 
 /**
