@@ -71,7 +71,7 @@ describe('validateCommand', () => {
   it('allows kubectl wait (read-only condition polling)', () => {
     expect(validateCommand('kubectl wait --for=condition=Ready pod/web -n prod').allowed).toBe(true);
     expect(validateCommand('kubectl wait --for=condition=Complete job/batch-job').allowed).toBe(true);
-    expect(validateCommand('kubectl wait --for=delete deployment/api --timeout=60s').allowed).toBe(true);
+    expect(validateCommand('kubectl wait --for=delete deployment/api --timeout=15s').allowed).toBe(true);
   });
 
   it('blocks bare stdin reads that would hang the agent', () => {
