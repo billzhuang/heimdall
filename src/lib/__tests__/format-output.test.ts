@@ -181,6 +181,13 @@ describe('extractKubectlCommands', () => {
     expect(extractKubectlCommands(text)).toEqual(['kubectl get nodes']);
   });
 
+  it('extracts multi-line kubectl commands with backslash continuations', () => {
+    const text = '```bash\nkubectl get pods \\\n  -n prod \\\n  -l app=api\n```';
+    expect(extractKubectlCommands(text)).toEqual([
+      'kubectl get pods -n prod -l app=api',
+    ]);
+  });
+
   it('returns empty array when no kubectl commands are present', () => {
     expect(extractKubectlCommands('No commands here.')).toEqual([]);
   });
@@ -222,6 +229,10 @@ describe('inferSeverity', () => {
 
   it('returns "warning" for text containing "crashloop"', () => {
     expect(inferSeverity('The pod is in a CrashLoop.')).toBe('warning');
+  });
+
+  it('returns "warning" for text containing "CrashLoopBackOff"', () => {
+    expect(inferSeverity('Pod api-7f9b is in CrashLoopBackOff status.')).toBe('warning');
   });
 
   it('returns "warning" for text containing "backoff"', () => {

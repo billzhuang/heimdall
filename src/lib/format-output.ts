@@ -74,13 +74,19 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
  *
  * Searches fenced code blocks (```bash / ```sh / ```shell / plain ```) first,
  * then inline backtick spans.  Deduplicates while preserving first-seen order.
+ *
+ * Handles backslash line continuations inside fenced blocks:
+ *   kubectl get pods \
+ *     -n prod \
+ *     -l app=api
+ * is yielded as a single command "kubectl get pods -n prod -l app=api".
  */
 export function extractKubectlCommands(text: string): string[] {
   const seen = new Set<string>();
   const commands: string[] = [];
 
-  const add = (line: string) => {
-    const trimmed = line.trim();
+  const add = (cmd: string) => {
+    const trimmed = cmd.trim();
     if (trimmed.startsWith('kubectl ') && !seen.has(trimmed)) {
       seen.add(trimmed);
       commands.push(trimmed);
@@ -91,7 +97,28 @@ export function extractKubectlCommands(text: string): string[] {
   const fencedRe = /```(?:bash|sh|shell)?\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
   while ((m = fencedRe.exec(text)) !== null) {
-    for (const line of m[1].split('\n')) add(line);
+    const lines = m[1].split('\n');
+    let current = '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (current !== '') {
+        // Continuation: append this fragment (strip the trailing backslash if present)
+        if (trimmed.endsWith('\\')) {
+          current += ' ' + trimmed.slice(0, -1).trim();
+        } else {
+          add(current + ' ' + trimmed);
+          current = '';
+        }
+      } else if (trimmed.startsWith('kubectl ')) {
+        if (trimmed.endsWith('\\')) {
+          current = trimmed.slice(0, -1).trim();
+        } else {
+          add(trimmed);
+        }
+      }
+    }
+    // Flush a trailing continuation (no final non-backslash line).
+    if (current !== '') add(current);
   }
 
   // Inline spans: `kubectl …`
@@ -109,7 +136,7 @@ export function extractKubectlCommands(text: string): string[] {
 export function inferSeverity(text: string): 'critical' | 'warning' | 'info' {
   const lower = text.toLowerCase();
   if (/\b(critical|outage|unavailable)\b/.test(lower)) return 'critical';
-  if (/\b(warning|degraded|oomkilled?|crashloop|backoff|failed|failing|error)\b/.test(lower)) {
+  if (/\b(warning|degraded|oomkilled?|crashloop(backoff)?|back-?off|failed|failing|error)\b/.test(lower)) {
     return 'warning';
   }
   return 'info';
