@@ -21,19 +21,21 @@ import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
 import type { HeimdallConfig } from '../lib/config.ts';
+import { compileRules } from '../lib/regex-redact.ts';
 
 const config = loadConfig();
+const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
 
 // Typed against the config schema keys so TypeScript enforces that every key in
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
 // without adding the tool (or vice versa) is a compile-time error.
 const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl: makeKubectl(config.audit, config.redactSecrets),
+  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules),
   listContexts,
   listNamespaces,
   helmRelease,
-  prometheusQuery: makePrometheusQuery(config.prometheus),
-  awsCli: makeAwsCli({ audit: config.audit }),
+  prometheusQuery: makePrometheusQuery(config.prometheus, regexRedactionRules),
+  awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
 };
 
 const enabledToolKeys = new Set(

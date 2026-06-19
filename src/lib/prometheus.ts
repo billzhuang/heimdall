@@ -5,10 +5,13 @@
  * The Prometheus base URL and timeout come from trusted config/env — never from
  * model-selected arguments.
  */
+import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 
 export interface PrometheusConfig {
   url: string;
   timeoutMs: number;
+  /** User-configured regex redaction rules compiled at startup. */
+  regexRedactionRules?: CompiledRedactionRule[];
 }
 
 const MAX_RESULT_CHARS = 20_000;
@@ -77,7 +80,7 @@ export async function runPrometheusQuery(
     }
 
     const text = await response.text();
-    return truncate(text);
+    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       return `Prometheus query timed out after ${config.timeoutMs}ms.`;

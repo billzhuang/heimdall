@@ -19,6 +19,7 @@ import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
+import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -77,6 +78,8 @@ export interface RunKubectlOptions {
   audit?: AuditConfig | null;
   /** Redact Secret .data / .stringData values from output (default: true). */
   redactSecrets?: boolean;
+  /** User-configured regex redaction rules compiled at startup. */
+  regexRedactionRules?: CompiledRedactionRule[];
 }
 
 /** Whether the on-disk JSON cache is enabled (disabled by `HEIMDALL_KUBECTL_CACHE=0`). */
@@ -235,7 +238,7 @@ async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<str
  * a descriptive error message) as a string suitable for returning to the model.
  */
 export async function runKubectl(args: string, options: RunKubectlOptions = {}): Promise<string> {
-  const { audit, redactSecrets = true } = options;
+  const { audit, redactSecrets = true, regexRedactionRules = [] } = options;
   const startTs = new Date().toISOString();
   const startMs = Date.now();
 
@@ -309,7 +312,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       // Apply redaction on cache reads too: cache entries written before
       // redaction was enabled (or while it was temporarily disabled) may
       // contain raw secret values.
-      const safeOutput = redactSecrets ? redactSecretValues(cached, argv) : cached;
+      const safeOutput = applyRedaction(redactSecrets ? redactSecretValues(cached, argv) : cached, regexRedactionRules);
       await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
       return truncate(safeOutput);
     }
@@ -337,7 +340,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     });
 
     const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
-    const output = redactSecrets ? redactSecretValues(rawOutput, argv) : rawOutput;
+    const output = applyRedaction(redactSecrets ? redactSecretValues(rawOutput, argv) : rawOutput, regexRedactionRules);
 
     if (cacheFile && stdout) {
       try {
@@ -354,7 +357,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   } catch (error) {
     const err = error as { stderr?: string; stdout?: string; message?: string };
     const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
-    const detail = redactSecrets ? redactSecretValues(rawDetail, argv) : rawDetail;
+    const detail = applyRedaction(redactSecrets ? redactSecretValues(rawDetail, argv) : rawDetail, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
   }

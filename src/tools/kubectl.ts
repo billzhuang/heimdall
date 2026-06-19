@@ -4,8 +4,9 @@
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runKubectl, type AuditConfig } from '../lib/kubectl.ts';
+import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 
-export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean) {
+export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean, regexRedactionRules?: CompiledRedactionRule[]) {
   return defineTool({
     name: 'kubectl',
     description:
@@ -28,7 +29,7 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean)
         v.description('Optional cluster context to target (added as --context=...). Defaults to the configured/current context.'),
       ),
     }),
-    execute: async ({ args, context }) => runKubectl(args, { context, audit, redactSecrets }),
+    execute: async ({ args, context }) => runKubectl(args, { context, audit, redactSecrets, regexRedactionRules }),
   });
 }
 

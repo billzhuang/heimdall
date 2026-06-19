@@ -26,3 +26,16 @@ tools:
 # prometheus:
 #   url: http://prometheus-operated.monitoring:9090
 #   timeoutMs: 10000   # optional, default 10000
+
+# Regex-based redaction: strip sensitive patterns from all tool output before the model sees it.
+# Disabled by default. Each rule's pattern is a JavaScript regex; matches are replaced
+# with [REDACTED:<name>]. Patterns are compiled once at startup.
+# redaction:
+#   enabled: true
+#   rules:
+#     - name: aws_access_key
+#       pattern: 'AKIA[0-9A-Z]{16}'
+#     - name: private_key_pem
+#       pattern: '-----BEGIN( RSA| EC| OPENSSH)? PRIVATE KEY-----'
+#     - name: generic_token
+#       pattern: '(?i)(bearer|token|api[_-]?key)["\s:=]+[A-Za-z0-9/+._-]{20,}'

@@ -5,6 +5,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runPrometheusQuery } from '../lib/prometheus.ts';
 import type { PrometheusConfig } from '../lib/prometheus.ts';
+import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 
 const DEFAULT_PROMETHEUS_URL = 'http://prometheus-operated.monitoring:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -15,10 +16,12 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  */
 export function makePrometheusQuery(
   prometheusConfig?: { url?: string | null; timeoutMs?: number | null } | null,
+  regexRedactionRules?: CompiledRedactionRule[],
 ) {
   const config: PrometheusConfig = {
     url: prometheusConfig?.url || process.env.PROMETHEUS_URL || DEFAULT_PROMETHEUS_URL,
     timeoutMs: prometheusConfig?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    regexRedactionRules,
   };
 
   return defineTool({

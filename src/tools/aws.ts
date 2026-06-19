@@ -8,8 +8,9 @@
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runAwsCli, type RunAwsCliOptions } from '../lib/aws.ts';
+import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 
-export function makeAwsCli(options?: RunAwsCliOptions) {
+export function makeAwsCli(options?: RunAwsCliOptions, regexRedactionRules?: CompiledRedactionRule[]) {
   return defineTool({
     name: 'aws_cli',
     description:
@@ -28,7 +29,7 @@ export function makeAwsCli(options?: RunAwsCliOptions) {
         v.description('Arguments passed to the AWS CLI, excluding the leading "aws".'),
       ),
     }),
-    execute: async ({ args }) => runAwsCli(args, options),
+    execute: async ({ args }) => runAwsCli(args, { ...options, regexRedactionRules }),
   });
 }
 
