@@ -82,6 +82,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
     expect(Object.keys(SUBAGENT_INSTRUCTIONS).sort()).toEqual([
       'aws-resource-analyzer',
       'crashloop-analyzer',
+      'deployment-analyzer',
       'eks-troubleshooter',
       'iam-auditor',
       'log-analyzer',

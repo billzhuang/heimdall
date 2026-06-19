@@ -115,7 +115,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - security-auditor — RBAC, service accounts, security contexts, exposed secrets.
 - triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
-- oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
+- oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
+- deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -138,7 +139,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -152,6 +153,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'eks-troubleshooter': 'AWS EKS cluster issues: node groups, managed node scaling, EKS add-ons, AWS-specific Kubernetes integration problems.',
   'iam-auditor': 'AWS IAM security audit: policies, roles, permissions, trust relationships, least-privilege review.',
   'aws-resource-analyzer': 'AWS resource inspection: EC2, RDS, S3, Lambda, service quotas, resource inventory, and configuration checks across AWS services.',
+  'deployment-analyzer': 'Kubernetes Deployment deep-dive: replica counts, rollout status/history, HPA configuration, update strategy, container image versions, and deployment-level events.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -277,5 +279,30 @@ Report metadata (name, ARN, key presence) only — never decode or expose sensit
 ## Read-only constraint
 Only describe-*, get-*, list-*, show-* AWS CLI subcommands are permitted.
 Never expose credentials, secret values, or access keys in output.`,
+  ),
+  'deployment-analyzer': subagentInstructions(
+    'You are a Kubernetes Deployment analysis specialist.',
+    `## Focus
+- Inspect Deployment spec vs. actual state: desired, available, ready, and up-to-date replica counts.
+- Check rollout status and detect stuck rollouts: \`kubectl rollout status deployment/<name> -n <ns> --timeout=5s\`.
+- Retrieve rollout history to identify recent image or config changes: \`kubectl rollout history deployment/<name> -n <ns>\`.
+- Inspect update strategy (RollingUpdate vs. Recreate) and minReadySeconds / progressDeadlineSeconds.
+- Check HPA configuration and current scaling activity: \`kubectl get hpa -n <ns>\`, \`kubectl describe hpa <name> -n <ns>\`.
+- Review container image tags for all containers and init-containers in the Deployment.
+- Check resource requests and limits for every container; flag missing or zero values.
+- Fetch Deployment-scoped events, but also retrieve events for the underlying ReplicaSets and Pods — root causes like \`ImagePullBackOff\`, \`CrashLoopBackOff\`, or scheduling failures are only recorded on those child resources, not on the Deployment itself.
+- Correlate with ReplicaSet and Pod status to explain why a rollout is progressing slowly or is stuck.
+
+## Commands to use
+- \`kubectl get deployment <name> -n <ns> -o json\`
+- \`kubectl describe deployment <name> -n <ns>\`
+- \`kubectl rollout status deployment/<name> -n <ns> --timeout=5s\`
+- \`kubectl rollout history deployment/<name> -n <ns>\`
+- \`kubectl get replicaset -n <ns> -l <selector> -o wide\`
+- \`kubectl get pods -n <ns> -l <selector> -o wide\`
+- \`kubectl get hpa -n <ns>\`, \`kubectl describe hpa <name> -n <ns>\`
+- \`kubectl get events -n <ns> --field-selector involvedObject.name=<deployment-name>,involvedObject.kind=Deployment\`
+- \`kubectl get events -n <ns> --field-selector involvedObject.name=<replicaset-name>,involvedObject.kind=ReplicaSet\`
+- \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod-name>,involvedObject.kind=Pod\``,
   ),
 };
