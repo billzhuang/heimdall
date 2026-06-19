@@ -43,7 +43,12 @@ export function compileRules(rules: RedactionRule[]): CompiledRedactionRule[] {
   const compiled: CompiledRedactionRule[] = [];
   for (const rule of rules) {
     const { pattern, extraFlags } = extractInlineFlags(rule.pattern);
-    const flags = 'g' + extraFlags.replace('g', ''); // always global; avoid duplicate g
+    if (!pattern) {
+      console.warn(`[heimdall] Skipping invalid redaction rule "${rule.name}": pattern is empty after stripping inline flags`);
+      continue;
+    }
+    // Deduplicate flags via Set so `(?ii)` or a user-supplied `g` can't cause a SyntaxError.
+    const flags = Array.from(new Set('g' + extraFlags)).join('');
     try {
       compiled.push({ name: rule.name, re: new RegExp(pattern, flags) });
     } catch {

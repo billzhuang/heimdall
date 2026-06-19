@@ -40,6 +40,28 @@ describe('compileRules', () => {
     const rules = compileRules([{ name: 'token', pattern: 'SECRET' }]);
     expect(rules[0].re.flags).toContain('g');
   });
+
+  it('skips an empty pattern (bare `(?i)`) and logs a warning', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rules = compileRules([{ name: 'empty', pattern: '(?i)' }]);
+    expect(rules).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('empty after stripping'));
+    warnSpy.mockRestore();
+  });
+
+  it('deduplicates flags from `(?ii)` without throwing', () => {
+    const rules = compileRules([{ name: 'dup_flag', pattern: '(?ii)SECRET' }]);
+    expect(rules).toHaveLength(1);
+    // The `i` flag should appear exactly once
+    expect(rules[0].re.flags.split('i').length - 1).toBe(1);
+  });
+
+  it('deduplicates when extraFlags contains `g`, preventing a SyntaxError', () => {
+    // `(?g)` would previously produce flags='gg' which throws SyntaxError
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => compileRules([{ name: 'dup_g', pattern: '(?g)SECRET' }])).not.toThrow();
+    warnSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------
