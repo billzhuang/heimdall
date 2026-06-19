@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isJsonOutput, runKubectl, tokenizeArgs } from '../kubectl.ts';
+import { isJsonOutput, parseDurationMs, getWaitTimeoutMs, runKubectl, tokenizeArgs } from '../kubectl.ts';
 
 describe('tokenizeArgs', () => {
   it('splits on whitespace', () => {
@@ -67,6 +67,49 @@ describe('isJsonOutput', () => {
     expect(isJsonOutput(['get', 'pods', '-o', 'yaml'])).toBe(false);
     expect(isJsonOutput(['get', 'pods', '-o', 'wide'])).toBe(false);
     expect(isJsonOutput(['get', 'pods'])).toBe(false);
+  });
+});
+
+describe('parseDurationMs', () => {
+  it('parses seconds', () => {
+    expect(parseDurationMs('30s')).toBe(30_000);
+    expect(parseDurationMs('1s')).toBe(1_000);
+  });
+
+  it('parses minutes', () => {
+    expect(parseDurationMs('2m')).toBe(120_000);
+  });
+
+  it('parses hours', () => {
+    expect(parseDurationMs('1h')).toBe(3_600_000);
+  });
+
+  it('parses compound durations', () => {
+    expect(parseDurationMs('1h30m')).toBe(5_400_000);
+    expect(parseDurationMs('2m30s')).toBe(150_000);
+    expect(parseDurationMs('1h30m45s')).toBe(5_445_000);
+  });
+
+  it('returns null for unrecognised input', () => {
+    expect(parseDurationMs('')).toBeNull();
+    expect(parseDurationMs('0s')).toBeNull();
+    expect(parseDurationMs('abc')).toBeNull();
+  });
+});
+
+describe('getWaitTimeoutMs', () => {
+  it('extracts --timeout=Xs form', () => {
+    expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web', '--timeout=15s'])).toBe(15_000);
+    expect(getWaitTimeoutMs(['wait', '--timeout=2m', '--for=condition=Complete', 'job/x'])).toBe(120_000);
+  });
+
+  it('extracts space-separated --timeout Xs form', () => {
+    expect(getWaitTimeoutMs(['wait', '--timeout', '60s', '--for=condition=Ready', 'pod/web'])).toBe(60_000);
+  });
+
+  it('returns null when no --timeout flag is present', () => {
+    expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web'])).toBeNull();
+    expect(getWaitTimeoutMs(['get', 'pods'])).toBeNull();
   });
 });
 

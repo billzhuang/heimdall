@@ -68,6 +68,12 @@ describe('validateCommand', () => {
     expect(validateCommand('kubectl events --types=Warning -n prod').allowed).toBe(true);
   });
 
+  it('allows kubectl wait (read-only condition polling)', () => {
+    expect(validateCommand('kubectl wait --for=condition=Ready pod/web -n prod').allowed).toBe(true);
+    expect(validateCommand('kubectl wait --for=condition=Complete job/batch-job').allowed).toBe(true);
+    expect(validateCommand('kubectl wait --for=delete deployment/api --timeout=15s').allowed).toBe(true);
+  });
+
   it('blocks bare stdin reads that would hang the agent', () => {
     // Bare "-" as the final token means execFile would block on stdin forever.
     expect(validateCommand('kubectl diff -f -').allowed).toBe(false);
