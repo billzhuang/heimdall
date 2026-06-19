@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join as joinPath } from 'node:path';
+import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand } from './kubectl-safety.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
@@ -245,7 +245,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
 
     if (cacheFile && stdout) {
       try {
-        await mkdir(getCacheDir(), { recursive: true });
+        await mkdir(dirname(cacheFile), { recursive: true });
         await writeFile(cacheFile, stdout, 'utf8');
       } catch {
         // Caching is best-effort; ignore write failures.

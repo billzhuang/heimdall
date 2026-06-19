@@ -76,8 +76,18 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor';
+
+/** Short agent-facing description for each specialist, keyed by subagent name. */
+export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
+  'log-analyzer': 'Deep pod-log analysis: error correlation, timeline reconstruction, pattern detection.',
+  'resource-analyzer': 'CPU/memory requests & limits, capacity planning, resource bottleneck analysis.',
+  'network-debugger': 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
+  'security-auditor': 'RBAC, service accounts, security contexts, and exposed-secret review.',
+};
+
 /** Per-specialist instruction strings, keyed by subagent name. */
-export const SUBAGENT_INSTRUCTIONS = {
+export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
   'log-analyzer': subagentInstructions(
     'You are a Kubernetes log-analysis specialist.',
     `## Focus
@@ -110,4 +120,4 @@ export const SUBAGENT_INSTRUCTIONS = {
 - Flag exposed secrets — never print actual secret values.
 - Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.`,
   ),
-} as const;
+};
