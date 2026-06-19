@@ -236,6 +236,31 @@ All configuration is via environment variables (see `.env.example`):
 | `HEIMDALL_KUBECTL_CACHE_TTL` | Cache TTL in seconds | `30` |
 | `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |
 | `PROMETHEUS_URL` | Prometheus base URL (overrides `prometheus.url` in config) | — |
+| `SLACK_WEBHOOK_URL` | Slack incoming webhook URL (overrides `slack.webhookUrl` in config) | — |
+
+### Slack notification sink
+
+Heimdall can post investigation findings to a Slack channel after a `--json` one-shot run.
+**Disabled by default.** To enable, add to `heimdall.config.yaml`:
+
+```yaml
+slack:
+  enabled: true
+  webhookUrl: ${SLACK_WEBHOOK_URL}   # or set the SLACK_WEBHOOK_URL env var
+  channel: '#sre-alerts'             # optional — uses the webhook's default channel when omitted
+  minSeverity: warning               # only post 'warning' and 'critical' findings (default)
+  timeoutMs: 10000                   # optional, default 10000 ms
+```
+
+The webhook URL can also be set via the `SLACK_WEBHOOK_URL` environment variable, which takes precedence over the config file value.
+
+When a finding is generated via `heimdall -p "..." --json`, a [Block Kit](https://api.slack.com/block-kit) message is posted containing:
+- A severity header with emoji (`:rotating_light:` / `:warning:` / `:information_source:`)
+- The top 3 key findings from the Thinking Summary
+- The agent's full answer (capped at 2 000 characters)
+- The top 3 suggested `kubectl` commands (if any)
+
+Failure to post (non-2xx response, network error, timeout) is non-fatal: a warning is logged to stderr and the JSON output is emitted normally.
 
 ### Prometheus integration
 

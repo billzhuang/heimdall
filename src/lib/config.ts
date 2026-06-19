@@ -91,6 +91,22 @@ const RunbookEntrySchema = v.object({
   tags: v.nullish(v.array(v.string()), []),
 });
 
+// Slack notification sink — post investigation findings to a Slack channel.
+const SlackSchema = v.nullish(
+  v.object({
+    enabled: v.nullish(v.boolean(), false),
+    // Incoming webhook URL. Also readable from SLACK_WEBHOOK_URL env var.
+    webhookUrl: v.nullish(v.string()),
+    // Optional channel override (e.g. '#sre-alerts'). The webhook's default channel is used when omitted.
+    channel: v.nullish(v.string()),
+    // Minimum severity that triggers a notification: 'info' | 'warning' | 'critical'.
+    minSeverity: v.nullish(v.picklist(['info', 'warning', 'critical']), 'warning'),
+    // Request timeout in milliseconds (default 10 000).
+    timeoutMs: v.nullish(v.number(), 10_000),
+  }),
+  { enabled: false },
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
@@ -103,6 +119,8 @@ const HeimdallConfigSchema = v.object({
   namespace: NamespaceSchema,
   // Local markdown runbooks loaded into system context at startup.
   runbooks: v.nullish(v.array(RunbookEntrySchema), []),
+  // Slack notification sink (disabled by default).
+  slack: SlackSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
