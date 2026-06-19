@@ -10,6 +10,7 @@
  */
 import { appendFile, readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
+import { resolve } from 'node:path';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
 
@@ -116,6 +117,28 @@ export async function readLearningLog(logPath: string): Promise<LearningEntry[]>
     }
   }
   return entries;
+}
+
+/**
+ * Resolve the learning log path from (highest to lowest priority):
+ *   1. cliLogPath (--log-path flag)
+ *   2. HEIMDALL_LEARNING_LOG environment variable
+ *   3. configLogFile (learning.logFile in heimdall.config.yaml)
+ *   4. defaultPath (package-relative scenarios/learning-log.jsonl)
+ *
+ * Container/lambda deployments use this to redirect the log to a mounted
+ * persistent volume so it survives container restarts.
+ */
+export function resolveLogPath(
+  cliLogPath: string | null | undefined,
+  configLogFile: string | null | undefined,
+  defaultPath: string,
+): string {
+  if (cliLogPath) return resolve(cliLogPath);
+  const envPath = process.env.HEIMDALL_LEARNING_LOG;
+  if (envPath) return resolve(envPath);
+  if (configLogFile) return resolve(configLogFile);
+  return defaultPath;
 }
 
 /**

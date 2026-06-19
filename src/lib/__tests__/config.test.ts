@@ -228,6 +228,43 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('learning config block', () => {
+    it('defaults learning.enabled to true when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.learning?.enabled).toBe(true);
+    });
+
+    it('loads learning.file from config', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `learning:\n  file: /mnt/efs/task-history.jsonl\n`);
+      const config = loadConfig(configPath);
+      expect(config.learning?.file).toBe('/mnt/efs/task-history.jsonl');
+    });
+
+    it('loads learning.logFile from config', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `learning:\n  logFile: /mnt/efs/learning-log.jsonl\n`);
+      const config = loadConfig(configPath);
+      expect(config.learning?.logFile).toBe('/mnt/efs/learning-log.jsonl');
+    });
+
+    it('learning.logFile defaults to undefined when not set', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.learning?.logFile ?? null).toBeNull();
+    });
+
+    it('accepts both learning.file and learning.logFile together', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(
+        configPath,
+        `learning:\n  file: /mnt/efs/task-history.jsonl\n  logFile: /mnt/efs/learning-log.jsonl\n`,
+      );
+      const config = loadConfig(configPath);
+      expect(config.learning?.file).toBe('/mnt/efs/task-history.jsonl');
+      expect(config.learning?.logFile).toBe('/mnt/efs/learning-log.jsonl');
+    });
+  });
+
   describe('prometheus config block', () => {
     it('defaults prometheus to undefined when not present', () => {
       const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
