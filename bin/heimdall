@@ -45,6 +45,10 @@ Options:
       --json            Emit a single JSON object to stdout (one-shot mode only)
       --format json     Alias for --json
       --no-learn        Skip appending this investigation to the task-history log
+      --backend <name>  LLM backend: 'flue' (default) or 'claude-cli'
+                        Override with env var HEIMDALL_BACKEND=claude-cli.
+                        'claude-cli' calls \`claude -p\` directly (no tool use;
+                        requires the Claude Code CLI to be installed and authenticated).
   -h, --help            Show this help message
 
 Subcommands:
@@ -75,6 +79,12 @@ JSON output schema (--json):
   { "summary": "…", "answer": "…", "severity": "warning",
     "suggestedCommands": ["kubectl …"], "model": "anthropic/…" }
 
+Backends:
+  flue (default)  Full Flue agent with kubectl/helm/Prometheus tool use.
+                  Requires ANTHROPIC_API_KEY (or another provider key).
+  claude-cli      One-shot call to \`claude -p\`. No tool use. Requires the
+                  Claude Code CLI (\`claude\`) to be installed and authenticated.
+
 Watch mode reads the 'watch:' block from heimdall.config.yaml for
 namespace/reason filters and an optional webhook URL.
 
@@ -93,6 +103,8 @@ SELF_IMPROVE=false
 SELF_IMPROVE_ARGS=()
 JSON_OUTPUT=false
 NO_LEARN=false
+# Backend: 'flue' (default, full agent with tool use) or 'claude-cli' (external LLM via claude -p).
+BACKEND="${HEIMDALL_BACKEND:-flue}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -142,6 +154,14 @@ while [[ $# -gt 0 ]]; do
       NO_LEARN=true
       shift
       ;;
+    --backend)
+      [[ $# -lt 2 ]] && { echo "Error: --backend requires an argument" >&2; exit 1; }
+      case "$2" in
+        flue|claude-cli) BACKEND="$2" ;;
+        *) echo "Error: unknown backend '$2'; supported: flue, claude-cli" >&2; exit 1 ;;
+      esac
+      shift 2
+      ;;
     -h|--help)
       show_help
       exit 0
@@ -175,6 +195,22 @@ if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$TRIAGE" == "true" ]]; then
 fi
 if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
   echo "Error: --json is not compatible with the self-improve subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "claude-cli" ]] && [[ "$WATCH" == "true" ]]; then
+  echo "Error: --backend claude-cli is not compatible with --watch" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "claude-cli" ]] && [[ "$TRIAGE" == "true" ]]; then
+  echo "Error: --backend claude-cli is not compatible with the triage subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "claude-cli" ]] && [[ "$EVAL" == "true" ]]; then
+  echo "Error: --backend claude-cli is not compatible with the eval subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "claude-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
+  echo "Error: --backend claude-cli is not compatible with the self-improve subcommand" >&2
   exit 1
 fi
 
@@ -256,6 +292,40 @@ if [[ -z "$PROMPT" ]]; then
   exit 1
 fi
 
+# ---- claude-cli backend: delegate to `claude -p` -------------------------
+if [[ "$BACKEND" == "claude-cli" ]]; then
+  # Verify the CLI is available before trying to invoke it.
+  if ! command -v claude &>/dev/null; then
+    echo "Error: claude CLI not found. Install the Claude Code CLI and run 'claude auth login'." >&2
+    exit 1
+  fi
+
+  if [[ "$JSON_OUTPUT" == "true" ]]; then
+    FORMAT_JSON_COMPILED="${ROOT_DIR}/dist/format-json.mjs"
+    FORMAT_JSON_SOURCE="${ROOT_DIR}/src/format-json.ts"
+
+    _LEARN_ENV_ARGS=()
+    [[ "$NO_LEARN" == "true" ]] && _LEARN_ENV_ARGS=("HEIMDALL_NO_LEARN=1")
+
+    if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
+      claude -p "$PROMPT" | \
+        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
+    elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
+      claude -p "$PROMPT" | \
+        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
+    else
+      echo "Error: JSON formatter not available." >&2
+      echo "  Production: run 'npm run build' first." >&2
+      echo "  Development: run 'npm install' to get tsx." >&2
+      exit 1
+    fi
+  else
+    claude -p "$PROMPT"
+  fi
+  exit $?
+fi
+
+# ---- flue backend (default) ----------------------------------------------
 if [[ "$JSON_OUTPUT" == "true" ]]; then
   FORMAT_JSON_COMPILED="${ROOT_DIR}/dist/format-json.mjs"
   FORMAT_JSON_SOURCE="${ROOT_DIR}/src/format-json.ts"
