@@ -175,6 +175,52 @@ describe('redactSecretValues: YAML format', () => {
     const yamlPod = 'apiVersion: v1\nkind: Pod\nmetadata:\n  name: web\n';
     expect(redactSecretValues(yamlPod, 'yaml')).toBe(yamlPod);
   });
+
+  it('redacts both documents in a multi-document YAML stream without truncation', () => {
+    const multiYaml = [
+      'apiVersion: v1',
+      'kind: Secret',
+      'metadata:',
+      '  name: secret-1',
+      'data:',
+      '  token: ' + Buffer.from('token1').toString('base64'),
+      '---',
+      'apiVersion: v1',
+      'kind: Secret',
+      'metadata:',
+      '  name: secret-2',
+      'data:',
+      '  token: ' + Buffer.from('token2').toString('base64'),
+    ].join('\n');
+
+    const result = redactSecretValues(multiYaml, 'yaml');
+    expect(result).not.toContain(Buffer.from('token1').toString('base64'));
+    expect(result).not.toContain(Buffer.from('token2').toString('base64'));
+    // Both document names are preserved (second doc not truncated)
+    expect(result).toContain('name: secret-1');
+    expect(result).toContain('name: secret-2');
+  });
+
+  it('redacts only Secret docs in a mixed multi-document YAML stream', () => {
+    const multiYaml = [
+      'apiVersion: v1',
+      'kind: Pod',
+      'metadata:',
+      '  name: web',
+      '---',
+      'apiVersion: v1',
+      'kind: Secret',
+      'metadata:',
+      '  name: db-pass',
+      'data:',
+      '  password: ' + Buffer.from('hunter2').toString('base64'),
+    ].join('\n');
+
+    const result = redactSecretValues(multiYaml, 'yaml');
+    expect(result).not.toContain(Buffer.from('hunter2').toString('base64'));
+    expect(result).toContain('name: web');    // Pod preserved
+    expect(result).toContain('name: db-pass'); // Secret metadata preserved
+  });
 });
 
 // ---------------------------------------------------------------------------

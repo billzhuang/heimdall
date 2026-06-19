@@ -92,16 +92,26 @@ export function redactSecretValues(output: string, format: 'json' | 'yaml' = 'js
     return JSON.stringify(parsed, null, 2);
   }
 
-  // YAML format
-  let parsed: unknown;
+  // YAML format — may be a multi-document stream (kubectl outputs one doc per
+  // named resource separated by ---). yaml.loadAll parses all documents; yaml.load
+  // would silently truncate everything after the first ---.
+  let docs: unknown[];
   try {
-    parsed = yaml.load(output);
+    docs = yaml.loadAll(output);
   } catch {
     return output;
   }
-  if (!redactInObject(parsed)) return output;
+  let changed = false;
+  for (const doc of docs) {
+    if (doc && typeof doc === 'object') {
+      if (redactInObject(doc)) changed = true;
+    }
+  }
+  if (!changed) return output;
   try {
-    return yaml.dump(parsed as Record<string, unknown>);
+    return docs
+      .map((doc) => (doc && typeof doc === 'object' ? yaml.dump(doc as Record<string, unknown>) : yaml.dump(doc)))
+      .join('---\n');
   } catch {
     return output;
   }

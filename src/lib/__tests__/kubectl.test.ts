@@ -63,10 +63,16 @@ describe('isJsonOutput', () => {
     expect(isJsonOutput(['get', 'pods', '-o=json'])).toBe(true);
   });
 
+  it('detects compact -ojson form (no space or equals)', () => {
+    expect(isJsonOutput(['get', 'pods', '-ojson'])).toBe(true);
+    expect(isJsonOutput(['-ojson', 'get', 'pods'])).toBe(true);
+  });
+
   it('is false for non-json output', () => {
     expect(isJsonOutput(['get', 'pods', '-o', 'yaml'])).toBe(false);
     expect(isJsonOutput(['get', 'pods', '-o', 'wide'])).toBe(false);
     expect(isJsonOutput(['get', 'pods'])).toBe(false);
+    expect(isJsonOutput(['get', 'pods', '-oyaml'])).toBe(false);
   });
 });
 

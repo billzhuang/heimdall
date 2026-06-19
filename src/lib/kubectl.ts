@@ -162,26 +162,26 @@ export function tokenizeArgs(input: string): string[] {
   return tokens;
 }
 
-/** True when the argv requests JSON output (`-o json` / `--output=json`). */
+/** True when the argv requests JSON output (`-o json` / `-ojson` / `--output=json`). */
 export function isJsonOutput(argv: string[]): boolean {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-o' || a === '--output') {
       return argv[i + 1] === 'json';
     }
-    if (a === '-o=json' || a === '--output=json') {
+    if (a === '-o=json' || a === '--output=json' || a === '-ojson') {
       return true;
     }
   }
   return false;
 }
 
-/** True when the argv requests YAML output (`-o yaml` / `--output=yaml`). */
+/** True when the argv requests YAML output (`-o yaml` / `-oyaml` / `--output=yaml`). */
 function isYamlOutput(argv: string[]): boolean {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-o' || a === '--output') return argv[i + 1] === 'yaml';
-    if (a === '-o=yaml' || a === '--output=yaml') return true;
+    if (a === '-o=yaml' || a === '--output=yaml' || a === '-oyaml') return true;
   }
   return false;
 }
