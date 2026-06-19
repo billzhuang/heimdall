@@ -11,8 +11,9 @@ export const kubectl = defineTool({
     'Run a single READ-ONLY kubectl command against the cluster and return its output. ' +
     'Provide everything after the word "kubectl" in `args` (for example: ' +
     '"get pods -n kube-system -o wide" or "describe deployment api -n prod"). ' +
-    'Destructive subcommands (apply, create, delete, patch, edit, scale, rollout, exec, ' +
-    'port-forward, ...) are blocked. There is no shell, so pipes/redirects do not work — ' +
+    'Destructive subcommands (apply, create, delete, patch, edit, scale, exec, ' +
+    'port-forward, ...) are blocked. For rollout: only "status" and "history" are allowed; ' +
+    'restart/undo/pause/resume are blocked. There is no shell, so pipes/redirects do not work — ' +
     'use label selectors, --field-selector, or -o jsonpath to filter output.',
   parameters: v.object({
     args: v.pipe(
