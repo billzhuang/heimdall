@@ -33,7 +33,7 @@ export const NO_OUTPUT_MESSAGE = '(command produced no output)';
 
 export interface RunKubectlOptions {
   /** Optional cluster context. Injected as `--context=<ctx>` when the
-   *  arguments do not already specify one. Falls back to `HEIMDALL_CONTEXT`. */
+   *  arguments do not already specify one. */
   context?: string;
   /** Override the kubeconfig path (otherwise inherits `KUBECONFIG`). */
   kubeconfig?: string;
@@ -188,7 +188,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   // mechanism, so we skip both when in-cluster.
   const inCluster = isInCluster();
 
-  const context = !inCluster ? (options.context ?? process.env.HEIMDALL_CONTEXT) : undefined;
+  const context = !inCluster ? options.context : undefined;
   if (context && !hasContextFlag(argv)) {
     argv.unshift(`--context=${context}`);
   }

@@ -1,61 +1,26 @@
-import { afterEach, describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { SUBAGENT_INSTRUCTIONS, buildInstructions } from '../instructions.ts';
 import { DEFAULT_MODEL } from '../model.ts';
 
-const ENV_KEYS = ['HEIMDALL_CONTEXT', 'HEIMDALL_NAMESPACE'] as const;
-
-function withEnv(overrides: Partial<Record<(typeof ENV_KEYS)[number], string>>, fn: () => void) {
-  const saved = ENV_KEYS.map((k) => [k, process.env[k]] as const);
-  try {
-    for (const k of ENV_KEYS) delete process.env[k];
-    for (const [k, val] of Object.entries(overrides)) process.env[k] = val;
-    fn();
-  } finally {
-    for (const [k, val] of saved) {
-      if (val === undefined) delete process.env[k];
-      else process.env[k] = val;
-    }
-  }
-}
-
 describe('buildInstructions', () => {
-  afterEach(() => {
-    for (const k of ENV_KEYS) delete process.env[k];
+  it('describes the agent, its tools, the read-only policy, and the response format', () => {
+    const out = buildInstructions();
+    expect(out).toMatch(/You are Heimdall/);
+    expect(out).toMatch(/`kubectl`/);
+    expect(out).toMatch(/`list_contexts`/);
+    expect(out).toMatch(/`list_namespaces`/);
+    expect(out).toMatch(/READ-ONLY/);
+    expect(out).toMatch(/Thinking Summary:/);
+    expect(out).toMatch(/Answer:/);
+    for (const name of Object.keys(SUBAGENT_INSTRUCTIONS)) {
+      expect(out).toContain(name);
+    }
   });
 
-  it('always describes the agent, its tools, the read-only policy, and the response format', () => {
-    withEnv({}, () => {
-      const out = buildInstructions();
-      expect(out).toMatch(/You are Heimdall/);
-      expect(out).toMatch(/`kubectl`/);
-      expect(out).toMatch(/`list_contexts`/);
-      expect(out).toMatch(/`list_namespaces`/);
-      expect(out).toMatch(/READ-ONLY/);
-      expect(out).toMatch(/Thinking Summary:/);
-      expect(out).toMatch(/Answer:/);
-      // every specialist subagent is advertised for delegation
-      for (const name of Object.keys(SUBAGENT_INSTRUCTIONS)) {
-        expect(out).toContain(name);
-      }
-    });
-  });
-
-  it('uses discovery guidance when no context/namespace is pinned', () => {
-    withEnv({}, () => {
-      const out = buildInstructions();
-      expect(out).toMatch(/No context is pinned/);
-      expect(out).toMatch(/No namespace is pinned/);
-    });
-  });
-
-  it('pins the context and namespace from the environment when set', () => {
-    withEnv({ HEIMDALL_CONTEXT: 'prod-eks', HEIMDALL_NAMESPACE: 'payments' }, () => {
-      const out = buildInstructions();
-      expect(out).toMatch(/Default cluster context: prod-eks/);
-      expect(out).toMatch(/Default namespace: payments/);
-      expect(out).toMatch(/-n payments/);
-      expect(out).not.toMatch(/No context is pinned/);
-    });
+  it('always uses dynamic discovery guidance (no pinned context or namespace)', () => {
+    const out = buildInstructions();
+    expect(out).toMatch(/No context is pinned/);
+    expect(out).toMatch(/No namespace is pinned/);
   });
 });
 
