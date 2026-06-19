@@ -163,6 +163,17 @@ describe('validateAwsCommand', () => {
     const result = validateAwsCommand('aws --region eu-west-1 --output json ec2 describe-security-groups');
     expect(result?.allowed).toBe(true);
   });
+
+  it('does not let boolean flags (--no-paginate) hide a destructive subcommand', () => {
+    // --no-paginate takes no value, so ec2 is the service and terminate-instances is the subcommand.
+    const result = validateAwsCommand('aws --no-paginate ec2 terminate-instances --instance-ids i-123');
+    expect(result?.allowed).toBe(false);
+  });
+
+  it('correctly parses commands following --no-paginate', () => {
+    const result = validateAwsCommand('aws --no-paginate ec2 describe-instances');
+    expect(result?.allowed).toBe(true);
+  });
 });
 
 describe('DESTRUCTIVE_AWS_PATTERNS and ALLOWED_AWS_PATTERNS constants', () => {

@@ -80,7 +80,10 @@ export const AWS_OPTIONS_WITH_VALUE = new Set([
   '--cli-read-timeout',
   '--query',
   '--ca-bundle',
-  '--no-paginate',    // flag-only (no value), but harmless to include
+  // Note: --no-paginate / --no-sign-request / --debug are boolean flags (no value token).
+  // Do NOT add them here — doing so would cause the parser to skip the token that follows
+  // (e.g. `aws --no-paginate ec2 terminate-instances` would have `ec2` skipped and
+  // `terminate-instances` treated as the service name, bypassing the destructive block).
 ]);
 
 /**
