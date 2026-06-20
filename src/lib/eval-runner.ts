@@ -43,6 +43,9 @@ export async function loadScenario(filePath: string): Promise<EvalScenario> {
   if (typeof parsed['description'] !== 'string') {
     throw new Error(`Invalid scenario file: ${filePath} — missing required field "description"`);
   }
+  if (parsed['mocks'] !== undefined && (typeof parsed['mocks'] !== 'object' || parsed['mocks'] === null || Array.isArray(parsed['mocks']))) {
+    throw new Error(`Invalid scenario file: ${filePath} — "mocks" must be an object if provided`);
+  }
   return parsed as unknown as EvalScenario;
 }
 
@@ -177,5 +180,5 @@ export async function runAllScenarios(
 
 /** Resolve the absolute path to the heimdall binary relative to a src dir. */
 export function resolveBinPath(srcDir: string): string {
-  return resolve(srcDir, '..', '..', 'bin', 'heimdall');
+  return resolve(srcDir, '..', 'bin', 'heimdall');
 }

@@ -104,7 +104,19 @@ async function main(): Promise<void> {
     } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
       cliLogPath = args[++i];
     } else if (args[i] === '--timeout' && args[i + 1]) {
-      reflectionTimeoutMs = parseInt(args[++i], 10) * 1000;
+      const secs = parseInt(args[++i], 10);
+      if (isNaN(secs) || secs < 1) {
+        process.stderr.write('Error: --timeout must be a positive integer (seconds)\n');
+        process.exit(1);
+      }
+      reflectionTimeoutMs = secs * 1000;
+    } else if (args[i].startsWith('--timeout=')) {
+      const secs = parseInt(args[i].slice('--timeout='.length), 10);
+      if (isNaN(secs) || secs < 1) {
+        process.stderr.write('Error: --timeout must be a positive integer (seconds)\n');
+        process.exit(1);
+      }
+      reflectionTimeoutMs = secs * 1000;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(`Usage: heimdall self-loop [options]
 
