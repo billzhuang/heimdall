@@ -86,6 +86,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'eks-troubleshooter',
       'iam-auditor',
       'log-analyzer',
+      'netpol-auditor',
       'network-debugger',
       'oomkill-analyzer',
       'resource-analyzer',
@@ -147,6 +148,38 @@ describe('buildInstructions — runbook context', () => {
     const toolsPos = out.indexOf('## Tools');
     expect(rbPos).toBeGreaterThan(-1);
     expect(rbPos).toBeLessThan(toolsPos);
+  });
+});
+
+describe('netpol-auditor subagent', () => {
+  it('is listed in the specialist subagents section of buildInstructions', () => {
+    const out = buildInstructions();
+    expect(out).toContain('netpol-auditor');
+  });
+
+  it('instructions cover uncovered-pod detection and NetworkPolicy cross-referencing', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['netpol-auditor'];
+    expect(inst).toMatch(/networkpolicy/i);
+    expect(inst).toMatch(/uncovered/i);
+    expect(inst).toMatch(/podSelector/i);
+  });
+
+  it('instructions include the key kubectl commands', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['netpol-auditor'];
+    expect(inst).toContain('kubectl get networkpolicy');
+    expect(inst).toContain('kubectl get pods');
+  });
+
+  it('instructions mention ingress and egress coverage separately', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['netpol-auditor'];
+    expect(inst).toMatch(/ingress/i);
+    expect(inst).toMatch(/egress/i);
+  });
+
+  it('instructions suggest NetworkPolicy templates for uncovered workloads', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['netpol-auditor'];
+    expect(inst).toMatch(/template/i);
+    expect(inst).toMatch(/deny-all/i);
   });
 });
 
