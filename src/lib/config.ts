@@ -29,8 +29,10 @@ const ToolsSchema = v.nullish(
     lokiQuery: v.nullish(v.boolean(), false),
     // Disabled by default: requires a running Jaeger or Grafana Tempo instance.
     jaegerQuery: v.nullish(v.boolean(), false),
+    // Disabled by default: requires Datadog API key and app key.
+    datadogQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
@@ -70,6 +72,22 @@ const LokiSchema = v.nullish(
   v.object({
     // Base URL for the Loki HTTP API. Also readable from LOKI_URL env var.
     url: v.nullish(v.string()),
+    // Request timeout in milliseconds (default 15 000).
+    timeoutMs: v.nullish(v.number(), 15_000),
+  }),
+);
+
+// Datadog API config — optional, disabled by default.
+// Requires a Datadog account and API/App keys.
+const DatadogSchema = v.nullish(
+  v.object({
+    // Datadog API key. Also readable from DD_API_KEY or DATADOG_API_KEY env var.
+    apiKey: v.nullish(v.string()),
+    // Datadog Application key. Also readable from DD_APP_KEY or DATADOG_APP_KEY env var.
+    appKey: v.nullish(v.string()),
+    // Datadog site, e.g. "datadoghq.com" (default), "datadoghq.eu", "us3.datadoghq.com".
+    // Also readable from DD_SITE env var.
+    site: v.nullish(v.string()),
     // Request timeout in milliseconds (default 15 000).
     timeoutMs: v.nullish(v.number(), 15_000),
   }),
@@ -206,6 +224,7 @@ const HeimdallConfigSchema = v.object({
   kubecost: KubecostSchema,
   loki: LokiSchema,
   jaeger: JaegerSchema,
+  datadog: DatadogSchema,
   // User-configurable regex redaction rules (disabled by default).
   redaction: RedactionSchema,
   namespace: NamespaceSchema,
@@ -234,6 +253,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   kubecostQuery: true,
   lokiQuery: true,
   jaegerQuery: true,
+  datadogQuery: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -252,6 +272,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   kubecost_query: 'kubecostQuery',
   loki_query: 'lokiQuery',
   jaeger_query: 'jaegerQuery',
+  datadog_query: 'datadogQuery',
 };
 
 /**

@@ -41,7 +41,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -83,6 +83,14 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '- `loki_query`: query Grafana Loki for structured log search using LogQL (read-only).\n  Use for label-based log filtering, full-text search across multiple pods, and historical log retrieval\n  beyond what `kubectl logs` provides. Params: query (LogQL expression with stream selector),\n  start/end (ISO8601 or relative e.g. "-1h", "-30m"), limit (default 100).\n  Example: query=\'{namespace="prod", app="payments"} |= "ERROR"\', start="-1h".',
     has('jaegerQuery') &&
       '- `jaeger_query`: query Jaeger or Grafana Tempo for distributed traces (read-only).\n  Surfaces slow spans, error spans, and upstream dependency failures that metrics and logs alone cannot explain.\n  Params: service (required), operation (span name filter), start/end (ISO8601 or relative e.g. "-1h"),\n  limit (default 20), minDuration (e.g. "1s", "500ms"), tags (key=value pairs e.g. "error=true").\n  Use to diagnose P99 latency spikes, trace error propagation across services, and identify slow dependency calls.',
+    has('datadogQuery') &&
+      '- `datadog_query`: query Datadog for observability data (read-only). Four query types:\n' +
+      '  • metrics — time-series metric queries (e.g. queryType="metrics", query="avg:kubernetes.cpu.usage.total{cluster_name:prod}").\n' +
+      '  • logs — full-text log search (e.g. queryType="logs", query="service:payments status:error", from="-1h").\n' +
+      '  • events — deployment markers, config changes, and infra events (queryType="events", tags="env:prod,source:kubernetes").\n' +
+      '  • monitors — active monitor alert state (queryType="monitors", monitorStatus="Alert,Warn").\n' +
+      '  Use to correlate Kubernetes issues with Datadog metrics/logs, check active alerts, and inspect deployment event timelines.\n' +
+      '  from/to accept ISO8601, relative durations ("-1h", "-30m", "-2d"), or Unix seconds.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -124,6 +132,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- cost-analyzer — FinOps deep-dive: namespace/workload cost attribution, cost trend analysis, rightsizing recommendations using Kubecost data.',
   ] : [];
 
+  const datadogSubagentLines = has('datadogQuery') ? [
+    '- datadog-investigator — Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.',
+  ] : [];
+
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
@@ -137,7 +149,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
 - gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
-- resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}`);
+- resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -160,7 +172,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -180,6 +192,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'multi-cluster-investigator': 'Cross-cluster investigation: query multiple Kubernetes contexts in a single session, correlate findings across cluster boundaries, and surface cross-cluster dependencies (shared service mesh, cross-cluster DNS, hub/spoke topology issues).',
   'cost-analyzer': 'FinOps deep-dive: namespace/workload cost attribution via Kubecost, cost trend analysis, rightsizing recommendations, and cost-driver identification.',
   'resilience-advisor': 'Chaos engineering readiness: identify single points of failure, detect missing PodDisruptionBudgets and anti-affinity rules, and generate LitmusChaos experiment YAML suggestions for human review — never executes experiments.',
+  'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -567,6 +580,55 @@ End with a **Resilience Summary** table:
 | ... | ... | ... | ... | ... |
 
 **Overall resilience score**: X / Y workloads have no critical gaps.`,
+  ),
+  'datadog-investigator': subagentInstructions(
+    'You are a Datadog observability investigation specialist.',
+    `## Focus
+Correlate Kubernetes cluster issues with Datadog observability data — metrics, logs, events,
+and monitor state. Your goal is to surface root causes that kubectl alone cannot reveal by
+joining cluster state with external observability signals.
+
+## Investigation workflow
+1. **Check active monitors first** — surface any currently firing alerts that may already
+   describe the incident:
+   datadog_query({ queryType: "monitors", monitorStatus: "Alert,Warn,No Data", limit: 50 })
+2. **Query relevant metrics** — map the affected Kubernetes workload to Datadog metric names:
+   - CPU: datadog_query({ queryType: "metrics", query: "avg:kubernetes.cpu.usage.total{pod_name:<pod>}", from: "-1h" })
+   - Memory: datadog_query({ queryType: "metrics", query: "avg:kubernetes.memory.usage{pod_name:<pod>}", from: "-1h" })
+   - Error rate: datadog_query({ queryType: "metrics", query: "sum:trace.web.request.errors{service:<svc>}.as_rate()", from: "-1h" })
+   - Request rate: datadog_query({ queryType: "metrics", query: "sum:trace.web.request.hits{service:<svc>}.as_rate()", from: "-1h" })
+3. **Search logs for errors** — correlate with application-level errors:
+   datadog_query({ queryType: "logs", query: "service:<svc> status:error", from: "-1h", limit: 100 })
+4. **Check deployment events** — identify recent changes that may correlate with the incident:
+   datadog_query({ queryType: "events", tags: "env:prod,source:kubernetes", from: "-2h" })
+   Look for deployment events, config changes, or automated actions in the event timeline.
+5. **Cross-reference with kubectl** — validate Datadog findings against live cluster state:
+   kubectl get pods, describe deployment, check events for the affected namespace.
+
+## Metric naming conventions
+Datadog Kubernetes integration metrics:
+- kubernetes.cpu.usage.total, kubernetes.cpu.requests, kubernetes.cpu.limits
+- kubernetes.memory.usage, kubernetes.memory.requests, kubernetes.memory.limits
+- kubernetes.network.rx_bytes, kubernetes.network.tx_bytes
+- kubernetes.pods.running, kubernetes.pods.failed
+- kubernetes_state.deployment.replicas_available, kubernetes_state.deployment.replicas_desired
+- kubernetes_state.pod.status_phase (by phase tag: Running, Failed, Pending)
+
+APM/trace metrics (when Datadog APM is enabled):
+- trace.<service>.request.hits, trace.<service>.request.errors, trace.<service>.request.duration
+
+## Reporting format
+Structure your findings as:
+1. **Active monitors**: list any firing monitors with their query and current state.
+2. **Metric analysis**: key metric charts described in words — trend, peak, anomaly.
+3. **Log findings**: error patterns, stack traces, or anomalous log lines.
+4. **Event timeline**: relevant deployment/config events preceding the incident.
+5. **Correlation summary**: how the Datadog data relates to the Kubernetes issue.
+6. **Recommended actions**: precise remediation steps with suggested commands.
+
+## Read-only constraint
+Never modify monitors, dashboards, or any Datadog resource.
+Report findings and recommend actions for the operator.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',
