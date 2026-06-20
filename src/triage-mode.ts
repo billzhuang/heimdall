@@ -18,7 +18,7 @@
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildTriagePrompt } from './lib/triage.ts';
+import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -65,15 +65,16 @@ async function runAgent(prompt: string): Promise<void> {
   });
 }
 
-export async function runTriageMode(opts: {
-  namespace?: string;
-  allNamespaces?: boolean;
-  contexts?: string[];
-} = {}): Promise<void> {
+export async function runTriageMode(opts: TriageOptions = {}): Promise<void> {
   const prompt = buildTriagePrompt(opts);
 
   if (opts.contexts && opts.contexts.length > 0) {
     process.stderr.write(`[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}\n`);
+    if (opts.namespace) {
+      process.stderr.write(`[heimdall-triage] Scope: namespace "${opts.namespace}"\n`);
+    } else if (opts.allNamespaces) {
+      process.stderr.write('[heimdall-triage] Scope: all namespaces\n');
+    }
   } else {
     process.stderr.write('[heimdall-triage] Starting cluster health sweep...\n');
     if (opts.namespace) {
@@ -112,14 +113,24 @@ for (let i = 0; i < args.length; i++) {
       process.stderr.write(`Error: --contexts requires a comma-separated list of context names\n`);
       process.exit(1);
     }
-    opts.contexts = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
+    const parsed = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
+    if (parsed.length === 0) {
+      process.stderr.write(`Error: --contexts value produced an empty list after parsing\n`);
+      process.exit(1);
+    }
+    opts.contexts = parsed;
   } else if (arg.startsWith('--contexts=')) {
     const raw = arg.slice('--contexts='.length);
     if (!raw) {
       process.stderr.write(`Error: --contexts= requires a non-empty comma-separated list\n`);
       process.exit(1);
     }
-    opts.contexts = raw.split(',').map((c) => c.trim()).filter(Boolean);
+    const parsed = raw.split(',').map((c) => c.trim()).filter(Boolean);
+    if (parsed.length === 0) {
+      process.stderr.write(`Error: --contexts= value produced an empty list after parsing\n`);
+      process.exit(1);
+    }
+    opts.contexts = parsed;
   } else if (arg === '-h' || arg === '--help') {
     process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
 

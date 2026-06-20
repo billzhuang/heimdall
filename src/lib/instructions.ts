@@ -364,24 +364,26 @@ and surface cross-cluster root causes that a single-cluster investigation would 
 2. **Scope**: if the user specified target contexts (e.g. "investigate cluster-a and cluster-b"),
    use only those. Otherwise sweep all contexts unless the set is very large (>6); in that case
    ask the user to narrow the scope.
-3. **Per-cluster sweep**: for each target context, run the same baseline checks using the
-   \`context\` parameter on every \`kubectl\` call:
-   - Nodes: \`kubectl get nodes -o wide --context=<ctx>\`
-   - Unhealthy pods: \`kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide --context=<ctx>\`
-   - Recent warning events: \`kubectl get events -A --field-selector=type=Warning --sort-by='.lastTimestamp' --context=<ctx>\`
-4. **Cross-cluster correlation patterns** — investigate these when relevant:
+3. **Per-cluster sweep**: for each target context, run the same baseline checks. Always pass
+   the context name via the \`context\` tool parameter — never embed \`--context=\` in the
+   \`args\` string (the tool parameter keeps audit logs accurate):
+   - Nodes: \`kubectl\` args \`get nodes -o wide\`, context \`<ctx>\`
+   - Unhealthy pods: \`kubectl\` args \`get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide\`, context \`<ctx>\`
+   - Recent warning events: \`kubectl\` args \`get events -A --field-selector=type=Warning --sort-by='.lastTimestamp'\`, context \`<ctx>\`
+4. **Cross-cluster correlation patterns** — investigate these when relevant. For every kubectl
+   call, supply the target cluster name via the \`context\` tool parameter:
    - **Shared service mesh** (Istio/Linkerd multi-cluster): check ServiceEntry, WorkloadEntry,
      and mesh gateway pods across clusters. Mismatched trust domains or missing endpoints cause
-     cross-cluster 503s. Use \`kubectl get serviceentry,workloadentry -A --context=<ctx>\` and
-     \`kubectl get pods -n istio-system --context=<ctx>\`.
+     cross-cluster 503s. Use \`kubectl get serviceentry,workloadentry -A\` and
+     \`kubectl get pods -n istio-system\`, each with the appropriate \`context\` parameter.
    - **Cross-cluster DNS** (Submariner, Skupper, CoreDNS stub zones): verify DNS resolution chain.
-     Check CoreDNS ConfigMap for stub zone config: \`kubectl get configmap coredns -n kube-system -o yaml --context=<ctx>\`.
+     Check CoreDNS ConfigMap for stub zone config: \`kubectl get configmap coredns -n kube-system -o yaml\` with the \`context\` parameter.
    - **Hub/spoke topology** (Argo CD App-of-Apps, Cluster API): hub issues cascade to all spokes.
-     Check hub ArgoCD Applications: \`kubectl get applications.argoproj.io -A --context=<hub-ctx>\`.
+     Check hub ArgoCD Applications: \`kubectl get applications.argoproj.io -A\` with the hub-cluster \`context\` parameter.
    - **Shared external dependencies**: a downstream cluster may fail because an upstream cluster's
      service is down. Compare service/endpoint availability across clusters.
    - **Federation / multi-cluster services** (KEP-1645): check ServiceExport/ServiceImport CRDs:
-     \`kubectl get serviceexport,serviceimport -A --context=<ctx>\` (if the API exists).
+     \`kubectl get serviceexport,serviceimport -A\` with the \`context\` parameter (if the API exists).
 
 ## Reporting format
 Structure your findings as:
