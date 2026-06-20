@@ -53,7 +53,7 @@ describe('runKubecostQuery — allocation', () => {
 
     await runKubecostQuery(
       'allocation',
-      { window: '7d', aggregate: 'deployment', namespace: 'prod' },
+      { window: '7d', aggregate: 'controller', namespace: 'prod' },
       BASE_CONFIG,
     );
 

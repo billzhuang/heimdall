@@ -103,7 +103,8 @@ export async function runKubecostQuery(
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      const detail = body ? `: ${body.slice(0, 200)}` : '';
+      const redactedBody = applyRedaction(body, config.regexRedactionRules ?? []);
+      const detail = redactedBody ? `: ${redactedBody.slice(0, 200)}` : '';
       return `Kubecost HTTP ${response.status} ${response.statusText}${detail}`;
     }
 
@@ -113,7 +114,8 @@ export async function runKubecostQuery(
     if (err instanceof Error && err.name === 'AbortError') {
       return `Kubecost query timed out after ${config.timeoutMs}ms.`;
     }
-    return `Kubecost query failed: ${err instanceof Error ? err.message : String(err)}`;
+    const message = err instanceof Error ? err.message : String(err);
+    return `Kubecost query failed: ${applyRedaction(message, config.regexRedactionRules ?? [])}`;
   } finally {
     clearTimeout(timer);
   }
