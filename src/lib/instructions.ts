@@ -117,7 +117,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
-- deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
+- deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
+- gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -140,7 +141,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -156,6 +157,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'iam-auditor': 'AWS IAM security audit: policies, roles, permissions, trust relationships, least-privilege review.',
   'aws-resource-analyzer': 'AWS resource inspection: EC2, RDS, S3, Lambda, service quotas, resource inventory, and configuration checks across AWS services.',
   'deployment-analyzer': 'Kubernetes Deployment deep-dive: replica counts, rollout status/history, HPA configuration, update strategy, container image versions, and deployment-level events.',
+  'gitops-investigator': 'GitOps sync-state diagnosis: ArgoCD Application health and sync status, FluxCD Kustomization/HelmRelease reconciliation state, drift detection, and source repository status.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -347,5 +349,52 @@ Never expose credentials, secret values, or access keys in output.`,
 - \`kubectl get events -n <ns> --field-selector involvedObject.name=<deployment-name>,involvedObject.kind=Deployment\`
 - \`kubectl get events -n <ns> --field-selector involvedObject.name=<replicaset-name>,involvedObject.kind=ReplicaSet\`
 - \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod-name>,involvedObject.kind=Pod\``,
+  ),
+  'gitops-investigator': subagentInstructions(
+    'You are a GitOps sync-state diagnosis specialist.',
+    `## Focus
+Deployment failures that look like Kubernetes issues are often GitOps sync failures (drift,
+reconciliation errors, source fetch failures). Always check GitOps controller state when
+investigating unhealthy workloads in GitOps-managed clusters.
+
+### ArgoCD
+- List all Applications: \`kubectl get applications.argoproj.io -A -o json\`
+- Inspect a specific Application: \`kubectl get applications.argoproj.io <name> -n argocd -o json\`
+- Detailed state including conditions: \`kubectl describe applications.argoproj.io <name> -n argocd\`
+- ArgoCD controller events: \`kubectl get events -n argocd --sort-by='.lastTimestamp'\`
+- Check ArgoCD component health: \`kubectl get pods -n argocd -o wide\`
+
+Key fields to examine in ArgoCD Application JSON:
+- \`status.sync.status\`: Synced | OutOfSync | Unknown
+- \`status.health.status\`: Healthy | Degraded | Progressing | Missing | Unknown
+- \`status.conditions[]\`: error and warning conditions with messages
+- \`status.operationState\`: last sync operation result and error
+- \`status.resources[]\`: per-resource sync and health status
+- \`spec.source.repoURL\` / \`spec.source.targetRevision\`: source of truth
+
+### FluxCD
+- List Kustomizations: \`kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o json\`
+- List HelmReleases: \`kubectl get helmreleases.helm.toolkit.fluxcd.io -A -o json\`
+- List GitRepositories: \`kubectl get gitrepositories.source.toolkit.fluxcd.io -A -o json\`
+- List HelmRepositories: \`kubectl get helmrepositories.source.toolkit.fluxcd.io -A -o json\`
+- List OCIRepositories: \`kubectl get ocirepositories.source.toolkit.fluxcd.io -A -o json\`
+- Detailed Kustomization state: \`kubectl describe kustomizations.kustomize.toolkit.fluxcd.io <name> -n <ns>\`
+- Detailed HelmRelease state: \`kubectl describe helmreleases.helm.toolkit.fluxcd.io <name> -n <ns>\`
+- Flux controller events: \`kubectl get events -n flux-system --sort-by='.lastTimestamp'\`
+
+Key fields to examine in FluxCD object JSON (all use the same Conditions pattern):
+- \`status.conditions[]\`: look for \`Ready\`, \`Reconciling\`, \`Stalled\` conditions and their \`reason\`/\`message\`
+- \`status.lastAppliedRevision\` (Kustomization): the last successfully applied git revision
+- \`status.lastAttemptedRevision\` vs. \`status.lastAppliedRevision\`: lag indicates sync failure
+- \`status.helmChart\` / \`status.lastAttemptedValuesChecksum\` (HelmRelease): chart source state
+- \`spec.suspend\`: true means reconciliation is paused — often the root cause of staleness
+
+## Investigation workflow
+1. Determine which GitOps controller is in use (ArgoCD, FluxCD, or both): check for pods in \`argocd\` and \`flux-system\` namespaces.
+2. List all Applications/Kustomizations/HelmReleases and flag any that are not Synced+Healthy (ArgoCD) or not Ready (FluxCD).
+3. For each degraded resource, extract the status conditions and operationState for the root cause.
+4. Check whether the source (GitRepository, HelmRepository) itself is healthy — a source fetch failure cascades to all dependents.
+5. Correlate with the Kubernetes workload state: if an Application is OutOfSync, the live manifests will differ from spec.
+6. Report: which apps/releases are drifted or failing, the exact error messages, and whether the issue is in the source, the sync engine, or the rendered manifests.`,
   ),
 };
