@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, isAbsolute } from 'node:path';
 import { EventEmitter } from 'node:events';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
@@ -260,7 +260,7 @@ describe('resolveBinPath', () => {
 
   it('produces an absolute path', () => {
     const binPath = resolveBinPath('/absolute/src/path');
-    expect(binPath).toMatch(/^\//);
+    expect(isAbsolute(binPath)).toBe(true);
   });
 });
 

@@ -4,7 +4,7 @@
  * Real `trivy` is NOT invoked. Exec paths are exercised via a vi.mock on
  * node:child_process so we test the full function surface without a scanner.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
@@ -24,6 +24,9 @@ function stubExec(handler: (cmd: string, args: string[], opts: unknown, cb: Exec
 
 beforeEach(() => {
   (execFile as unknown as ReturnType<typeof vi.fn>).mockReset();
+});
+
+afterEach(() => {
   vi.restoreAllMocks();
 });
 
