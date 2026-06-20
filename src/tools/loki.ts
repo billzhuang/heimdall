@@ -46,13 +46,13 @@ export function makeLokiQuery(
         ),
       ),
       start: v.pipe(
-        v.optional(v.string()),
+        v.nullish(v.string()),
         v.description(
           'Start of the query time range. ISO8601 timestamp or relative duration (e.g. "-1h", "-30m", "-2d"). Defaults to "-1h".',
         ),
       ),
       end: v.pipe(
-        v.optional(v.string()),
+        v.nullish(v.string()),
         v.description(
           'End of the query time range. ISO8601 timestamp or relative duration. Defaults to now.',
         ),

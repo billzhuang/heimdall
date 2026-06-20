@@ -59,8 +59,8 @@ export function resolveTime(expr: string, nowMs: number): string {
 
 export interface LokiQueryParams {
   query: string;
-  start?: string;
-  end?: string;
+  start?: string | null;
+  end?: string | null;
   limit?: number | null;
   direction?: 'forward' | 'backward';
 }
