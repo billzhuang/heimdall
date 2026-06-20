@@ -35,18 +35,18 @@ export function makeTrivyScan(options?: RunTrivyOptions, regexRedactionRules?: C
         ),
       ),
       severity: v.pipe(
-        v.optional(v.string()),
+        v.nullish(v.string()),
         v.description(
           'Comma-separated severity filter, e.g. "CRITICAL,HIGH". ' +
           'Omit to return all severities. Reduces output size on large images.',
         ),
       ),
       format: v.pipe(
-        v.optional(v.picklist(['table', 'json', 'sarif', 'cyclonedx'])),
+        v.nullish(v.picklist(['table', 'json', 'sarif', 'cyclonedx'])),
         v.description('Output format. Defaults to "table" for human-readable output. Use "json" for structured parsing.'),
       ),
       ignoreUnfixed: v.pipe(
-        v.optional(v.boolean()),
+        v.nullish(v.boolean()),
         v.description('When true, omit vulnerabilities that have no available fix. Reduces noise for triage.'),
       ),
     }),

@@ -22,6 +22,31 @@ export const BLOCKED_TRIVY_SUBCOMMANDS = ['server', 'plugin'] as const;
 /** Shell metacharacters that must not appear in a trivy invocation. */
 const SHELL_METACHAR_RE = /[|;&<>$`\\]/;
 
+/**
+ * Trivy global flags that consume the following token as their value.
+ * Only flags in this set cause the parser to skip the next token; all other
+ * flags are treated as boolean so that `trivy --debug image nginx:latest`
+ * correctly resolves the scan type to "image" rather than "nginx:latest".
+ */
+export const TRIVY_OPTIONS_WITH_VALUE = new Set([
+  '--cache-dir',
+  '--cache-backend',
+  '--timeout',
+  '--format',
+  '-f',
+  '--severity',
+  '-s',
+  '--output',
+  '-o',
+  '--config',
+  '-c',
+  '--token',
+  '--token-header',
+  '--db-repository',
+  '--java-db-repository',
+  '--checks-bundle-repository',
+]);
+
 export interface TrivyCommandValidationResult {
   allowed: boolean;
   reason: string;
@@ -61,12 +86,14 @@ export function validateTrivyCommand(command: string): TrivyCommandValidationRes
   }
 
   // Skip global flags (--flag / --flag=value) to find the first positional token.
+  // Only flags in TRIVY_OPTIONS_WITH_VALUE consume the next token — all others
+  // are boolean and must NOT skip, or boolean flags like --debug would cause the
+  // scan type to be skipped (e.g. `trivy --debug image nginx` → scanType=null).
   let scanType: string | null = null;
   for (let i = 1; i < parts.length; i++) {
     const token = parts[i];
     if (token.startsWith('-')) {
-      // Value-taking long flags: --flag=value already consumed; --flag value skips next.
-      if (!token.includes('=') && !token.startsWith('--no-')) {
+      if (!token.includes('=') && TRIVY_OPTIONS_WITH_VALUE.has(token.toLowerCase())) {
         i++; // skip value token
       }
       continue;

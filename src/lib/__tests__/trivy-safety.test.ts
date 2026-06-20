@@ -91,6 +91,25 @@ describe('validateTrivyCommand — global flag bypass attempts', () => {
     expect(result.scanType).toBe('image');
   });
 
+  it('does NOT skip the scan type for boolean flags like --debug', () => {
+    // --debug is a boolean flag; the old heuristic would have skipped "image"
+    const result = validateTrivyCommand('trivy --debug image nginx:latest');
+    expect(result.allowed).toBe(true);
+    expect(result.scanType).toBe('image');
+  });
+
+  it('does NOT skip the scan type for --quiet boolean flag', () => {
+    const result = validateTrivyCommand('trivy --quiet image nginx:latest');
+    expect(result.allowed).toBe(true);
+    expect(result.scanType).toBe('image');
+  });
+
+  it('does NOT skip the scan type for -q short boolean flag', () => {
+    const result = validateTrivyCommand('trivy -q image alpine:3.18');
+    expect(result.allowed).toBe(true);
+    expect(result.scanType).toBe('image');
+  });
+
   it('blocks server even with global flags preceding it', () => {
     const result = validateTrivyCommand('trivy --cache-dir /tmp server');
     expect(result.allowed).toBe(false);
