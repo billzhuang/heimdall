@@ -52,7 +52,7 @@ describe('buildInstructions', () => {
 
   it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
     const allEnabled = buildInstructions();
-    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli', 'trivyScan', 'kubecostQuery']));
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli', 'trivyScan', 'kubecostQuery', 'lokiQuery']));
     expect(allEnabled).toBe(explicit);
   });
 

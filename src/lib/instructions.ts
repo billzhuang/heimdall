@@ -41,7 +41,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -79,6 +79,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '- `trivy_scan`: scan a container image or IaC directory for CVEs and misconfigurations using Trivy.\n  Params: scanType ("image" | "fs" | "config" | "sbom"), target (image ref or path),\n  severity (e.g. "CRITICAL,HIGH"), format ("table" | "json" | "sarif" | "cyclonedx"), ignoreUnfixed (bool).\n  Typical workflow: get pod images with kubectl → trivy_scan each image ref. Requires trivy binary on PATH.',
     has('kubecostQuery') &&
       '- `kubecost_query`: query the Kubecost API for Kubernetes cost attribution (read-only).\n  Endpoints: "allocation" (namespace/workload cost breakdown) and "assets" (node/disk infrastructure costs).\n  Params: window (e.g. "7d", "24h", "lastweek"), aggregate (namespace/pod/deployment/controller/service/node),\n  namespace (optional filter for allocation queries), accumulate (bool, default true).\n  Use to answer FinOps questions: which namespace or workload is most expensive, cost trends over time.',
+    has('lokiQuery') &&
+      '- `loki_query`: query Grafana Loki for structured log search using LogQL (read-only).\n  Use for label-based log filtering, full-text search across multiple pods, and historical log retrieval\n  beyond what `kubectl logs` provides. Params: query (LogQL expression with stream selector),\n  start/end (ISO8601 or relative e.g. "-1h", "-30m"), limit (default 100).\n  Example: query=\'{namespace="prod", app="payments"} |= "ERROR"\', start="-1h".',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -184,7 +186,10 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Analyze pod logs for errors, warnings, and anomalies.
 - Correlate timestamps across pods and containers.
 - Identify recurring patterns and extract relevant stack traces.
-- Use \`kubectl logs\` and \`kubectl get events\`.`,
+- Use \`kubectl logs\` and \`kubectl get events\` for recent per-pod logs.
+- When \`loki_query\` is available, prefer it for historical log search, multi-pod correlation,
+  and LogQL-filtered queries (e.g. \`{namespace="prod", app="payments"} |= "ERROR"\`).
+  Loki can surface patterns across the full log history beyond the API server's buffer.`,
   ),
   'resource-analyzer': subagentInstructions(
     'You are a Kubernetes resource-analysis specialist.',
@@ -270,7 +275,10 @@ For each namespace audited, output:
 - Check pod events for the restart reason: \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod>\`.
 - Inspect liveness and readiness probe configuration from \`kubectl describe pod\`.
 - Rank likely root causes by evidence (application crash, OOM, misconfigured probe, missing config/secret).
-- Use \`kubectl logs\`, \`kubectl describe pod\`, and \`kubectl get events\`.`,
+- Use \`kubectl logs\`, \`kubectl describe pod\`, and \`kubectl get events\`.
+- When \`loki_query\` is available, use it to retrieve historical crash logs spanning earlier restart cycles:
+  \`loki_query({query: '{namespace="<ns>", pod=~"<pod-prefix>.*"} |= "error"', start: "-6h"})\`.
+  This reveals crash patterns that predated the current --previous log window.`,
   ),
   'oomkill-analyzer': subagentInstructions(
     'You are a Kubernetes OOMKilled pod diagnosis specialist.',
@@ -280,7 +288,10 @@ For each namespace audited, output:
 - Check node memory pressure: \`kubectl describe node <node>\`.
 - Check actual memory usage trends with \`kubectl top pod <pod> -n <ns> --containers\` and \`kubectl top node <node>\` if metrics-server is available.
 - Recommend new memory limits based on observed usage patterns, with a safety margin.
-- Use \`kubectl describe\`, \`kubectl top\`, and \`kubectl get events\`.`,
+- Use \`kubectl describe\`, \`kubectl top\`, and \`kubectl get events\`.
+- When \`loki_query\` is available, search for OOM-related log lines leading up to the kill:
+  \`loki_query({query: '{namespace="<ns>", pod=~"<pod-prefix>.*"} |~ "(?i)(out of memory|oom|killed)"', start: "-3h"})\`.
+  These logs can pinpoint the memory-hungry operation that triggered the OOM event.`,
   ),
   'triage': subagentInstructions(
     'You are a Kubernetes cluster triage specialist.',
