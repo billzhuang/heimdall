@@ -390,6 +390,7 @@ Overview (tabular — concise, low token cost):
   (all FluxCD CRDs surface READY, STATUS, and AGE via printer columns)
 - Discover the Flux controller namespace: \`kubectl get pods -A -l app=source-controller -o wide\`
   (standard is \`flux-system\`; use the actual namespace from this output)
+- Check Flux component health: \`kubectl get pods -n <flux-ns> -o wide\`
 - Flux controller events: \`kubectl get events -n <flux-ns> --sort-by='.lastTimestamp'\`
 
 Deep inspection (use \`-o json\` only for flagged resources):
