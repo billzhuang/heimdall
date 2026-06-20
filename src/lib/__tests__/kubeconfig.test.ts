@@ -2,6 +2,10 @@ import { afterAll, afterEach, beforeAll, describe, it, expect, vi } from 'vitest
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 import {
   getContextNames,
   getDefaultKubeconfigPath,
@@ -63,10 +67,6 @@ contexts:
 });
 
 describe('path helpers', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it('getDefaultKubeconfigPath points at ~/.kube/config', () => {
     expect(getDefaultKubeconfigPath().replace(/\\/g, '/')).toMatch(/\.kube\/config$/);
   });
@@ -186,10 +186,6 @@ describe('resolveKubeconfigPath', () => {
 });
 
 describe('isInCluster', () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it('returns true when KUBERNETES_SERVICE_HOST is set', () => {
     vi.stubEnv('KUBERNETES_SERVICE_HOST', '10.0.0.1');
     expect(isInCluster()).toBe(true);
