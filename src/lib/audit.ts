@@ -24,10 +24,18 @@ export async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | 
     const line = JSON.stringify(entry);
     if (audit.file) {
       try {
-        await mkdir(dirname(audit.file), { recursive: true });
         await appendFile(audit.file, line + '\n', 'utf8');
-      } catch {
-        process.stderr.write(line + '\n');
+      } catch (err) {
+        if ((err as { code?: string }).code === 'ENOENT') {
+          try {
+            await mkdir(dirname(audit.file), { recursive: true });
+            await appendFile(audit.file, line + '\n', 'utf8');
+          } catch {
+            process.stderr.write(line + '\n');
+          }
+        } else {
+          process.stderr.write(line + '\n');
+        }
       }
     } else {
       process.stderr.write(line + '\n');
