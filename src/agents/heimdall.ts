@@ -88,7 +88,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
   trivyScan: makeTrivyScan({ audit: config.audit }, regexRedactionRules),
   kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules, lockedNs),
-  lokiQuery: makeLokiQuery(config.loki, regexRedactionRules),
+  lokiQuery: makeLokiQuery(config.loki, regexRedactionRules, lockedNs),
 };
 
 const enabledToolKeys = new Set(

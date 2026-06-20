@@ -10,18 +10,28 @@ const DEFAULT_LOKI_URL = 'http://loki.monitoring:3100';
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 /**
- * Factory that bakes the Loki base URL and timeout into the tool closure.
- * The URL is resolved from config → env → in-cluster default, never from the model.
+ * Factory that bakes the Loki base URL, timeout, and optional namespace lockdown
+ * into the tool closure. URL and credentials are never model-selected.
  */
 export function makeLokiQuery(
   lokiConfig?: { url?: string | null; timeoutMs?: number | null } | null,
   regexRedactionRules?: CompiledRedactionRule[],
+  lockedNamespace?: string | null,
 ) {
+  const rawTimeout = lokiConfig?.timeoutMs;
   const config: LokiConfig = {
     url: lokiConfig?.url || process.env.LOKI_URL || DEFAULT_LOKI_URL,
-    timeoutMs: lokiConfig?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    timeoutMs:
+      typeof rawTimeout === 'number' && Number.isFinite(rawTimeout) && rawTimeout > 0
+        ? rawTimeout
+        : DEFAULT_TIMEOUT_MS,
     regexRedactionRules,
+    lockedNamespace: lockedNamespace ?? undefined,
   };
+
+  const lockdownNote = lockedNamespace
+    ? ` NAMESPACE LOCKDOWN ACTIVE: the stream selector must include namespace="${lockedNamespace}"; queries without it are blocked.`
+    : '';
 
   return defineTool({
     name: 'loki_query',
@@ -36,7 +46,8 @@ export function makeLokiQuery(
       '- Structured JSON logs: \'{namespace="prod", app="api"} | json | level="error"\'\n' +
       '- Specific pod: \'{namespace="prod", pod="worker-abc-xyz"} |~ "(?i)exception"\'\n\n' +
       'start/end accept ISO8601 timestamps or relative durations (e.g. "-1h", "-30m", "-2d"). ' +
-      'Defaults: start="-1h", end=now, limit=100, direction=backward (newest first).',
+      'Defaults: start="-1h", end=now, limit=100, direction=backward (newest first).' +
+      lockdownNote,
     parameters: v.object({
       query: v.pipe(
         v.string(),
