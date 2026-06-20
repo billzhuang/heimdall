@@ -356,6 +356,43 @@ describe('parsePagerDutyV3Payload', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertname).toBe('OK');
   });
+
+  it('reads incident from data.incident for non-incident events (annotated, status_update)', () => {
+    const payload = {
+      event: {
+        event_type: 'incident.annotated',
+        data: {
+          type: 'annotation',
+          id: 'note-abc',
+          incident: {
+            id: 'P789ABC',
+            title: 'Memory pressure on worker nodes',
+            urgency: 'high',
+            service: { summary: 'worker-pool' },
+          },
+        },
+      },
+    };
+    const alerts = parsePagerDutyV3Payload(payload);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].alertname).toBe('Memory pressure on worker nodes');
+    expect(alerts[0].labels['incident_id']).toBe('P789ABC');
+    expect(alerts[0].labels['service']).toBe('worker-pool');
+    expect(alerts[0].severity).toBe('critical');
+  });
+
+  it('falls back to event when events array is empty', () => {
+    const payload = {
+      events: [],
+      event: {
+        event_type: 'incident.triggered',
+        data: { id: 'P1', title: 'Fallback Event', urgency: 'low', service: { name: 'svc' } },
+      },
+    };
+    const alerts = parsePagerDutyV3Payload(payload);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].alertname).toBe('Fallback Event');
+  });
 });
 
 // ── parsePagerDutyPayload (auto-detect) ──────────────────────────────────────

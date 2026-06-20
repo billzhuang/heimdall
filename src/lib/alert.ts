@@ -114,6 +114,9 @@ interface PagerDutyV3Incident {
   urgency?: string;
   // V3 service references use `summary` as the display name; `name` is absent.
   service?: { id?: string; name?: string; summary?: string };
+  // For non-incident events (annotated, status_update), the real incident is nested here.
+  type?: string;
+  incident?: PagerDutyV3Incident;
 }
 
 interface PagerDutyV3Payload {
@@ -207,14 +210,16 @@ export function parsePagerDutyV3Payload(
 ): ParsedAlert[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const p = payload as PagerDutyV3Payload;
-  const eventList = Array.isArray(p.events)
+  const eventList = Array.isArray(p.events) && p.events.length > 0
     ? p.events
     : p.event
       ? [p.event]
       : [];
   return eventList.flatMap((evt) => {
-    const incident = evt?.data;
-    if (!incident) return [];
+    const data = evt?.data;
+    if (!data) return [];
+    // For non-incident events (annotated, status_update, etc.), the real incident is nested under data.incident.
+    const incident = data.incident ?? data;
     // V3 service references expose the display name as `summary`; fall back to `name` for compat.
     const serviceName = incident.service?.summary ?? incident.service?.name;
     return [buildPdAlert(
