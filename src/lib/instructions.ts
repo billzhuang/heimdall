@@ -483,15 +483,26 @@ reconciliation errors, source fetch failures). Always check GitOps controller st
 investigating unhealthy workloads in GitOps-managed clusters.
 
 ### ArgoCD
+Two namespaces matter and must be kept separate:
+- **\`<argocd-ns>\`** — the ArgoCD control-plane namespace (where the controller pods and events live).
+  Discover it with: \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller -o wide\`
+  (common values: \`argocd\`, \`openshift-gitops\`, custom install names — never hard-code).
+- **\`<app-ns>\`** — the namespace of each Application CR. When the applications-in-any-namespace
+  feature is enabled, Application CRs live in arbitrary team namespaces; the NAMESPACE column in
+  \`kubectl get applications.argoproj.io -A\` reflects \`<app-ns>\`, **not** \`<argocd-ns>\`.
+
 Overview (tabular — concise, low token cost):
+- Discover control-plane namespace: \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller -o wide\`
 - List all Applications: \`kubectl get applications.argoproj.io -A\`
-  (shows NAME, SYNC STATUS, HEALTH STATUS, REPO columns via CRD printer columns)
-- Check ArgoCD component health: \`kubectl get pods -n argocd -o wide\`
-- ArgoCD controller events: \`kubectl get events -n argocd --sort-by='.lastTimestamp'\`
+  (NAMESPACE column = Application CR namespace, not the controller namespace)
+- Check ArgoCD component health: \`kubectl get pods -n <argocd-ns> -o wide\`
+- ArgoCD controller events: \`kubectl get events -n <argocd-ns> --sort-by='.lastTimestamp'\`
 
 Deep inspection (use \`-o json\` only for flagged resources):
-- \`kubectl get applications.argoproj.io <name> -n argocd -o json\`
-- \`kubectl describe applications.argoproj.io <name> -n argocd\`
+- \`kubectl get applications.argoproj.io <name> -n <app-ns> -o json\`
+- \`kubectl describe applications.argoproj.io <name> -n <app-ns>\`
+- Use \`<app-ns>\` (from the \`-A\` listing) for Application CRs; use \`<argocd-ns>\` (from the pod
+  selector) for controller health and events.
 
 Key fields to examine in ArgoCD Application JSON:
 - \`status.sync.status\`: Synced | OutOfSync | Unknown
@@ -509,7 +520,10 @@ Overview (tabular — concise, low token cost):
 - \`kubectl get helmrepositories.source.toolkit.fluxcd.io -A\`
 - \`kubectl get ocirepositories.source.toolkit.fluxcd.io -A\`
   (all FluxCD CRDs surface READY, STATUS, and AGE via printer columns)
-- Flux controller events: \`kubectl get events -n flux-system --sort-by='.lastTimestamp'\`
+- Discover the Flux controller namespace: \`kubectl get pods -A -l app=source-controller -o wide\`
+  (standard is \`flux-system\`; use the actual namespace from this output)
+- Check Flux component health: \`kubectl get pods -n <flux-ns> -o wide\`
+- Flux controller events: \`kubectl get events -n <flux-ns> --sort-by='.lastTimestamp'\`
 
 Deep inspection (use \`-o json\` only for flagged resources):
 - \`kubectl get kustomizations.kustomize.toolkit.fluxcd.io <name> -n <ns> -o json\`
@@ -525,7 +539,12 @@ Key fields to examine in FluxCD object JSON (all use the same Conditions pattern
 - \`spec.suspend\`: true means reconciliation is paused — often the root cause of staleness
 
 ## Investigation workflow
-1. Determine which GitOps controller is in use (ArgoCD, FluxCD, or both): check for pods in \`argocd\` and \`flux-system\` namespaces.
+1. Determine which GitOps controller is in use (ArgoCD, FluxCD, or both) and discover their
+   control-plane namespaces via pod label selectors — not from Application/Kustomization listings:
+   - \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller\` (ArgoCD control-plane ns)
+   - \`kubectl get pods -A -l app=source-controller\` (FluxCD control-plane ns)
+   Note: ArgoCD Application CRs may live in different namespaces than the controller when
+   applications-in-any-namespace is enabled; always keep \`<argocd-ns>\` and \`<app-ns>\` separate.
 2. List all Applications/Kustomizations/HelmReleases and flag any that are not Synced+Healthy (ArgoCD) or not Ready (FluxCD).
 3. For each degraded resource, extract the status conditions and operationState for the root cause.
 4. Check whether the source (GitRepository, HelmRepository) itself is healthy — a source fetch failure cascades to all dependents.
