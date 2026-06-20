@@ -364,12 +364,15 @@ and surface cross-cluster root causes that a single-cluster investigation would 
 2. **Scope**: if the user specified target contexts (e.g. "investigate cluster-a and cluster-b"),
    use only those. Otherwise sweep all contexts unless the set is very large (>6); in that case
    ask the user to narrow the scope.
-3. **Per-cluster sweep**: for each target context, run the same baseline checks. Always pass
-   the context name via the \`context\` tool parameter — never embed \`--context=\` in the
-   \`args\` string (the tool parameter keeps audit logs accurate):
+3. **Per-cluster sweep**: for each target context, run the same baseline checks covering all
+   standard triage categories. Always pass the context name via the \`context\` tool parameter —
+   never embed \`--context=\` in the \`args\` string (the tool parameter keeps audit logs accurate):
    - Nodes: \`kubectl\` args \`get nodes -o wide\`, context \`<ctx>\`
+   - Workloads: \`kubectl\` args \`get deployments,statefulsets,daemonsets -A\`, context \`<ctx>\` — flag unavailable replicas
    - Unhealthy pods: \`kubectl\` args \`get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide\`, context \`<ctx>\`
    - Recent warning events: \`kubectl\` args \`get events -A --field-selector=type=Warning --sort-by='.lastTimestamp'\`, context \`<ctx>\`
+   - PVCs: \`kubectl\` args \`get pvc -A\`, context \`<ctx>\` — flag Pending/Lost
+   - Jobs: \`kubectl\` args \`get jobs -A\`, context \`<ctx>\` — flag failed or hung jobs
 4. **Cross-cluster correlation patterns** — investigate these when relevant. For every kubectl
    call, supply the target cluster name via the \`context\` tool parameter:
    - **Shared service mesh** (Istio/Linkerd multi-cluster): check ServiceEntry, WorkloadEntry,
@@ -396,8 +399,11 @@ Structure your findings as:
 ## Commands to use
 - \`list_contexts\` — enumerate available contexts.
 - \`kubectl get nodes -o wide\` with \`context\` parameter — per-cluster node health.
+- \`kubectl get deployments,statefulsets,daemonsets -A\` with \`context\` parameter — workload availability per cluster.
 - \`kubectl get pods -A\` with \`context\` parameter — cross-namespace pod status per cluster.
 - \`kubectl get events -A --sort-by='.lastTimestamp'\` with \`context\` parameter — recent warnings.
+- \`kubectl get pvc -A\` with \`context\` parameter — PVC health per cluster.
+- \`kubectl get jobs -A\` with \`context\` parameter — job status per cluster.
 - \`kubectl get configmap coredns -n kube-system -o yaml\` — DNS configuration per cluster.
 - Any \`kubectl get\` or \`kubectl describe\` call with the \`context\` parameter set to the target cluster.`,
   ),

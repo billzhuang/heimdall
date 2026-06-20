@@ -96,7 +96,7 @@ function buildMultiClusterTriagePrompt(contexts: string[], opts: TriageOptions):
 ${contextList}
 
 Delegate this investigation to the \`multi-cluster-investigator\` subagent. It will:
-1. Query each context listed above for node health, pod status, workload availability, and recent warning events.
+1. Query each context listed above for all standard triage categories: node health, pod status, workload availability (deployments/statefulsets/daemonsets), recent warning events, PVC health (Pending/Lost), and failed/hung Jobs.
 2. Correlate findings across cluster boundaries to detect cross-cluster issues (shared service mesh problems, cross-cluster DNS failures, hub/spoke cascade failures, missing ServiceExport/ServiceImport endpoints).
 3. Produce a per-cluster summary and a cross-cluster findings section.
 

@@ -118,7 +118,7 @@ for (let i = 0; i < args.length; i++) {
       process.stderr.write(`Error: --contexts value produced an empty list after parsing\n`);
       process.exit(1);
     }
-    opts.contexts = parsed;
+    opts.contexts = Array.from(new Set(parsed));
   } else if (arg.startsWith('--contexts=')) {
     const raw = arg.slice('--contexts='.length);
     if (!raw) {
@@ -130,7 +130,7 @@ for (let i = 0; i < args.length; i++) {
       process.stderr.write(`Error: --contexts= value produced an empty list after parsing\n`);
       process.exit(1);
     }
-    opts.contexts = parsed;
+    opts.contexts = Array.from(new Set(parsed));
   } else if (arg === '-h' || arg === '--help') {
     process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
 
