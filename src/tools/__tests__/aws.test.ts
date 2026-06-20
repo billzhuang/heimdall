@@ -33,9 +33,10 @@ describe('makeAwsCli', () => {
 
   it('passes options object into runAwsCli when provided', async () => {
     runAwsCli.mockResolvedValue('ok');
-    const tool = makeAwsCli({ auditFile: '/tmp/audit.log' });
+    const auditConfig = { enabled: true, file: '/tmp/audit.log' };
+    const tool = makeAwsCli({ audit: auditConfig });
     await tool.execute({ args: 'iam list-roles' });
-    expect(runAwsCli).toHaveBeenCalledWith('iam list-roles', expect.objectContaining({ auditFile: '/tmp/audit.log' }));
+    expect(runAwsCli).toHaveBeenCalledWith('iam list-roles', expect.objectContaining({ audit: auditConfig }));
   });
 
   it('passes blocked result straight through', async () => {
