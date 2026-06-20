@@ -113,6 +113,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - resource-analyzer — CPU/memory requests & limits, capacity, bottlenecks.
 - network-debugger — DNS, services, endpoints, ingress, connectivity.
 - security-auditor — RBAC, service accounts, security contexts, exposed secrets.
+- netpol-auditor — NetworkPolicy coverage audit: detect pods with no ingress/egress policy and suggest minimal NetworkPolicy templates.
 - triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
@@ -139,7 +140,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -147,6 +148,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'resource-analyzer': 'CPU/memory requests & limits, capacity planning, resource bottleneck analysis.',
   'network-debugger': 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
   'security-auditor': 'RBAC, service accounts, security contexts, and exposed-secret review.',
+  'netpol-auditor': 'NetworkPolicy coverage audit: detect pods missing network isolation, flag open ingress/egress, and suggest minimal NetworkPolicy templates.',
   'triage': 'Whole-cluster health sweep: structured diagnostic triage with severity-ranked findings across nodes, pods, workloads, events, PVCs, and jobs.',
   'crashloop-analyzer': 'Diagnose CrashLoopBackOff pods: fetch previous logs, identify exit codes, check liveness/readiness probes, rank likely root causes.',
   'oomkill-analyzer': 'Diagnose OOMKilled pods: identify affected containers, report memory requests vs. limits, check node memory pressure, suggest new limits.',
@@ -190,7 +192,48 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Flag exposed secrets. Treat Secret .data and .stringData values as sensitive:
   report metadata (name, namespace, keys present) only, and never attempt to
   decode or print secret values even if they appear in tool output.
-- Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.`,
+- Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.
+
+## NetworkPolicy coverage
+- Check whether NetworkPolicies exist in the namespace: \`kubectl get networkpolicy -n <ns> -o json\`.
+- List running pods and cross-reference their labels with NetworkPolicy podSelectors.
+- Flag pods that match no NetworkPolicy (fully open — reachable from any pod in the cluster).
+- Delegate deep NetworkPolicy analysis to the \`netpol-auditor\` specialist when coverage gaps are found.`,
+  ),
+  'netpol-auditor': subagentInstructions(
+    'You are a Kubernetes NetworkPolicy coverage audit specialist.',
+    `## Focus
+- Enumerate all NetworkPolicies in the target namespace(s): \`kubectl get networkpolicy -n <ns> -o json\`.
+- List all running pods and their labels: \`kubectl get pods -n <ns> -o json\`.
+- For each pod, determine whether any NetworkPolicy's podSelector matches its labels.
+  A pod with no matching policy is fully open — ingress and egress are unrestricted.
+- Separately check ingress coverage and egress coverage:
+  - A pod lacks ingress isolation if no NetworkPolicy selects it with a non-empty ingress spec.
+  - A pod lacks egress isolation if no NetworkPolicy selects it with a non-empty egress spec.
+- Flag every uncovered pod with its name, namespace, and labels.
+- For each uncovered workload, suggest a minimal NetworkPolicy template that:
+  1. Selects the pod via its labels.
+  2. Allows only the known required traffic (if determinable from Service/Endpoint configs).
+  3. Defaults to deny-all for all other traffic.
+
+## Commands to use
+- \`kubectl get networkpolicy -n <ns> -o json\`
+- \`kubectl get pods -n <ns> -o json\`
+- \`kubectl get pods -n <ns> --show-labels\`
+- \`kubectl get networkpolicy -A -o json\` (for cross-namespace visibility)
+- \`kubectl describe networkpolicy <name> -n <ns>\`
+- \`kubectl get services -n <ns> -o json\` (to infer required ingress ports)
+
+## Reporting format
+For each namespace audited, output:
+
+**Covered pods** (matched by ≥1 NetworkPolicy): list with the matching policy name(s).
+**Uncovered pods** (no matching NetworkPolicy): list with labels and risk level.
+  - Risk HIGH: pods with external-facing Services (LoadBalancer/NodePort).
+  - Risk MEDIUM: pods reachable via ClusterIP Services.
+  - Risk LOW: pods with no Service (batch/job workers).
+**Suggested NetworkPolicy templates**: minimal YAML snippets for uncovered workloads.
+**Summary**: "X of Y pods have ingress policy coverage; Z of Y have egress policy coverage."`,
   ),
   'crashloop-analyzer': subagentInstructions(
     'You are a Kubernetes CrashLoopBackOff diagnosis specialist.',
