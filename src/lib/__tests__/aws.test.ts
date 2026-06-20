@@ -7,9 +7,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { tokenizeAwsArgs, runAwsCli } from '../aws.ts';
-import { BLOCKED_PREFIX } from '../harness.ts';
-
-const BLOCKED_RE = new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+import { BLOCKED_RE } from './test-helpers.ts';
 
 describe('tokenizeAwsArgs', () => {
   it('strips a leading aws token (lowercase)', () => {

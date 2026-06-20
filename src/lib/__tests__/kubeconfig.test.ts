@@ -1,7 +1,11 @@
-import { afterAll, beforeAll, describe, it, expect } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, it, expect, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 import {
   getContextNames,
   getDefaultKubeconfigPath,
@@ -67,18 +71,19 @@ describe('path helpers', () => {
     expect(getDefaultKubeconfigPath().replace(/\\/g, '/')).toMatch(/\.kube\/config$/);
   });
 
-  it('resolveKubeconfigPath falls back to KUBECONFIG then the default', () => {
-    const prev = process.env.KUBECONFIG;
-    try {
-      process.env.KUBECONFIG = '/env/kubeconfig';
-      expect(resolveKubeconfigPath()).toBe('/env/kubeconfig');
-      expect(resolveKubeconfigPath('/explicit')).toBe('/explicit');
-      delete process.env.KUBECONFIG;
-      expect(resolveKubeconfigPath()).toBe(getDefaultKubeconfigPath());
-    } finally {
-      if (prev === undefined) delete process.env.KUBECONFIG;
-      else process.env.KUBECONFIG = prev;
-    }
+  it('resolveKubeconfigPath uses KUBECONFIG env var when set', () => {
+    vi.stubEnv('KUBECONFIG', '/env/kubeconfig');
+    expect(resolveKubeconfigPath()).toBe('/env/kubeconfig');
+  });
+
+  it('resolveKubeconfigPath uses an explicit path over the env var', () => {
+    vi.stubEnv('KUBECONFIG', '/env/kubeconfig');
+    expect(resolveKubeconfigPath('/explicit')).toBe('/explicit');
+  });
+
+  it('resolveKubeconfigPath falls back to the default when KUBECONFIG is unset', () => {
+    vi.stubEnv('KUBECONFIG', undefined as unknown as string);
+    expect(resolveKubeconfigPath()).toBe(getDefaultKubeconfigPath());
   });
 });
 
@@ -182,24 +187,13 @@ describe('resolveKubeconfigPath', () => {
 
 describe('isInCluster', () => {
   it('returns true when KUBERNETES_SERVICE_HOST is set', () => {
-    const prev = process.env.KUBERNETES_SERVICE_HOST;
-    try {
-      process.env.KUBERNETES_SERVICE_HOST = '10.0.0.1';
-      expect(isInCluster()).toBe(true);
-    } finally {
-      if (prev === undefined) delete process.env.KUBERNETES_SERVICE_HOST;
-      else process.env.KUBERNETES_SERVICE_HOST = prev;
-    }
+    vi.stubEnv('KUBERNETES_SERVICE_HOST', '10.0.0.1');
+    expect(isInCluster()).toBe(true);
   });
 
   it('returns false when KUBERNETES_SERVICE_HOST is absent', () => {
-    const prev = process.env.KUBERNETES_SERVICE_HOST;
-    try {
-      delete process.env.KUBERNETES_SERVICE_HOST;
-      expect(isInCluster()).toBe(false);
-    } finally {
-      if (prev !== undefined) process.env.KUBERNETES_SERVICE_HOST = prev;
-    }
+    vi.stubEnv('KUBERNETES_SERVICE_HOST', undefined as unknown as string);
+    expect(isInCluster()).toBe(false);
   });
 });
 

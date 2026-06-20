@@ -10,20 +10,12 @@ vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
-import { execFile } from 'node:child_process';
 import { runTrivy } from '../trivy.ts';
-import { BLOCKED_PREFIX } from '../harness.ts';
-
-const BLOCKED_RE = new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
-
-type ExecFileCb = (err: Error | null, result: { stdout: string; stderr: string }) => void;
-
-function stubExec(handler: (cmd: string, args: string[], opts: unknown, cb: ExecFileCb) => void) {
-  (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(handler);
-}
+import { stubExec, resetExec } from './execfile-helpers.ts';
+import { BLOCKED_RE } from './test-helpers.ts';
 
 beforeEach(() => {
-  (execFile as unknown as ReturnType<typeof vi.fn>).mockReset();
+  resetExec();
 });
 
 afterEach(() => {

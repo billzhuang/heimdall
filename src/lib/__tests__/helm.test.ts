@@ -10,17 +10,11 @@ vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
-import { execFile } from 'node:child_process';
 import { runHelm, ALLOWED_HELM_ACTIONS, ALLOWED_HELM_GET_TYPES } from '../helm.ts';
-
-type ExecFileCb = (err: Error | null, result: { stdout: string; stderr: string }) => void;
-
-function stubExec(handler: (cmd: string, args: string[], opts: unknown, cb: ExecFileCb) => void) {
-  (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(handler);
-}
+import { stubExec, resetExec } from './execfile-helpers.ts';
 
 beforeEach(() => {
-  (execFile as unknown as ReturnType<typeof vi.fn>).mockReset();
+  resetExec();
 });
 
 // ---------------------------------------------------------------------------
