@@ -40,16 +40,20 @@ const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);
 function loadTaskHistorySync(logPath: string): TaskHistoryEntry[] {
   try {
     const raw = readFileSync(logPath, 'utf8');
-    return raw
-      .split('\n')
-      .filter((l) => l.trim())
-      .flatMap((l) => {
-        try {
-          return [JSON.parse(l) as TaskHistoryEntry];
-        } catch {
-          return [];
+    const lines = raw.split('\n').filter((l) => l.trim());
+    // Cap at the last 100 entries to bound startup latency and memory for large histories.
+    // MMR diversity selection works well within this window for typical SRE corpora.
+    return lines.slice(-100).flatMap((l) => {
+      try {
+        const parsed: unknown = JSON.parse(l);
+        if (parsed !== null && typeof parsed === 'object') {
+          return [parsed as TaskHistoryEntry];
         }
-      });
+        return [];
+      } catch {
+        return [];
+      }
+    });
   } catch {
     return [];
   }
