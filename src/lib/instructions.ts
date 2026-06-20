@@ -358,11 +358,15 @@ reconciliation errors, source fetch failures). Always check GitOps controller st
 investigating unhealthy workloads in GitOps-managed clusters.
 
 ### ArgoCD
-- List all Applications: \`kubectl get applications.argoproj.io -A -o json\`
-- Inspect a specific Application: \`kubectl get applications.argoproj.io <name> -n argocd -o json\`
-- Detailed state including conditions: \`kubectl describe applications.argoproj.io <name> -n argocd\`
-- ArgoCD controller events: \`kubectl get events -n argocd --sort-by='.lastTimestamp'\`
+Overview (tabular — concise, low token cost):
+- List all Applications: \`kubectl get applications.argoproj.io -A\`
+  (shows NAME, SYNC STATUS, HEALTH STATUS, REPO columns via CRD printer columns)
 - Check ArgoCD component health: \`kubectl get pods -n argocd -o wide\`
+- ArgoCD controller events: \`kubectl get events -n argocd --sort-by='.lastTimestamp'\`
+
+Deep inspection (use \`-o json\` only for flagged resources):
+- \`kubectl get applications.argoproj.io <name> -n argocd -o json\`
+- \`kubectl describe applications.argoproj.io <name> -n argocd\`
 
 Key fields to examine in ArgoCD Application JSON:
 - \`status.sync.status\`: Synced | OutOfSync | Unknown
@@ -373,14 +377,20 @@ Key fields to examine in ArgoCD Application JSON:
 - \`spec.source.repoURL\` / \`spec.source.targetRevision\`: source of truth
 
 ### FluxCD
-- List Kustomizations: \`kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A -o json\`
-- List HelmReleases: \`kubectl get helmreleases.helm.toolkit.fluxcd.io -A -o json\`
-- List GitRepositories: \`kubectl get gitrepositories.source.toolkit.fluxcd.io -A -o json\`
-- List HelmRepositories: \`kubectl get helmrepositories.source.toolkit.fluxcd.io -A -o json\`
-- List OCIRepositories: \`kubectl get ocirepositories.source.toolkit.fluxcd.io -A -o json\`
-- Detailed Kustomization state: \`kubectl describe kustomizations.kustomize.toolkit.fluxcd.io <name> -n <ns>\`
-- Detailed HelmRelease state: \`kubectl describe helmreleases.helm.toolkit.fluxcd.io <name> -n <ns>\`
+Overview (tabular — concise, low token cost):
+- \`kubectl get kustomizations.kustomize.toolkit.fluxcd.io -A\`
+- \`kubectl get helmreleases.helm.toolkit.fluxcd.io -A\`
+- \`kubectl get gitrepositories.source.toolkit.fluxcd.io -A\`
+- \`kubectl get helmrepositories.source.toolkit.fluxcd.io -A\`
+- \`kubectl get ocirepositories.source.toolkit.fluxcd.io -A\`
+  (all FluxCD CRDs surface READY, STATUS, and AGE via printer columns)
 - Flux controller events: \`kubectl get events -n flux-system --sort-by='.lastTimestamp'\`
+
+Deep inspection (use \`-o json\` only for flagged resources):
+- \`kubectl get kustomizations.kustomize.toolkit.fluxcd.io <name> -n <ns> -o json\`
+- \`kubectl get helmreleases.helm.toolkit.fluxcd.io <name> -n <ns> -o json\`
+- \`kubectl describe kustomizations.kustomize.toolkit.fluxcd.io <name> -n <ns>\`
+- \`kubectl describe helmreleases.helm.toolkit.fluxcd.io <name> -n <ns>\`
 
 Key fields to examine in FluxCD object JSON (all use the same Conditions pattern):
 - \`status.conditions[]\`: look for \`Ready\`, \`Reconciling\`, \`Stalled\` conditions and their \`reason\`/\`message\`
