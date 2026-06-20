@@ -19,11 +19,11 @@ const BLOCKED_RE = new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, 
 type ExecFileCb = (err: Error | null, result: { stdout: string; stderr: string }) => void;
 
 function stubExec(handler: (cmd: string, args: string[], opts: unknown, cb: ExecFileCb) => void) {
-  (execFile as ReturnType<typeof vi.fn>).mockImplementation(handler);
+  (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(handler);
 }
 
 beforeEach(() => {
-  (execFile as ReturnType<typeof vi.fn>).mockReset();
+  (execFile as unknown as ReturnType<typeof vi.fn>).mockReset();
   vi.restoreAllMocks();
 });
 
