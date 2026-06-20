@@ -151,7 +151,7 @@ function buildHeaders(config: DatadogConfig): Record<string, string> {
 }
 
 function baseUrl(config: DatadogConfig): string {
-  const site = config.site.replace(/\/$/, '');
+  const site = config.site.trim().replace(/^https?:\/\//i, '').replace(/\/$/, '');
   return `https://api.${site}`;
 }
 
@@ -218,8 +218,8 @@ async function queryLogs(
     page: { limit: effectiveLimit },
   });
 
-  const url = `${baseUrl(config)}/api/v2/logs/events/search`;
-  const response = await fetch(url, {
+  const url = new URL(`${baseUrl(config)}/api/v2/logs/events/search`);
+  const response = await fetch(url.toString(), {
     method: 'POST',
     headers: buildHeaders(config),
     body,
@@ -240,28 +240,25 @@ async function queryEvents(
   signal: AbortSignal,
 ): Promise<string> {
   const nowMs = Date.now();
-  const startSec = params.from
-    ? resolveTimeSeconds(params.from, nowMs)
-    : Math.floor((nowMs - 3_600_000) / 1_000);
-  const endSec = params.to
-    ? resolveTimeSeconds(params.to, nowMs)
-    : Math.floor(nowMs / 1_000);
+  // v2 Events API uses ISO8601 for from/to and supports free-text filter[query] and page[limit].
+  const from = params.from ? resolveTimeISO(params.from, nowMs) : new Date(nowMs - 3_600_000).toISOString();
+  const to = params.to ? resolveTimeISO(params.to, nowMs) : new Date(nowMs).toISOString();
 
-  if (startSec === null) return `Error: could not parse "from" time: "${params.from}".`;
-  if (endSec === null) return `Error: could not parse "to" time: "${params.to}".`;
+  if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
+  if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
 
   const effectiveLimit =
     typeof params.limit === 'number' && Number.isFinite(params.limit)
       ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
       : DEFAULT_LIMIT;
 
-  const url = new URL(`${baseUrl(config)}/api/v1/events`);
-  url.searchParams.set('start', String(startSec));
-  url.searchParams.set('end', String(endSec));
-  url.searchParams.set('page', '0');
-  url.searchParams.set('page_size', String(effectiveLimit));
-  if (params.query?.trim()) url.searchParams.set('q', params.query.trim());
-  if (params.tags?.trim()) url.searchParams.set('tags', params.tags.trim());
+  const url = new URL(`${baseUrl(config)}/api/v2/events`);
+  url.searchParams.set('filter[from]', from);
+  url.searchParams.set('filter[to]', to);
+  url.searchParams.set('page[limit]', String(effectiveLimit));
+  url.searchParams.set('sort', '-timestamp');
+  if (params.query?.trim()) url.searchParams.set('filter[query]', params.query.trim());
+  if (params.tags?.trim()) url.searchParams.set('filter[tags]', params.tags.trim());
 
   const response = await fetch(url.toString(), {
     method: 'GET',
@@ -287,11 +284,13 @@ async function queryMonitors(
       ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
       : DEFAULT_LIMIT;
 
+  // group_states=all enriches the response with per-group state data.
+  // It is NOT a filter — status filtering is applied client-side below.
   const url = new URL(`${baseUrl(config)}/api/v1/monitor`);
   url.searchParams.set('page_size', String(effectiveLimit));
   url.searchParams.set('page', '0');
+  url.searchParams.set('group_states', 'all');
   if (params.query?.trim()) url.searchParams.set('name', params.query.trim());
-  if (params.monitorStatus?.trim()) url.searchParams.set('group_states', params.monitorStatus.trim());
   if (params.tags?.trim()) url.searchParams.set('monitor_tags', params.tags.trim());
 
   const response = await fetch(url.toString(), {
@@ -305,7 +304,32 @@ async function queryMonitors(
     const detail = body ? `: ${body.slice(0, 200)}` : '';
     return `Datadog monitors HTTP ${response.status} ${response.statusText}${detail}`;
   }
-  return await response.text();
+
+  const text = await response.text();
+
+  // Client-side status filter: when monitorStatus is specified, keep only monitors
+  // whose overall_state matches one of the requested states (case-insensitive).
+  if (params.monitorStatus?.trim()) {
+    const allowedStates = new Set(
+      params.monitorStatus.split(',').map((s) => s.trim().toLowerCase()),
+    );
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        const filtered = parsed.filter((m: unknown) => {
+          if (m !== null && typeof m === 'object' && 'overall_state' in m) {
+            return allowedStates.has(String((m as Record<string, unknown>)['overall_state']).toLowerCase());
+          }
+          return false;
+        });
+        return JSON.stringify(filtered);
+      }
+    } catch {
+      // JSON parse failed — return the raw text and let truncation/redaction apply
+    }
+  }
+
+  return text;
 }
 
 /**
@@ -319,6 +343,13 @@ export async function runDatadogQuery(
   params: DatadogQueryParams,
   config: DatadogConfig,
 ): Promise<string> {
+  if (!config.apiKey) {
+    return 'Error: Datadog API key is not configured. Set the DD_API_KEY or DATADOG_API_KEY environment variable, or add apiKey to the datadog section in heimdall.config.yaml.';
+  }
+  if (!config.appKey) {
+    return 'Error: Datadog Application key is not configured. Set the DD_APP_KEY or DATADOG_APP_KEY environment variable, or add appKey to the datadog section in heimdall.config.yaml.';
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 

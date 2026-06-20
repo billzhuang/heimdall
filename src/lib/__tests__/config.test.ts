@@ -4,6 +4,20 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadConfig } from '../config.ts';
 
+const EXPECTED_DEFAULT_TOOLS = {
+  kubectl: true,
+  listContexts: true,
+  listNamespaces: true,
+  helmRelease: true,
+  prometheusQuery: false,
+  awsCli: false,
+  trivyScan: false,
+  kubecostQuery: false,
+  lokiQuery: false,
+  jaegerQuery: false,
+  datadogQuery: false,
+} as const;
+
 describe('loadConfig', () => {
   let tmpDir: string;
 
@@ -18,7 +32,7 @@ describe('loadConfig', () => {
 
   it('returns all-enabled defaults when no config file exists', () => {
     const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('defaults audit to disabled when no audit section is present', () => {
@@ -68,28 +82,28 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('returns defaults when the YAML is malformed', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, ': bad yaml: [\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('returns defaults when the config fails schema validation', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, `tools:\n  kubectl: "yes"\n`); // string instead of boolean
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('enables all tools when the tools section is omitted', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '# no tools key\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('handles null tools block (empty YAML key like `tools:`) gracefully', () => {
@@ -97,14 +111,14 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'tools:\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('returns defaults and warns when config is a scalar (not a mapping)', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'true\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false });
+    expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
   });
 
   it('each call returns an independent object (no shared mutable default)', () => {

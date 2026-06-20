@@ -247,8 +247,8 @@ describe('runDatadogQuery — logs', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDatadogQuery — events', () => {
-  it('calls /api/v1/events with GET method', async () => {
-    const fetchMock = mockFetch('{"events":[]}');
+  it('calls /api/v2/events with GET method', async () => {
+    const fetchMock = mockFetch('{"data":[],"meta":{}}');
 
     await runDatadogQuery(
       { queryType: 'events', from: '-1h', tags: 'env:prod,source:kubernetes' },
@@ -257,12 +257,12 @@ describe('runDatadogQuery — events', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/api/v1/events');
+    expect(url).toContain('/api/v2/events');
     expect(init.method).toBe('GET');
   });
 
-  it('includes tags in the URL', async () => {
-    const fetchMock = mockFetch('{"events":[]}');
+  it('includes tags as filter[tags] param', async () => {
+    const fetchMock = mockFetch('{"data":[]}');
 
     await runDatadogQuery(
       { queryType: 'events', tags: 'env:prod,source:kubernetes', from: '-1h' },
@@ -270,12 +270,12 @@ describe('runDatadogQuery — events', () => {
     );
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const decoded = decodeURIComponent(url);
-    expect(decoded).toContain('tags=env:prod,source:kubernetes');
+    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
+    expect(decoded).toContain('filter[tags]=env:prod,source:kubernetes');
   });
 
-  it('includes free-text query as `q` param', async () => {
-    const fetchMock = mockFetch('{"events":[]}');
+  it('includes free-text query as filter[query] param', async () => {
+    const fetchMock = mockFetch('{"data":[]}');
 
     await runDatadogQuery(
       { queryType: 'events', query: 'deployment', from: '-1h' },
@@ -283,8 +283,21 @@ describe('runDatadogQuery — events', () => {
     );
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const decoded = decodeURIComponent(url);
-    expect(decoded).toContain('q=deployment');
+    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
+    expect(decoded).toContain('filter[query]=deployment');
+  });
+
+  it('includes page[limit] for limit enforcement', async () => {
+    const fetchMock = mockFetch('{"data":[]}');
+
+    await runDatadogQuery(
+      { queryType: 'events', from: '-1h', limit: 25 },
+      BASE_CONFIG,
+    );
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
+    expect(decoded).toContain('page[limit]=25');
   });
 });
 
@@ -307,7 +320,7 @@ describe('runDatadogQuery — monitors', () => {
     expect(init.method).toBe('GET');
   });
 
-  it('passes group_states param for monitorStatus filter', async () => {
+  it('always sets group_states=all in the URL regardless of monitorStatus param', async () => {
     const fetchMock = mockFetch('[]');
 
     await runDatadogQuery(
@@ -317,7 +330,36 @@ describe('runDatadogQuery — monitors', () => {
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
-    expect(decoded).toContain('group_states=Alert,Warn,No Data');
+    expect(decoded).toContain('group_states=all');
+    expect(decoded).not.toContain('group_states=Alert');
+  });
+
+  it('client-side filters monitors by overall_state matching monitorStatus', async () => {
+    mockFetch(
+      JSON.stringify([
+        { id: 1, name: 'Monitor A', overall_state: 'Alert' },
+        { id: 2, name: 'Monitor B', overall_state: 'OK' },
+        { id: 3, name: 'Monitor C', overall_state: 'Warn' },
+      ]),
+    );
+
+    const result = await runDatadogQuery(
+      { queryType: 'monitors', monitorStatus: 'Alert,Warn' },
+      BASE_CONFIG,
+    );
+    const parsed = JSON.parse(result) as Array<{ id: number }>;
+    expect(parsed.map((m) => m.id)).toEqual([1, 3]);
+  });
+
+  it('returns all monitors when monitorStatus is not specified', async () => {
+    const payload = JSON.stringify([
+      { id: 1, overall_state: 'Alert' },
+      { id: 2, overall_state: 'OK' },
+    ]);
+    mockFetch(payload);
+
+    const result = await runDatadogQuery({ queryType: 'monitors' }, BASE_CONFIG);
+    expect(result).toBe(payload);
   });
 
   it('passes monitor name filter as `name` param', async () => {
@@ -342,7 +384,7 @@ describe('runDatadogQuery — monitors', () => {
     );
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const decoded = decodeURIComponent(url);
+    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
     expect(decoded).toContain('monitor_tags=team:sre,env:prod');
   });
 });
