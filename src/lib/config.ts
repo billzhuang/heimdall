@@ -23,14 +23,26 @@ const ToolsSchema = v.nullish(
     awsCli: v.nullish(v.boolean(), false),
     // Disabled by default: requires trivy binary on PATH.
     trivyScan: v.nullish(v.boolean(), false),
+    // Disabled by default: requires a running Kubecost instance.
+    kubecostQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
 const PrometheusSchema = v.nullish(
   v.object({
     // Base URL for the Prometheus HTTP API. Also readable from PROMETHEUS_URL env var.
+    url: v.nullish(v.string()),
+    // Request timeout in milliseconds (default 10 000).
+    timeoutMs: v.nullish(v.number(), 10_000),
+  }),
+);
+
+// Kubecost HTTP API config — optional, disabled by default.
+const KubecostSchema = v.nullish(
+  v.object({
+    // Base URL for the Kubecost HTTP API. Also readable from KUBECOST_URL env var.
     url: v.nullish(v.string()),
     // Request timeout in milliseconds (default 10 000).
     timeoutMs: v.nullish(v.number(), 10_000),
@@ -133,6 +145,7 @@ const HeimdallConfigSchema = v.object({
   // Redact Secret .data / .stringData values in kubectl output (code-enforced, default on).
   redactSecrets: v.nullish(v.boolean(), true),
   prometheus: PrometheusSchema,
+  kubecost: KubecostSchema,
   // User-configurable regex redaction rules (disabled by default).
   redaction: RedactionSchema,
   namespace: NamespaceSchema,
@@ -156,6 +169,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   prometheusQuery: true,
   awsCli: true,
   trivyScan: true,
+  kubecostQuery: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -171,6 +185,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   prometheus_query: 'prometheusQuery',
   aws_cli: 'awsCli',
   trivy_scan: 'trivyScan',
+  kubecost_query: 'kubecostQuery',
 };
 
 /**

@@ -18,7 +18,7 @@ describe('loadConfig', () => {
 
   it('returns all-enabled defaults when no config file exists', () => {
     const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('defaults audit to disabled when no audit section is present', () => {
@@ -68,28 +68,28 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('returns defaults when the YAML is malformed', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, ': bad yaml: [\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('returns defaults when the config fails schema validation', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, `tools:\n  kubectl: "yes"\n`); // string instead of boolean
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('enables all tools when the tools section is omitted', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, '# no tools key\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('handles null tools block (empty YAML key like `tools:`) gracefully', () => {
@@ -97,14 +97,14 @@ describe('loadConfig', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'tools:\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('returns defaults and warns when config is a scalar (not a mapping)', () => {
     const configPath = join(tmpDir, 'heimdall.config.yaml');
     writeFileSync(configPath, 'true\n');
     const config = loadConfig(configPath);
-    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false });
+    expect(config.tools).toEqual({ kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false });
   });
 
   it('each call returns an independent object (no shared mutable default)', () => {
@@ -291,6 +291,49 @@ describe('loadConfig', () => {
       writeFileSync(configPath, `tools:\n  prometheusQuery: true\n`);
       const config = loadConfig(configPath);
       expect(config.tools.prometheusQuery).toBe(true);
+    });
+  });
+
+  describe('kubecost config block', () => {
+    it('defaults kubecost to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.kubecost).toBeUndefined();
+    });
+
+    it('loads kubecost url and timeoutMs', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `kubecost:\n  url: http://kubecost:9090\n  timeoutMs: 5000\n`);
+      const config = loadConfig(configPath);
+      expect(config.kubecost?.url).toBe('http://kubecost:9090');
+      expect(config.kubecost?.timeoutMs).toBe(5000);
+    });
+
+    it('defaults timeoutMs to 10000 when kubecost block is present but timeoutMs is omitted', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `kubecost:\n  url: http://kubecost:9090\n`);
+      const config = loadConfig(configPath);
+      expect(config.kubecost?.timeoutMs).toBe(10_000);
+    });
+
+    it('defaults kubecostQuery tool to false even when kubecost block is present', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `kubecost:\n  url: http://kubecost:9090\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubecostQuery).toBe(false);
+    });
+
+    it('allows enabling kubecostQuery independently of kubecost block', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  kubecostQuery: true\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubecostQuery).toBe(true);
+    });
+
+    it('accepts kubecost_query as a snake_case alias for kubecostQuery', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  kubecost_query: true\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubecostQuery).toBe(true);
     });
   });
 });

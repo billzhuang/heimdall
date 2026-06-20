@@ -19,6 +19,7 @@ import { makeHelmRelease } from '../tools/helm.ts';
 import { makePrometheusQuery } from '../tools/prometheus.ts';
 import { makeAwsCli } from '../tools/aws.ts';
 import { makeTrivyScan } from '../tools/trivy.ts';
+import { makeKubecostQuery } from '../tools/kubecost.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
@@ -45,6 +46,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   prometheusQuery: makePrometheusQuery(config.prometheus, regexRedactionRules),
   awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
   trivyScan: makeTrivyScan({ audit: config.audit }, regexRedactionRules),
+  kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules, lockedNs),
 };
 
 const enabledToolKeys = new Set(
