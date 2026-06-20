@@ -75,7 +75,7 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
     has('awsCli') &&
       '- `aws_cli`: run a single READ-ONLY AWS CLI command. Pass everything after `aws` as the\n  `args` string (e.g. "ec2 describe-instances --region us-east-1", "iam list-roles",\n  "eks describe-cluster --name my-cluster"). Only describe-*, get-*, list-*, show-*\n  subcommands are permitted. Use --query (JMESPath) to narrow output.',
     has('trivyScan') &&
-      '- `trivy_scan`: scan a container image or IaC directory for CVEs and misconfigurations using Trivy.\n  Params: scanType ("image" | "fs" | "config" | "sbom"), target (image ref or path),\n  severity (e.g. "CRITICAL,HIGH"), format ("table" | "json"), ignoreUnfixed (bool).\n  Typical workflow: get pod images with kubectl → trivy_scan each image ref. Requires trivy binary on PATH.',
+      '- `trivy_scan`: scan a container image or IaC directory for CVEs and misconfigurations using Trivy.\n  Params: scanType ("image" | "fs" | "config" | "sbom"), target (image ref or path),\n  severity (e.g. "CRITICAL,HIGH"), format ("table" | "json" | "sarif" | "cyclonedx"), ignoreUnfixed (bool).\n  Typical workflow: get pod images with kubectl → trivy_scan each image ref. Requires trivy binary on PATH.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -135,9 +135,9 @@ function subagentInstructions(focus: string, guidance: string): string {
 ${guidance}
 
 ## Read-only policy (enforced)
-You may only use the read-only \`kubectl\` tool; destructive subcommands are blocked.
-Never suggest running destructive commands yourself — report findings and remediation
-ideas back to the lead agent.
+You may only use the read-only cluster tools provided to you (e.g. kubectl, trivy_scan);
+destructive subcommands are blocked. Never suggest running destructive commands yourself
+— report findings and remediation ideas back to the lead agent.
 
 ## Response style
 Lead with the most important finding. Include a brief high-level "Thinking Summary"

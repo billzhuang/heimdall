@@ -55,7 +55,13 @@ export function makeTrivyScan(options?: RunTrivyOptions, regexRedactionRules?: C
       if (severity) extraArgs.push('--severity', severity);
       if (format) extraArgs.push('--format', format);
       if (ignoreUnfixed) extraArgs.push('--ignore-unfixed');
-      return runTrivy(scanType, target, extraArgs, { ...options, regexRedactionRules });
+      // For filesystem scans, disable secret scanning to prevent leaking host
+      // credentials or mounted K8s secrets from the runtime container.
+      if (scanType === 'fs') extraArgs.push('--scanners', 'vuln,misconfig');
+      return runTrivy(scanType, target, extraArgs, {
+        ...options,
+        regexRedactionRules: regexRedactionRules ?? options?.regexRedactionRules,
+      });
     },
   });
 }
