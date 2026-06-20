@@ -358,19 +358,26 @@ reconciliation errors, source fetch failures). Always check GitOps controller st
 investigating unhealthy workloads in GitOps-managed clusters.
 
 ### ArgoCD
+Two namespaces matter and must be kept separate:
+- **\`<argocd-ns>\`** — the ArgoCD control-plane namespace (where the controller pods and events live).
+  Discover it with: \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller -o wide\`
+  (common values: \`argocd\`, \`openshift-gitops\`, custom install names — never hard-code).
+- **\`<app-ns>\`** — the namespace of each Application CR. When the applications-in-any-namespace
+  feature is enabled, Application CRs live in arbitrary team namespaces; the NAMESPACE column in
+  \`kubectl get applications.argoproj.io -A\` reflects \`<app-ns>\`, **not** \`<argocd-ns>\`.
+
 Overview (tabular — concise, low token cost):
+- Discover control-plane namespace: \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller -o wide\`
 - List all Applications: \`kubectl get applications.argoproj.io -A\`
-  (shows NAME, NAMESPACE, SYNC STATUS, HEALTH STATUS columns via CRD printer columns)
-- Discover the ArgoCD controller namespace from the listing's NAMESPACE column, or by running:
-  \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller -o wide\`
-  (common namespaces: \`argocd\`, \`openshift-gitops\`, any custom install namespace)
+  (NAMESPACE column = Application CR namespace, not the controller namespace)
 - Check ArgoCD component health: \`kubectl get pods -n <argocd-ns> -o wide\`
 - ArgoCD controller events: \`kubectl get events -n <argocd-ns> --sort-by='.lastTimestamp'\`
 
 Deep inspection (use \`-o json\` only for flagged resources):
-- \`kubectl get applications.argoproj.io <name> -n <argocd-ns> -o json\`
-- \`kubectl describe applications.argoproj.io <name> -n <argocd-ns>\`
-- Always use the namespace from the \`-A\` listing, never assume \`argocd\`.
+- \`kubectl get applications.argoproj.io <name> -n <app-ns> -o json\`
+- \`kubectl describe applications.argoproj.io <name> -n <app-ns>\`
+- Use \`<app-ns>\` (from the \`-A\` listing) for Application CRs; use \`<argocd-ns>\` (from the pod
+  selector) for controller health and events.
 
 Key fields to examine in ArgoCD Application JSON:
 - \`status.sync.status\`: Synced | OutOfSync | Unknown
@@ -407,10 +414,12 @@ Key fields to examine in FluxCD object JSON (all use the same Conditions pattern
 - \`spec.suspend\`: true means reconciliation is paused — often the root cause of staleness
 
 ## Investigation workflow
-1. Determine which GitOps controller is in use (ArgoCD, FluxCD, or both) and discover their namespaces:
-   - \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller\` (ArgoCD)
-   - \`kubectl get pods -A -l app=source-controller\` (FluxCD)
-   Use the NAMESPACE column from these outputs — never hard-code \`argocd\` or \`flux-system\`.
+1. Determine which GitOps controller is in use (ArgoCD, FluxCD, or both) and discover their
+   control-plane namespaces via pod label selectors — not from Application/Kustomization listings:
+   - \`kubectl get pods -A -l app.kubernetes.io/name=argocd-application-controller\` (ArgoCD control-plane ns)
+   - \`kubectl get pods -A -l app=source-controller\` (FluxCD control-plane ns)
+   Note: ArgoCD Application CRs may live in different namespaces than the controller when
+   applications-in-any-namespace is enabled; always keep \`<argocd-ns>\` and \`<app-ns>\` separate.
 2. List all Applications/Kustomizations/HelmReleases and flag any that are not Synced+Healthy (ArgoCD) or not Ready (FluxCD).
 3. For each degraded resource, extract the status conditions and operationState for the root cause.
 4. Check whether the source (GitRepository, HelmRepository) itself is healthy — a source fetch failure cascades to all dependents.
