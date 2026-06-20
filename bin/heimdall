@@ -46,7 +46,7 @@ Options:
       --format json     Alias for --json
       --no-learn        Skip appending this investigation to the task-history log
       --backend <name>  LLM backend: 'flue' (default), 'claude-cli', or 'codex-cli'
-                        Override with env var HEIMDALL_BACKEND=claude-cli.
+                        Override with env var HEIMDALL_BACKEND=<name>.
                         'claude-cli' calls \`claude -p\` directly (no tool use;
                         requires the Claude Code CLI to be installed and authenticated).
                         'codex-cli' calls \`codex -q\` directly (no tool use;
