@@ -1,20 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runPrometheusQuery } from '../prometheus.ts';
 import type { PrometheusConfig } from '../prometheus.ts';
+import { mockFetch, makeAbortError } from './test-helpers.ts';
 
 const BASE_CONFIG: PrometheusConfig = { url: 'http://prometheus:9090', timeoutMs: 5_000 };
-
-function mockFetch(body: string, status = 200): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: status >= 200 && status < 300,
-      status,
-      statusText: status === 200 ? 'OK' : 'Bad Request',
-      text: () => Promise.resolve(body),
-    }),
-  );
-}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -185,8 +174,7 @@ describe('runPrometheusQuery — malformed URL', () => {
 
 describe('runPrometheusQuery — network errors', () => {
   it('returns a timeout message on AbortError', async () => {
-    const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortErr));
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(makeAbortError()));
 
     const result = await runPrometheusQuery('instant', { query: 'up' }, { ...BASE_CONFIG, timeoutMs: 100 });
     expect(result).toMatch(/timed out/i);

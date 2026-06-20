@@ -1,20 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runKubecostQuery } from '../kubecost.ts';
 import type { KubecostConfig } from '../kubecost.ts';
+import { mockFetch, makeAbortError } from './test-helpers.ts';
 
 const BASE_CONFIG: KubecostConfig = { url: 'http://kubecost:9090', timeoutMs: 5_000 };
-
-function mockFetch(body: string, status = 200): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: status >= 200 && status < 300,
-      status,
-      statusText: status === 200 ? 'OK' : 'Bad Request',
-      text: () => Promise.resolve(body),
-    }),
-  );
-}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -282,8 +271,7 @@ describe('runKubecostQuery — malformed URL', () => {
 
 describe('runKubecostQuery — network errors', () => {
   it('returns a timeout message on AbortError', async () => {
-    const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortErr));
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(makeAbortError()));
 
     const result = await runKubecostQuery(
       'allocation',
