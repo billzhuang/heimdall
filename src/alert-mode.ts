@@ -14,7 +14,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseAlertManagerPayload, buildAlertPrompt, type ParsedAlert } from './lib/alert.ts';
+import { parseAlertManagerPayload, parsePagerDutyPayload, buildAlertPrompt, type ParsedAlert } from './lib/alert.ts';
 import { runKubectl } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
@@ -74,7 +74,7 @@ async function runAgent(prompt: string): Promise<void> {
   });
 }
 
-type AlertSource = 'grafana' | 'prometheus' | 'raw';
+type AlertSource = 'grafana' | 'prometheus' | 'pagerduty' | 'raw';
 
 export async function runAlertMode(opts: { source: AlertSource; input: string; seed: boolean }): Promise<void> {
   let alerts: ParsedAlert[];
@@ -92,7 +92,13 @@ export async function runAlertMode(opts: { source: AlertSource; input: string; s
     let payload: unknown;
     try { payload = JSON.parse(jsonText); }
     catch { process.stderr.write('[heimdall-alert] Invalid JSON payload\n'); process.exit(1); }
-    alerts = parseAlertManagerPayload(payload);
+
+    if (opts.source === 'pagerduty') {
+      const serviceMap = config.alert?.pagerduty?.serviceMap ?? {};
+      alerts = parsePagerDutyPayload(payload, serviceMap);
+    } else {
+      alerts = parseAlertManagerPayload(payload);
+    }
     if (alerts.length === 0) { process.stderr.write('[heimdall-alert] No alerts found in payload\n'); process.exit(1); }
   }
 
@@ -125,23 +131,23 @@ for (let i = 0; i < args.length; i++) {
   const arg = args[i];
   if ((arg === '--source' || arg === '-s') && args[i + 1]) {
     const s = args[++i];
-    if (s !== 'grafana' && s !== 'prometheus' && s !== 'raw') {
-      process.stderr.write(`Error: --source must be grafana, prometheus, or raw\n`); process.exit(1);
+    if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
+      process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
     }
     source = s;
   } else if (arg.startsWith('--source=')) {
     const s = arg.slice('--source='.length);
-    if (s !== 'grafana' && s !== 'prometheus' && s !== 'raw') {
-      process.stderr.write(`Error: --source must be grafana, prometheus, or raw\n`); process.exit(1);
+    if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
+      process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
     }
     source = s as AlertSource;
   } else if (arg === '--no-seed') {
     seed = false;
   } else if (arg === '-h' || arg === '--help') {
-    process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">
+    process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
 
 Options:
-  --source <type>   Alert format: grafana, prometheus, or raw text (default: raw)
+  --source <type>   Alert format: grafana, prometheus, pagerduty, or raw text (default: raw)
   --no-seed         Skip pre-fetching kubectl data before the LLM investigation
   -h, --help        Show this help
 
@@ -149,6 +155,7 @@ Examples:
   heimdall alert alert.json
   heimdall alert --source grafana grafana-alert.json
   heimdall alert --source prometheus alertmanager-webhook.json
+  heimdall alert --source pagerduty pd-webhook.json
   heimdall alert --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
   npm run alert -- --source raw "high latency on api deployment in prod"
 `);

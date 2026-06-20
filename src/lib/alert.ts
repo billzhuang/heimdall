@@ -2,8 +2,9 @@
  * Alert payload parser for the `heimdall alert` subcommand.
  *
  * Supports AlertManager v4 webhook payloads (used by both Grafana and Prometheus
- * Alertmanager) and a plain "raw" text source. Extracts structured fields from
- * alert labels/annotations so the investigation prompt is concise and targeted.
+ * Alertmanager), PagerDuty V2 and V3 webhook payloads, and a plain "raw" text
+ * source. Extracts structured fields from alert labels/annotations so the
+ * investigation prompt is concise and targeted.
  */
 
 export interface ParsedAlert {
@@ -80,6 +81,169 @@ function extractPodFromInstance(instance?: string): string | undefined {
   if (/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i.test(host)) return host;
   return undefined;
 }
+
+// ── PagerDuty V2 types ─────────────────────────────────────────────────────
+
+interface PagerDutyV2Incident {
+  id?: string;
+  title?: string;
+  status?: string;
+  urgency?: string;
+  service?: { id?: string; name?: string };
+  links?: Array<{ href?: string; text?: string }>;
+}
+
+interface PagerDutyV2Message {
+  type?: string;
+  // V2 wraps under data.incident; some older/variant payloads expose incident at the top level.
+  data?: { incident?: PagerDutyV2Incident };
+  incident?: PagerDutyV2Incident;
+}
+
+interface PagerDutyV2Payload {
+  messages?: PagerDutyV2Message[];
+}
+
+// ── PagerDuty V3 types ─────────────────────────────────────────────────────
+
+interface PagerDutyV3Incident {
+  id?: string;
+  number?: number;
+  title?: string;
+  status?: string;
+  urgency?: string;
+  // V3 service references use `summary` as the display name; `name` is absent.
+  service?: { id?: string; name?: string; summary?: string };
+  // For non-incident events (annotated, status_update), the real incident is nested here.
+  type?: string;
+  incident?: PagerDutyV3Incident;
+}
+
+interface PagerDutyV3Payload {
+  event?: { event_type?: string; data?: PagerDutyV3Incident };
+  events?: Array<{ event_type?: string; data?: PagerDutyV3Incident }>;
+}
+
+/**
+ * Maps PagerDuty service names to K8s targets.
+ * Values are "namespace" or "namespace/deployment".
+ */
+export type PagerDutyServiceMap = Record<string, string>;
+
+function resolveServiceTarget(
+  serviceName: string | undefined,
+  serviceMap: PagerDutyServiceMap,
+): { namespace?: string; deployment?: string } {
+  if (!serviceName) return {};
+  const mapped = serviceMap[serviceName];
+  if (!mapped) return {};
+  const slash = mapped.indexOf('/');
+  if (slash === -1) return { namespace: mapped };
+  return { namespace: mapped.slice(0, slash), deployment: mapped.slice(slash + 1) };
+}
+
+function pdUrgencyToSeverity(urgency?: string): string | undefined {
+  if (urgency === 'high') return 'critical';
+  if (urgency === 'low') return 'warning';
+  return urgency;
+}
+
+function buildPdAlert(
+  title: string | undefined,
+  id: string | undefined,
+  status: string | undefined,
+  urgency: string | undefined,
+  serviceName: string | undefined,
+  runbookUrl: string | undefined,
+  serviceMap: PagerDutyServiceMap,
+): ParsedAlert {
+  const mapped = resolveServiceTarget(serviceName, serviceMap);
+  // If resolveServiceTarget found a namespace the serviceMap had a meaningful entry;
+  // suppress the serviceName fallback so the mapping intent is preserved.
+  // For absent or empty-string entries, mapped.namespace is undefined and we fall back.
+  const labels: Record<string, string> = {};
+  if (id) labels['incident_id'] = id;
+  if (status) labels['status'] = status;
+  if (serviceName) labels['service'] = serviceName;
+  if (runbookUrl) labels['runbook_url'] = runbookUrl;
+  return {
+    alertname: title ?? id ?? 'PagerDuty Incident',
+    namespace: mapped.namespace,
+    deployment: mapped.deployment ?? (mapped.namespace !== undefined ? undefined : serviceName),
+    severity: pdUrgencyToSeverity(urgency),
+    labels,
+  };
+}
+
+/**
+ * Parse a PagerDuty V2 webhook payload (`{ messages: [...] }`).
+ * Returns one `ParsedAlert` per incident message.
+ */
+export function parsePagerDutyV2Payload(
+  payload: unknown,
+  serviceMap: PagerDutyServiceMap = {},
+): ParsedAlert[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  const p = payload as PagerDutyV2Payload;
+  const messages = Array.isArray(p.messages) ? p.messages : [];
+  return messages.flatMap((msg) => {
+    // Support both data-wrapped (`msg.data.incident`) and flat (`msg.incident`) V2 shapes.
+    const incident = msg?.data?.incident ?? msg?.incident;
+    if (!incident) return [];
+    const runbookUrl = incident.links
+      ?.find((l) => l?.text?.toLowerCase()?.includes('runbook'))
+      ?.href;
+    return [buildPdAlert(
+      incident.title, incident.id, incident.status, incident.urgency,
+      incident.service?.name, runbookUrl, serviceMap,
+    )];
+  });
+}
+
+/**
+ * Parse a PagerDuty V3 webhook payload (`{ event: {...} }` or `{ events: [...] }`).
+ * Returns one `ParsedAlert` per incident event.
+ */
+export function parsePagerDutyV3Payload(
+  payload: unknown,
+  serviceMap: PagerDutyServiceMap = {},
+): ParsedAlert[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  const p = payload as PagerDutyV3Payload;
+  const eventList = Array.isArray(p.events) && p.events.length > 0
+    ? p.events
+    : p.event
+      ? [p.event]
+      : [];
+  return eventList.flatMap((evt) => {
+    const data = evt?.data;
+    if (!data) return [];
+    // For non-incident events (annotated, status_update, etc.), the real incident is nested under data.incident.
+    const incident = data.incident ?? data;
+    // V3 service references expose the display name as `summary`; fall back to `name` for compat.
+    const serviceName = incident.service?.summary ?? incident.service?.name;
+    return [buildPdAlert(
+      incident.title, incident.id, incident.status, incident.urgency,
+      serviceName, undefined, serviceMap,
+    )];
+  });
+}
+
+/**
+ * Auto-detect V2 vs V3 and parse a PagerDuty webhook payload.
+ * Detects V2 by the presence of a `messages` array; otherwise tries V3.
+ */
+export function parsePagerDutyPayload(
+  payload: unknown,
+  serviceMap: PagerDutyServiceMap = {},
+): ParsedAlert[] {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  const p = payload as Record<string, unknown>;
+  if (Array.isArray(p['messages'])) return parsePagerDutyV2Payload(payload, serviceMap);
+  return parsePagerDutyV3Payload(payload, serviceMap);
+}
+
+// ── buildAlertPrompt ─────────────────────────────────────────────────────────
 
 /**
  * Build a targeted diagnostic prompt from a parsed alert.
