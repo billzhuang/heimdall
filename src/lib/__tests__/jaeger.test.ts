@@ -46,9 +46,24 @@ describe('resolveJaegerTimeUs', () => {
   });
 
   it('converts bare Unix second epoch to microseconds', () => {
-    // 1717243200 = 2024-06-01T12:00:00Z
+    // 1717243200 = 2024-06-01T12:00:00Z (10 digits)
     const result = resolveJaegerTimeUs('1717243200', NOW_MS);
     expect(result).toBe(1717243200 * 1_000_000);
+  });
+
+  it('converts 13-digit Unix millisecond epoch to microseconds (not seconds)', () => {
+    // 1717243200000 = 2024-06-01T12:00:00Z in milliseconds (13 digits)
+    // Multiplying by 1_000_000 (treating as seconds) would give year ~56385 — wrong.
+    const result = resolveJaegerTimeUs('1717243200000', NOW_MS);
+    expect(result).toBe(1717243200000 * 1_000);
+    // Sanity-check: result should match the 10-digit seconds version
+    expect(result).toBe(1717243200 * 1_000_000);
+  });
+
+  it('converts 11-digit Unix millisecond epoch to microseconds', () => {
+    // 11-digit ms timestamp, e.g. 10000000000 = 2286-11-20 (still ms range)
+    const result = resolveJaegerTimeUs('10000000000', NOW_MS);
+    expect(result).toBe(10000000000 * 1_000);
   });
 
   it('returns null for an unrecognised expression', () => {

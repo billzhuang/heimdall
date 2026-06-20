@@ -62,9 +62,12 @@ export function resolveJaegerTimeUs(expr: string, nowMs: number): number | null 
     }
     return null;
   }
-  // Bare Unix second epoch string (no fractional part, ≤13 digits).
+  // Bare integer timestamp (no fractional part, ≤13 digits).
+  // ≤10 digits = Unix seconds (covers epoch through year 2286); multiply by 1_000_000 for µs.
+  // 11–13 digits = Unix milliseconds (standard JS Date.now() range); multiply by 1_000 for µs.
   if (/^\d{1,13}$/.test(expr)) {
-    return Number(expr) * 1_000_000;
+    const n = Number(expr);
+    return expr.length <= 10 ? n * 1_000_000 : n * 1_000;
   }
   // ISO8601 / RFC3339 — e.g. "2024-06-01T12:00:00Z".
   const ts = Date.parse(expr);
