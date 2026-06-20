@@ -41,7 +41,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -74,6 +74,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '- `prometheus_query`: query Prometheus for time-series metrics using PromQL. Query types: instant (single point in time) or range (time window with step). Use for golden signals — request rate, error rate, latency, saturation — and resource trends.',
     has('awsCli') &&
       '- `aws_cli`: run a single READ-ONLY AWS CLI command. Pass everything after `aws` as the\n  `args` string (e.g. "ec2 describe-instances --region us-east-1", "iam list-roles",\n  "eks describe-cluster --name my-cluster"). Only describe-*, get-*, list-*, show-*\n  subcommands are permitted. Use --query (JMESPath) to narrow output.',
+    has('trivyScan') &&
+      '- `trivy_scan`: scan a container image or IaC directory for CVEs and misconfigurations using Trivy.\n  Params: scanType ("image" | "fs" | "config" | "sbom"), target (image ref or path),\n  severity (e.g. "CRITICAL,HIGH"), format ("table" | "json" | "sarif" | "cyclonedx"), ignoreUnfixed (bool).\n  Typical workflow: get pod images with kubectl → trivy_scan each image ref. Requires trivy binary on PATH.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -112,7 +114,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
 - resource-analyzer — CPU/memory requests & limits, capacity, bottlenecks.
 - network-debugger — DNS, services, endpoints, ingress, connectivity.
-- security-auditor — RBAC, service accounts, security contexts, exposed secrets.
+- security-auditor — RBAC, service accounts, security contexts, exposed secrets, image CVE scanning (when trivy_scan enabled).
 - netpol-auditor — NetworkPolicy coverage audit: detect pods with no ingress/egress policy and suggest minimal NetworkPolicy templates.
 - triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
@@ -133,9 +135,9 @@ function subagentInstructions(focus: string, guidance: string): string {
 ${guidance}
 
 ## Read-only policy (enforced)
-You may only use the read-only \`kubectl\` tool; destructive subcommands are blocked.
-Never suggest running destructive commands yourself — report findings and remediation
-ideas back to the lead agent.
+You may only use the read-only cluster tools provided to you (e.g. kubectl, trivy_scan);
+destructive subcommands are blocked. Never suggest running destructive commands yourself
+— report findings and remediation ideas back to the lead agent.
 
 ## Response style
 Lead with the most important finding. Include a brief high-level "Thinking Summary"
@@ -197,6 +199,15 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
   report metadata (name, namespace, keys present) only, and never attempt to
   decode or print secret values even if they appear in tool output.
 - Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.
+
+## Image vulnerability scanning (when trivy_scan is available)
+- After auditing RBAC and security contexts, list unique container images from running pods
+  (including init containers — they run with the same privileges and may carry CVEs):
+  \`kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\\n"}{end}{range .spec.initContainers[*]}{.image}{"\\n"}{end}{end}'\`
+- For each unique image, call \`trivy_scan\` with scanType "image" and severity "CRITICAL,HIGH".
+- Report: image ref, CVE IDs, severity, fixed-in version, and whether a fix is available.
+- Prioritise images with CRITICAL CVEs that have available fixes — these are immediate action items.
+- If trivy_scan is not available (tool not listed), skip this section silently.
 
 ## NetworkPolicy coverage
 - Check whether NetworkPolicies exist in the namespace: \`kubectl get networkpolicy -n <ns> -o json\`.

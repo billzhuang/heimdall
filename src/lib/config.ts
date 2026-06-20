@@ -21,8 +21,10 @@ const ToolsSchema = v.nullish(
     prometheusQuery: v.nullish(v.boolean(), false),
     // Disabled by default: requires AWS CLI credentials in the environment.
     awsCli: v.nullish(v.boolean(), false),
+    // Disabled by default: requires trivy binary on PATH.
+    trivyScan: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
@@ -153,6 +155,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   helmRelease: true,
   prometheusQuery: true,
   awsCli: true,
+  trivyScan: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -167,6 +170,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   helm_release: 'helmRelease',
   prometheus_query: 'prometheusQuery',
   aws_cli: 'awsCli',
+  trivy_scan: 'trivyScan',
 };
 
 /**
