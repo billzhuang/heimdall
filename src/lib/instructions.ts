@@ -41,7 +41,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -76,6 +76,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '- `aws_cli`: run a single READ-ONLY AWS CLI command. Pass everything after `aws` as the\n  `args` string (e.g. "ec2 describe-instances --region us-east-1", "iam list-roles",\n  "eks describe-cluster --name my-cluster"). Only describe-*, get-*, list-*, show-*\n  subcommands are permitted. Use --query (JMESPath) to narrow output.',
     has('trivyScan') &&
       '- `trivy_scan`: scan a container image or IaC directory for CVEs and misconfigurations using Trivy.\n  Params: scanType ("image" | "fs" | "config" | "sbom"), target (image ref or path),\n  severity (e.g. "CRITICAL,HIGH"), format ("table" | "json" | "sarif" | "cyclonedx"), ignoreUnfixed (bool).\n  Typical workflow: get pod images with kubectl → trivy_scan each image ref. Requires trivy binary on PATH.',
+    has('kubecostQuery') &&
+      '- `kubecost_query`: query the Kubecost API for Kubernetes cost attribution (read-only).\n  Endpoints: "allocation" (namespace/workload cost breakdown) and "assets" (node/disk infrastructure costs).\n  Params: window (e.g. "7d", "24h", "lastweek"), aggregate (namespace/pod/deployment/controller/service/node),\n  namespace (optional filter for allocation queries), accumulate (bool, default true).\n  Use to answer FinOps questions: which namespace or workload is most expensive, cost trends over time.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -109,6 +111,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- aws-resource-analyzer — AWS resource inventory, configuration checks, quota/limit inspection.',
   ] : [];
 
+  const finopsSubagentLines = has('kubecostQuery') ? [
+    '- cost-analyzer — FinOps deep-dive: namespace/workload cost attribution, cost trend analysis, rightsizing recommendations using Kubecost data.',
+  ] : [];
+
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
@@ -121,7 +127,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
 - deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
 - gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
-- multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
+- multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -144,7 +150,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -162,6 +168,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'deployment-analyzer': 'Kubernetes Deployment deep-dive: replica counts, rollout status/history, HPA configuration, update strategy, container image versions, and deployment-level events.',
   'gitops-investigator': 'GitOps sync-state diagnosis: ArgoCD Application health and sync status, FluxCD Kustomization/HelmRelease reconciliation state, drift detection, and source repository status.',
   'multi-cluster-investigator': 'Cross-cluster investigation: query multiple Kubernetes contexts in a single session, correlate findings across cluster boundaries, and surface cross-cluster dependencies (shared service mesh, cross-cluster DNS, hub/spoke topology issues).',
+  'cost-analyzer': 'FinOps deep-dive: namespace/workload cost attribution via Kubecost, cost trend analysis, rightsizing recommendations, and cost-driver identification.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -417,6 +424,40 @@ Structure your findings as:
 - \`kubectl get jobs -A\` with \`context\` parameter — job status per cluster.
 - \`kubectl get configmap coredns -n kube-system -o yaml\` — DNS configuration per cluster.
 - Any \`kubectl get\` or \`kubectl describe\` call with the \`context\` parameter set to the target cluster.`,
+  ),
+  'cost-analyzer': subagentInstructions(
+    'You are a Kubernetes FinOps and cost analysis specialist.',
+    `## Focus
+- Identify which namespaces, deployments, and workloads are the top cost drivers.
+- Analyse cost trends over time to detect anomalies and cost spikes.
+- Cross-reference Kubecost cost data with kubectl resource requests/limits to surface rightsizing opportunities.
+- Highlight over-provisioned workloads (high requests vs. low actual usage) as savings opportunities.
+- Produce prioritised, actionable cost-reduction recommendations.
+
+## Investigation workflow
+1. Start with a high-level allocation query to rank namespaces by cost:
+   kubecost_query({ endpoint: "allocation", window: "7d", aggregate: "namespace" })
+2. Drill into the top namespaces — break down by deployment or controller:
+   kubecost_query({ endpoint: "allocation", window: "7d", aggregate: "deployment", namespace: "<top-ns>" })
+3. If the question is about infrastructure cost (nodes, disks), query assets:
+   kubecost_query({ endpoint: "assets", window: "7d", aggregate: "node" })
+4. For trend analysis, set accumulate to false to get time-series buckets:
+   kubecost_query({ endpoint: "allocation", window: "30d", aggregate: "namespace", accumulate: false })
+5. Correlate with kubectl: check resource requests vs. actual usage for top spenders:
+   kubectl args "top pods -n <ns> --containers" to see actual CPU/memory usage.
+   kubectl args "get pods -n <ns> -o json" to inspect requests and limits.
+
+## Reporting format
+Structure your findings as:
+1. **Top cost drivers** (table: namespace/workload, 7-day cost, % of total).
+2. **Cost anomalies** — any namespace/workload with unexpected cost spikes vs. prior period.
+3. **Rightsizing opportunities** — over-provisioned workloads where requests >> actual usage.
+4. **Recommendations** — prioritised list of actions with estimated savings.
+5. **Summary line**: "Cost analysis complete: top spender is <X> at $Y/week; estimated savings opportunity $Z/month."
+
+## Read-only constraint
+Never suggest scaling down or deleting resources yourself — report findings and suggest exact
+kubectl/Helm commands for the operator to run.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',

@@ -52,7 +52,7 @@ describe('buildInstructions', () => {
 
   it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
     const allEnabled = buildInstructions();
-    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli', 'trivyScan']));
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli', 'trivyScan', 'kubecostQuery']));
     expect(allEnabled).toBe(explicit);
   });
 
@@ -81,6 +81,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
   it('defines all specialist subagents', () => {
     expect(Object.keys(SUBAGENT_INSTRUCTIONS).sort()).toEqual([
       'aws-resource-analyzer',
+      'cost-analyzer',
       'crashloop-analyzer',
       'deployment-analyzer',
       'eks-troubleshooter',
