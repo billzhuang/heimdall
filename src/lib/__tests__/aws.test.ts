@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest';
 import { tokenizeAwsArgs, runAwsCli } from '../aws.ts';
 import { BLOCKED_PREFIX } from '../harness.ts';
 
+const BLOCKED_RE = new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+
 describe('tokenizeAwsArgs', () => {
   it('strips a leading aws token (lowercase)', () => {
     expect(tokenizeAwsArgs('aws ec2 describe-instances')).toEqual(['ec2', 'describe-instances']);
@@ -94,26 +96,26 @@ describe('runAwsCli — input validation (no exec)', () => {
 
   it('blocks destructive commands before exec (BLOCKED_PREFIX)', async () => {
     const result = await runAwsCli('aws ec2 terminate-instances --instance-ids i-123abc');
-    expect(result).toMatch(new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'));
+    expect(result).toMatch(BLOCKED_RE);
   });
 
   it('blocks ec2 delete-security-group before exec', async () => {
     const result = await runAwsCli('ec2 delete-security-group --group-id sg-123');
-    expect(result).toMatch(new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'));
+    expect(result).toMatch(BLOCKED_RE);
   });
 
   it('blocks rds delete-db-instance before exec', async () => {
     const result = await runAwsCli('aws rds delete-db-instance --db-instance-identifier mydb');
-    expect(result).toMatch(new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'));
+    expect(result).toMatch(BLOCKED_RE);
   });
 
   it('blocks iam attach-role-policy before exec', async () => {
     const result = await runAwsCli('aws iam attach-role-policy --role-name r --policy-arn a');
-    expect(result).toMatch(new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'));
+    expect(result).toMatch(BLOCKED_RE);
   });
 
   it('blocks unknown subcommands (default-deny)', async () => {
     const result = await runAwsCli('aws ec2 unknown-operation');
-    expect(result).toMatch(new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'));
+    expect(result).toMatch(BLOCKED_RE);
   });
 });

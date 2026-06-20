@@ -16,14 +16,14 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join as joinPath } from 'node:path';
+import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { writeAudit } from './audit.ts';
+import { writeAudit, type AuditConfig } from './audit.ts';
 export type { AuditConfig } from './audit.ts';
 
 const execFileAsync = promisify(execFile);

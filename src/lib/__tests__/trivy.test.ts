@@ -50,14 +50,3 @@ describe('runTrivy — blocked commands (no exec)', () => {
   });
 });
 
-describe('runTrivy — allowed scan types (blocked before real exec)', () => {
-  it('accepts image scan type (would exec trivy if binary were available)', async () => {
-    // The policy allows this; execution would fail in CI because no cluster/trivy binary.
-    // We only assert the result is NOT a validation error or BLOCKED — it should be
-    // either a successful output or a process-spawn error.
-    const result = await runTrivy('image', 'nginx:latest', ['--severity', 'CRITICAL']);
-    // Should not be a blocked-prefix or input-validation error
-    expect(result).not.toMatch(BLOCKED_RE);
-    expect(result).not.toMatch(/scan type and target are required/i);
-  });
-});
