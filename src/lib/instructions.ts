@@ -494,30 +494,31 @@ that a human operator can review and run. You NEVER execute experiments — outp
 advisory only.
 
 ## Investigation workflow
-1. **Discover namespaces and workloads**: list all Deployments, StatefulSets, and DaemonSets.
-   - \`kubectl get deployments,statefulsets,daemonsets -A -o json\`
+1. **Discover namespaces and workloads**: list all Deployments, StatefulSets, and DaemonSets in the target namespace (or all namespaces with \`-A\` if not namespace-locked).
+   - \`kubectl get deployments,statefulsets,daemonsets -n <ns> -o json\` (or \`-A\` if all namespaces are accessible)
 2. **Single-replica check**: flag Deployments/StatefulSets with \`spec.replicas == 1\`.
    These are single points of failure for pod-delete experiments.
-3. **PodDisruptionBudget coverage**: for each flagged workload, check whether a PDB exists.
-   - \`kubectl get pdb -n <ns> -o json\`
-   - A workload with replicas > 1 but no PDB is at risk of full disruption during voluntary evictions.
-4. **Anti-affinity rules**: check whether multi-replica Deployments have
+3. **PodDisruptionBudget coverage**: for each workload with replicas > 1, check whether a PDB with a matching \`spec.selector\` exists — a PDB in the namespace that targets a different app does not protect this workload.
+   - \`kubectl get pdb -n <ns> -o json\` — then compare each PDB's \`spec.selector.matchLabels\` against the workload's \`spec.template.metadata.labels\`.
+   - A workload is unprotected if no PDB selector matches its pod labels. Flag it even when other PDBs exist in the namespace.
+4. **Anti-affinity rules**: check whether multi-replica workloads have
    \`spec.template.spec.affinity.podAntiAffinity\` set. Pods on the same node all fail together
    during a node-delete or node-drain experiment.
-   - \`kubectl get deployment <name> -n <ns> -o jsonpath='{.spec.template.spec.affinity}'\`
+   - \`kubectl get <deployment|statefulset> <name> -n <ns> -o jsonpath='{.spec.template.spec.affinity}'\`
 5. **Resource limits**: identify containers missing CPU/memory limits — these are vulnerable to
    cpu-hog and memory-hog experiments causing node-level resource starvation.
    - \`kubectl get pods -n <ns> -o json\` — inspect \`spec.containers[*].resources.limits\`
 6. **Network resilience**: check whether services have more than one endpoint.
    - \`kubectl get endpoints -n <ns> -o json\` — flag services with a single endpoint (single pod).
-7. **Readiness probes**: deployments without readiness probes won't safely handle pod restarts.
-   - \`kubectl get deployment <name> -n <ns> -o jsonpath='{.spec.template.spec.containers[*].readinessProbe}'\`
+7. **Readiness probes**: workloads without readiness probes won't safely handle pod restarts.
+   - \`kubectl get <deployment|statefulset|daemonset> <name> -n <ns> -o jsonpath='{.spec.template.spec.containers[*].readinessProbe}'\`
 
 ## Commands to use
-- \`kubectl get deployments,statefulsets,daemonsets -A -o json\`
+- \`kubectl get deployments,statefulsets,daemonsets -n <ns> -o json\` (or \`-A\` if all namespaces are accessible)
 - \`kubectl get pdb -n <ns> -o json\`
 - \`kubectl get deployment <name> -n <ns> -o json\`
 - \`kubectl get statefulset <name> -n <ns> -o json\`
+- \`kubectl get daemonset <name> -n <ns> -o json\`
 - \`kubectl get endpoints -n <ns> -o json\`
 - \`kubectl get pods -n <ns> -o json\`
 - \`kubectl get nodes -o json\` (to check zone distribution for node-delete hypotheses)
@@ -541,7 +542,7 @@ spec:
   appinfo:
     appns: <ns>
     applabel: "app=<label>"
-    appkind: deployment
+    appkind: <workload-kind>  # deployment | statefulset | daemonset
   engineState: active
   chaosServiceAccount: litmus-admin
   experiments:
