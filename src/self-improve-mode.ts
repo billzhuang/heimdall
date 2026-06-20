@@ -125,7 +125,9 @@ Examples:
       `${taskHistory.length} task history entr${taskHistory.length === 1 ? 'y' : 'ies'}...\n\n`,
     );
     process.stdout.write('='.repeat(60) + '\n');
-    process.stdout.write(buildReflectionPrompt(entries, taskHistory) + '\n');
+    const useRag = config.learning?.rag?.enabled === true;
+    const ragTopK = config.learning?.rag?.topK ?? 10;
+    process.stdout.write(buildReflectionPrompt(entries, taskHistory, useRag, ragTopK) + '\n');
     process.stdout.write('='.repeat(60) + '\n');
     return;
   }
@@ -202,7 +204,9 @@ Examples:
         'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
       );
       process.stdout.write('='.repeat(60) + '\n\n');
-      process.stdout.write(buildReflectionPrompt(learningEntries, taskHistory) + '\n\n');
+      const useRag = config.learning?.rag?.enabled === true;
+      const ragTopK = config.learning?.rag?.topK ?? 10;
+      process.stdout.write(buildReflectionPrompt(learningEntries, taskHistory, useRag, ragTopK) + '\n\n');
       process.stdout.write('='.repeat(60) + '\n');
     } else {
       process.stdout.write(

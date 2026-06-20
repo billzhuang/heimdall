@@ -20,18 +20,54 @@ import { makePrometheusQuery } from '../tools/prometheus.ts';
 import { makeAwsCli } from '../tools/aws.ts';
 import { makeTrivyScan } from '../tools/trivy.ts';
 import { makeKubecostQuery } from '../tools/kubecost.ts';
+import { readFileSync } from 'node:fs';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
 import type { HeimdallConfig } from '../lib/config.ts';
 import { compileRules } from '../lib/regex-redact.ts';
 import { loadRunbooks } from '../lib/runbooks.ts';
+import { selectDiverseEntries, buildRagContext } from '../lib/rag.ts';
+import type { TaskHistoryEntry } from '../lib/task-history.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
 
 const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
 const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);
+
+/** Load task history synchronously for RAG context injection at agent startup. */
+function loadTaskHistorySync(logPath: string): TaskHistoryEntry[] {
+  try {
+    const raw = readFileSync(logPath, 'utf8');
+    return raw
+      .split('\n')
+      .filter((l) => l.trim())
+      .flatMap((l) => {
+        try {
+          return [JSON.parse(l) as TaskHistoryEntry];
+        } catch {
+          return [];
+        }
+      });
+  } catch {
+    return [];
+  }
+}
+
+const TASK_HISTORY_NAME = 'task-history.jsonl';
+
+const ragContext = (() => {
+  if (config.learning?.rag?.enabled !== true) return undefined;
+  const logPath = config.learning.file
+    ? resolve(config.learning.file)
+    : resolve(configDir, '..', 'scenarios', TASK_HISTORY_NAME);
+  const history = loadTaskHistorySync(logPath);
+  if (history.length === 0) return undefined;
+  const topK = config.learning.rag.topK ?? 5;
+  const diverse = selectDiverseEntries(history, topK);
+  return buildRagContext(diverse);
+})();
 
 // Typed against the config schema keys so TypeScript enforces that every key in
 // HeimdallConfig['tools'] has a corresponding tool here — adding a config key
@@ -75,7 +111,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default createAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext),
+  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext),
   tools: clusterTools,
   subagents,
 }));
