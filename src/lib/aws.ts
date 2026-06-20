@@ -8,11 +8,9 @@
  * - Output is capped to protect the model's context window.
  */
 import { execFile } from 'node:child_process';
-import { appendFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { validateAwsCommand } from './aws-safety.ts';
-import type { AuditConfig } from './kubectl.ts';
+import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 
@@ -23,34 +21,6 @@ const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 20_000;
 
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
-
-interface AuditEntry {
-  ts: string;
-  level: 'audit';
-  cmd: string;
-  allowed: boolean;
-  durationMs?: number;
-  outcome: 'ok' | 'blocked' | 'error';
-}
-
-async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | undefined): Promise<void> {
-  try {
-    if (!audit?.enabled) return;
-    const line = JSON.stringify(entry);
-    if (audit.file) {
-      try {
-        await mkdir(dirname(audit.file), { recursive: true });
-        await appendFile(audit.file, line + '\n', 'utf8');
-      } catch {
-        process.stderr.write(line + '\n');
-      }
-    } else {
-      process.stderr.write(line + '\n');
-    }
-  } catch {
-    // Audit failures must never disrupt the main execution path.
-  }
-}
 
 /** Cap large output so a single read can't blow past the model's context. */
 function truncate(text: string): string {

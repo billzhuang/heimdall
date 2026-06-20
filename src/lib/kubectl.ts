@@ -14,7 +14,7 @@
  */
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { appendFile, readFile, writeFile, mkdir, stat } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,6 +23,8 @@ import { BLOCKED_PREFIX } from './harness.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import { writeAudit, type AuditConfig } from './audit.ts';
+export type { AuditConfig } from './audit.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -38,41 +40,6 @@ const evalMockCache = new Map<string, Record<string, string>>();
 /** Sentinel returned when a command succeeds but produces no stdout/stderr. */
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
 
-export interface AuditConfig {
-  enabled: boolean;
-  /** Path to a JSONL file. Omit (or set null) to write to stderr. */
-  file?: string | null;
-}
-
-interface AuditEntry {
-  ts: string;
-  level: 'audit';
-  cmd: string;
-  context?: string;
-  allowed: boolean;
-  cached?: boolean;
-  durationMs?: number;
-  outcome: 'ok' | 'blocked' | 'error';
-}
-
-async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | undefined): Promise<void> {
-  try {
-    if (!audit?.enabled) return;
-    const line = JSON.stringify(entry);
-    if (audit.file) {
-      try {
-        await mkdir(dirname(audit.file), { recursive: true });
-        await appendFile(audit.file, line + '\n', 'utf8');
-      } catch {
-        process.stderr.write(line + '\n');
-      }
-    } else {
-      process.stderr.write(line + '\n');
-    }
-  } catch {
-    // Audit failures must never disrupt the main execution path.
-  }
-}
 
 export interface RunKubectlOptions {
   /** Optional cluster context. Injected as `--context=<ctx>` when the
