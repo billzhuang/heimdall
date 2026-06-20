@@ -15,6 +15,7 @@
     "triage": "tsx src/triage-mode.ts",
     "eval": "tsx src/eval-mode.ts",
     "self-improve": "tsx src/self-improve-mode.ts",
+    "self-loop": "tsx src/self-loop-mode.ts",
     "alert": "tsx src/alert-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

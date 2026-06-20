@@ -36,6 +36,7 @@ Usage: heimdall -p <prompt> [--json]
        heimdall triage [-n <namespace>] [-A]
        heimdall eval [--scenario <name>]
        heimdall self-improve [--scenario <name>] [--reflect] [--from-log]
+       heimdall self-loop [--max-iterations <N>] [--dry-run] [--backend <name>]
 
 Run the Heimdall Kubernetes SRE agent.
 
@@ -62,6 +63,10 @@ Subcommands:
   self-improve          Run evals and record failures as learning entries for instruction improvement
     --reflect             After running, print a meta-prompt for proposing instruction fixes
     --from-log            Reflect on existing scenarios/learning-log.jsonl instead of re-running evals
+  self-loop             Automated closed-loop: eval → LLM reflect → apply patches → re-eval → keep/revert
+    --max-iterations <N>  Maximum improvement iterations (default: 3)
+    --dry-run             Show LLM proposals without applying them to instructions.ts
+    --backend <name>      LLM backend for reflection: 'claude-cli' (default) or 'codex-cli'
 
 Examples:
   heimdall -p "Why is my frontend deployment crash-looping in prod?"
@@ -77,6 +82,9 @@ Examples:
   heimdall self-improve                   # run evals, record failures in learning log
   heimdall self-improve --reflect         # run evals + print reflection prompt
   heimdall self-improve --reflect --from-log  # reflect on prior failures
+  heimdall self-loop                          # run automated self-improvement loop
+  heimdall self-loop --max-iterations 5       # run up to 5 iterations
+  heimdall self-loop --dry-run                # show proposals only, do not apply
 
 JSON output schema (--json):
   { "summary": "…", "answer": "…", "severity": "warning",
@@ -107,6 +115,8 @@ EVAL=false
 EVAL_ARGS=()
 SELF_IMPROVE=false
 SELF_IMPROVE_ARGS=()
+SELF_LOOP=false
+SELF_LOOP_ARGS=()
 JSON_OUTPUT=false
 NO_LEARN=false
 # Backend: 'flue' (default, full agent with tool use) or 'claude-cli' (external LLM via claude -p).
@@ -133,6 +143,13 @@ while [[ $# -gt 0 ]]; do
       shift
       # Pass remaining args to the self-improve script.
       SELF_IMPROVE_ARGS=("$@")
+      break
+      ;;
+    self-loop)
+      SELF_LOOP=true
+      shift
+      # Pass remaining args to the self-loop script.
+      SELF_LOOP_ARGS=("$@")
       break
       ;;
     -p|--prompt)
@@ -183,7 +200,7 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, 'eval' for synthetic RCA evaluation, or 'self-improve' for the self-improvement loop" >&2
+      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, 'eval' for synthetic RCA evaluation, 'self-improve' for the self-improvement loop, or 'self-loop' for the automated closed-loop" >&2
       show_help >&2
       exit 1
       ;;
@@ -201,6 +218,10 @@ if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$TRIAGE" == "true" ]]; then
 fi
 if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
   echo "Error: --json is not compatible with the self-improve subcommand" >&2
+  exit 1
+fi
+if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$SELF_LOOP" == "true" ]]; then
+  echo "Error: --json is not compatible with the self-loop subcommand" >&2
   exit 1
 fi
 if [[ "$BACKEND" == "claude-cli" ]] && [[ "$WATCH" == "true" ]]; then
@@ -264,6 +285,23 @@ if [[ "$SELF_IMPROVE" == "true" ]]; then
     exec "$TSX" "$SELF_IMPROVE_SOURCE" "${SELF_IMPROVE_ARGS[@]}"
   else
     echo "Error: self-improve mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
+fi
+
+# --- Self-loop mode -------------------------------------------------------
+if [[ "$SELF_LOOP" == "true" ]]; then
+  SELF_LOOP_COMPILED="${ROOT_DIR}/dist/self-loop-mode.mjs"
+  SELF_LOOP_SOURCE="${ROOT_DIR}/src/self-loop-mode.ts"
+
+  if [[ -f "$SELF_LOOP_COMPILED" ]]; then
+    exec node "$SELF_LOOP_COMPILED" "${SELF_LOOP_ARGS[@]}"
+  elif [[ -x "$TSX" ]] && [[ -f "$SELF_LOOP_SOURCE" ]]; then
+    exec "$TSX" "$SELF_LOOP_SOURCE" "${SELF_LOOP_ARGS[@]}"
+  else
+    echo "Error: self-loop mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1
