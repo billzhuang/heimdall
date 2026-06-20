@@ -437,8 +437,8 @@ Structure your findings as:
 ## Investigation workflow
 1. Start with a high-level allocation query to rank namespaces by cost:
    kubecost_query({ endpoint: "allocation", window: "7d", aggregate: "namespace" })
-2. Drill into the top namespaces — break down by deployment or controller:
-   kubecost_query({ endpoint: "allocation", window: "7d", aggregate: "deployment", namespace: "<top-ns>" })
+2. Drill into the top namespaces — break down by controller:
+   kubecost_query({ endpoint: "allocation", window: "7d", aggregate: "controller", namespace: "<top-ns>" })
 3. If the question is about infrastructure cost (nodes, disks), query assets:
    kubecost_query({ endpoint: "assets", window: "7d", aggregate: "node" })
 4. For trend analysis, set accumulate to false to get time-series buckets:

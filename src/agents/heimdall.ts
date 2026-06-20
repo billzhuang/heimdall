@@ -46,7 +46,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   prometheusQuery: makePrometheusQuery(config.prometheus, regexRedactionRules),
   awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
   trivyScan: makeTrivyScan({ audit: config.audit }, regexRedactionRules),
-  kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules),
+  kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules, lockedNs),
 };
 
 const enabledToolKeys = new Set(

@@ -130,7 +130,7 @@ describe('runKubecostQuery — assets', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await runKubecostQuery('assets', { window: '7d', aggregate: 'node' }, BASE_CONFIG);
+    await runKubecostQuery('assets', { window: '7d', aggregate: 'cluster' }, BASE_CONFIG);
 
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).toContain('/model/assets');
@@ -143,13 +143,87 @@ describe('runKubecostQuery — assets', () => {
 
     const result = await runKubecostQuery(
       'assets',
-      { window: '7d', aggregate: 'node', namespace: 'prod' },
+      { window: '7d', aggregate: 'cluster', namespace: 'prod' },
       BASE_CONFIG,
     );
 
     expect(result).toMatch(/Error/);
     expect(result).toMatch(/namespace.*allocation|allocation.*namespace/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('treats null namespace as absent for assets queries (no error, no filterNamespaces)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runKubecostQuery(
+      'assets',
+      { window: '7d', aggregate: 'cluster', namespace: null },
+      BASE_CONFIG,
+    );
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('filterNamespaces');
+    expect(result).not.toMatch(/Error/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Namespace lockdown
+// ---------------------------------------------------------------------------
+
+describe('runKubecostQuery — namespace lockdown', () => {
+  const LOCKED_CONFIG: KubecostConfig = { ...BASE_CONFIG, lockedNamespace: 'prod' };
+
+  it('forces filterNamespaces to the locked namespace for allocation queries', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, LOCKED_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain('filterNamespaces=prod');
+  });
+
+  it('allows allocation queries that explicitly match the locked namespace', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runKubecostQuery(
+      'allocation',
+      { window: '7d', aggregate: 'namespace', namespace: 'prod' },
+      LOCKED_CONFIG,
+    );
+
+    expect(result).not.toMatch(/BLOCKED/);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('blocks allocation queries that specify a different namespace than the locked one', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runKubecostQuery(
+      'allocation',
+      { window: '7d', aggregate: 'namespace', namespace: 'staging' },
+      LOCKED_CONFIG,
+    );
+
+    expect(result).toMatch(/BLOCKED/);
+    expect(result).toContain('prod');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('allows assets queries even when namespace is locked (lockdown only applies to allocation)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runKubecostQuery('assets', { window: '7d', aggregate: 'cluster' }, LOCKED_CONFIG);
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('filterNamespaces');
   });
 });
 
