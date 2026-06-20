@@ -15,14 +15,16 @@
  *   heimdall self-loop --dry-run
  *   heimdall self-loop --backend claude-cli
  */
-import { spawn } from 'node:child_process';
-import { writeFile, unlink, readdir, readFile, mkdir } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
-import { tmpdir } from 'node:os';
+import { writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load as loadYaml } from 'js-yaml';
-import type { OneShotFinding } from './lib/format-output.ts';
+import {
+  loadScenarios,
+  runAllScenarios,
+  resolveBinPath,
+  type EvalResult,
+  type RunCallbacks,
+} from './lib/eval-runner.ts';
 import {
   buildLearningEntry,
   appendLearningEntry,
@@ -45,158 +47,9 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const EVAL_TIMEOUT_MS = 120_000;
 const LEARNING_LOG_NAME = 'learning-log.jsonl';
 const TASK_HISTORY_NAME = 'task-history.jsonl';
 const DEFAULT_MAX_ITERATIONS = 3;
-
-interface EvalScenario {
-  description: string;
-  mocks: Record<string, string>;
-  prompt: string;
-  expectedSeverity?: 'critical' | 'warning' | 'info';
-  expectedKeywords?: string[];
-  forbiddenKeywords?: string[];
-}
-
-interface EvalResult {
-  scenario: string;
-  prompt: string;
-  passed: boolean;
-  failures: string[];
-  output?: OneShotFinding;
-}
-
-async function loadScenario(filePath: string): Promise<EvalScenario> {
-  const raw = await readFile(filePath, 'utf8');
-  const parsed = loadYaml(raw) as Record<string, unknown>;
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Invalid scenario file: ${filePath} is not a valid YAML object`);
-  }
-  if (typeof parsed['prompt'] !== 'string' || !parsed['prompt']) {
-    throw new Error(`Invalid scenario file: ${filePath} — missing required field "prompt"`);
-  }
-  if (typeof parsed['description'] !== 'string') {
-    throw new Error(`Invalid scenario file: ${filePath} — missing required field "description"`);
-  }
-  return parsed as unknown as EvalScenario;
-}
-
-async function runScenario(scenarioPath: string, scenario: EvalScenario): Promise<EvalResult> {
-  const tmpFile = join(tmpdir(), `heimdall-eval-${randomBytes(8).toString('hex')}.json`);
-  await writeFile(tmpFile, JSON.stringify(scenario.mocks), 'utf8');
-
-  const failures: string[] = [];
-  let finding: OneShotFinding | undefined;
-
-  try {
-    const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
-
-    const rawOutput = await new Promise<string>((resolve, reject) => {
-      let settled = false;
-      const safeReject = (err: Error) => { if (!settled) { settled = true; reject(err); } };
-      const safeResolve = (val: string) => { if (!settled) { settled = true; resolve(val); } };
-
-      const chunks: Buffer[] = [];
-      const errChunks: Buffer[] = [];
-
-      const child = spawn(binPath, ['-p', scenario.prompt, '--json'], {
-        env: { ...process.env, HEIMDALL_KUBECTL_MOCK: tmpFile, HEIMDALL_EVAL_MODE: '1' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-
-      child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-      child.stderr.on('data', (chunk: Buffer) => errChunks.push(chunk));
-
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        safeReject(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
-      }, EVAL_TIMEOUT_MS);
-
-      child.on('close', (code: number | null) => {
-        clearTimeout(timer);
-        const out = Buffer.concat(chunks).toString('utf8').trim();
-        if (code !== 0) {
-          const errOut = Buffer.concat(errChunks).toString('utf8').trim();
-          safeReject(new Error(`agent exited with code ${code}: ${errOut || out}`));
-        } else {
-          safeResolve(out);
-        }
-      });
-
-      child.on('error', (err: Error) => { clearTimeout(timer); safeReject(err); });
-    });
-
-    try {
-      const parsed = JSON.parse(rawOutput);
-      if (!parsed || typeof parsed !== 'object') {
-        failures.push(`Invalid JSON output: expected an object, got ${rawOutput.slice(0, 200)}`);
-      } else {
-        finding = parsed as OneShotFinding;
-      }
-    } catch {
-      failures.push(`Failed to parse JSON output: ${rawOutput.slice(0, 200)}`);
-    }
-
-    if (finding) {
-      if (scenario.expectedSeverity && finding.severity !== scenario.expectedSeverity) {
-        failures.push(`Severity: expected "${scenario.expectedSeverity}", got "${finding.severity}"`);
-      }
-      const fullText = `${finding.summary ?? ''} ${finding.answer ?? ''}`.toLowerCase();
-      for (const kw of scenario.expectedKeywords ?? []) {
-        if (!fullText.includes(kw.toLowerCase())) {
-          failures.push(`Missing expected keyword: "${kw}"`);
-        }
-      }
-      for (const kw of scenario.forbiddenKeywords ?? []) {
-        if (fullText.includes(kw.toLowerCase())) {
-          failures.push(`Found forbidden keyword: "${kw}"`);
-        }
-      }
-    }
-  } catch (err) {
-    failures.push(`Agent error: ${err instanceof Error ? err.message : String(err)}`);
-  } finally {
-    try { await unlink(tmpFile); } catch { /* ignore */ }
-  }
-
-  return { scenario: scenario.description, prompt: scenario.prompt, passed: failures.length === 0, failures, output: finding };
-}
-
-async function loadScenarios(
-  scenariosDir: string,
-  filter?: string,
-): Promise<Array<{ path: string; scenario: EvalScenario }>> {
-  const files = await readdir(scenariosDir);
-  const yamlFiles = files.filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
-  const matched = filter ? yamlFiles.filter(f => f.toLowerCase().includes(filter.toLowerCase())) : yamlFiles;
-  if (matched.length === 0 && filter) {
-    throw new Error(`No scenario files matching "${filter}" found in ${scenariosDir}`);
-  }
-  return Promise.all(
-    matched.map(async file => {
-      const filePath = join(scenariosDir, file);
-      const scenario = await loadScenario(filePath);
-      return { path: filePath, scenario };
-    }),
-  );
-}
-
-async function runAllScenarios(scenarios: Array<{ path: string; scenario: EvalScenario }>): Promise<EvalResult[]> {
-  const results: EvalResult[] = [];
-  for (const { path: scenarioPath, scenario } of scenarios) {
-    process.stdout.write(`    Running: ${scenario.description}\n`);
-    const result = await runScenario(scenarioPath, scenario);
-    results.push(result);
-    if (result.passed) {
-      process.stdout.write(`    ✓ PASS  ${result.scenario}\n`);
-    } else {
-      process.stdout.write(`    ✗ FAIL  ${result.scenario}\n`);
-      for (const f of result.failures) process.stdout.write(`           - ${f}\n`);
-    }
-  }
-  return results;
-}
 
 async function callLlm(prompt: string, backend: string, timeoutMs: number): Promise<string> {
   if (backend === 'codex-cli') {
@@ -246,7 +99,7 @@ async function main(): Promise<void> {
       scenarioFilter = args[i].slice('--scenario='.length);
     } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
       cliLogPath = args[++i];
-    } else if ((args[i] === '--timeout') && args[i + 1]) {
+    } else if (args[i] === '--timeout' && args[i + 1]) {
       reflectionTimeoutMs = parseInt(args[++i], 10) * 1000;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(`Usage: heimdall self-loop [options]
@@ -305,8 +158,9 @@ Examples:
     ? resolve(config.learning.file)
     : join(scenariosDir, TASK_HISTORY_NAME);
   const instructionsPath = resolve(__dirname, 'lib', 'instructions.ts');
+  const binPath = resolveBinPath(__dirname);
 
-  let scenarios: Array<{ path: string; scenario: EvalScenario }>;
+  let scenarios: Awaited<ReturnType<typeof loadScenarios>>;
   try {
     scenarios = await loadScenarios(scenariosDir, scenarioFilter);
   } catch (err) {
@@ -325,9 +179,25 @@ Examples:
 
   const iterationHistory: IterationResult[] = [];
 
+  const callbacks: RunCallbacks = {
+    onBefore: name => process.stdout.write(`    Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`    ✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`    ✗ FAIL  ${result.scenario}\n`);
+        for (const f of result.failures) process.stdout.write(`           - ${f}\n`);
+      }
+    },
+  };
+
+  const runAndPrint = async (label: string) => {
+    process.stdout.write(`${label}\n`);
+    return runAllScenarios(binPath, scenarios, callbacks);
+  };
+
   // Baseline run.
-  process.stdout.write(`Baseline evaluation...\n`);
-  let currentResults = await runAllScenarios(scenarios);
+  let currentResults = await runAndPrint('Baseline evaluation...');
   let currentScore = scoreResults(currentResults);
   process.stdout.write(`Baseline score: ${(currentScore * 100).toFixed(0)}% (${currentResults.filter(r => r.passed).length}/${currentResults.length} passed)\n\n`);
 
@@ -410,8 +280,7 @@ Examples:
     }
 
     // Re-score.
-    process.stdout.write(`Re-running evals after patch...\n`);
-    const newResults = await runAllScenarios(scenarios);
+    const newResults = await runAndPrint('Re-running evals after patch...');
     const newScore = scoreResults(newResults);
     const improved = newScore > currentScore;
 
@@ -462,11 +331,9 @@ Examples:
         ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
       );
     }
-    const finalScore = currentScore;
-    process.stdout.write(`\nFinal score: ${(finalScore * 100).toFixed(0)}%\n`);
+    process.stdout.write(`\nFinal score: ${(currentScore * 100).toFixed(0)}%\n`);
 
-    const anyImproved = iterationHistory.some(r => r.improved);
-    if (anyImproved) {
+    if (iterationHistory.some(r => r.improved)) {
       process.stdout.write('instructions.ts was updated. Review changes with: git diff src/lib/instructions.ts\n');
     }
   }
