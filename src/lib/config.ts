@@ -105,6 +105,22 @@ const RunbookEntrySchema = v.object({
   tags: v.nullish(v.array(v.string()), []),
 });
 
+// PagerDuty alert source — maps PD service names to K8s targets.
+const AlertPagerDutySchema = v.nullish(
+  v.object({
+    enabled: v.nullish(v.boolean(), false),
+    // Maps PD service.name → "namespace" or "namespace/deployment".
+    serviceMap: v.nullish(v.record(v.string(), v.string()), {}),
+  }),
+  { enabled: false, serviceMap: {} },
+);
+
+const AlertSchema = v.nullish(
+  v.object({
+    pagerduty: AlertPagerDutySchema,
+  }),
+);
+
 // Learning config — controls real-task history logging for self-improvement.
 const LearningSchema = v.nullish(
   v.object({
@@ -155,6 +171,8 @@ const HeimdallConfigSchema = v.object({
   slack: SlackSchema,
   // Task-history learning log (enabled by default).
   learning: LearningSchema,
+  // Alert source configuration (PagerDuty webhook parser, etc.).
+  alert: AlertSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
