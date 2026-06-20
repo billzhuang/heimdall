@@ -84,6 +84,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'crashloop-analyzer',
       'deployment-analyzer',
       'eks-troubleshooter',
+      'gitops-investigator',
       'iam-auditor',
       'log-analyzer',
       'netpol-auditor',
@@ -180,6 +181,48 @@ describe('netpol-auditor subagent', () => {
     const inst = SUBAGENT_INSTRUCTIONS['netpol-auditor'];
     expect(inst).toMatch(/template/i);
     expect(inst).toMatch(/deny-all/i);
+  });
+});
+
+describe('gitops-investigator subagent', () => {
+  it('is listed in the specialist subagents section of buildInstructions', () => {
+    const out = buildInstructions();
+    expect(out).toContain('gitops-investigator');
+  });
+
+  it('instructions cover both ArgoCD and FluxCD', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toMatch(/ArgoCD/i);
+    expect(inst).toMatch(/FluxCD/i);
+  });
+
+  it('instructions reference the ArgoCD Application CRD', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toContain('applications.argoproj.io');
+  });
+
+  it('instructions reference the FluxCD Kustomization and HelmRelease CRDs', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toContain('kustomizations.kustomize.toolkit.fluxcd.io');
+    expect(inst).toContain('helmreleases.helm.toolkit.fluxcd.io');
+  });
+
+  it('instructions include sync status and health fields to inspect', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toMatch(/sync/i);
+    expect(inst).toMatch(/health/i);
+    expect(inst).toMatch(/OutOfSync|Synced/);
+  });
+
+  it('instructions mention source repository checks', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toContain('gitrepositories.source.toolkit.fluxcd.io');
+  });
+
+  it('rereads the read-only policy', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toMatch(/read-only/i);
+    expect(inst).toMatch(/Thinking Summary/);
   });
 });
 
