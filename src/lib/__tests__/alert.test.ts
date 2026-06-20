@@ -259,6 +259,19 @@ describe('parsePagerDutyV2Payload', () => {
     const payload = { messages: [{ type: 'incident.trigger' }] };
     expect(parsePagerDutyV2Payload(payload)).toEqual([]);
   });
+
+  it('parses flat V2 shape with incident at message root (no data wrapper)', () => {
+    const payload = {
+      messages: [{
+        type: 'incident.trigger',
+        incident: { id: 'P999', title: 'Flat V2', urgency: 'high', service: { name: 'svc-flat' } },
+      }],
+    };
+    const alerts = parsePagerDutyV2Payload(payload);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].alertname).toBe('Flat V2');
+    expect(alerts[0].labels['incident_id']).toBe('P999');
+  });
 });
 
 // ── parsePagerDutyV3Payload ──────────────────────────────────────────────────
@@ -272,7 +285,8 @@ const PD_V3_PAYLOAD = {
       title: 'Memory pressure on worker nodes',
       status: 'triggered',
       urgency: 'high',
-      service: { id: 'SVC99', name: 'worker-pool' },
+      // V3 service references use `summary` as the display name (no `name` field).
+      service: { id: 'SVC99', summary: 'worker-pool' },
     },
   },
 };
@@ -317,6 +331,30 @@ describe('parsePagerDutyV3Payload', () => {
 
   it('returns empty array when neither event nor events key is present', () => {
     expect(parsePagerDutyV3Payload({})).toEqual([]);
+  });
+
+  it('reads service name from summary field (V3 reference format)', () => {
+    const alerts = parsePagerDutyV3Payload(PD_V3_PAYLOAD);
+    expect(alerts[0].labels['service']).toBe('worker-pool');
+    expect(alerts[0].deployment).toBe('worker-pool');
+  });
+
+  it('falls back to service.name when summary is absent', () => {
+    const payload = {
+      event: {
+        event_type: 'incident.triggered',
+        data: { id: 'P1', title: 'Test', urgency: 'low', service: { name: 'my-svc' } },
+      },
+    };
+    const alerts = parsePagerDutyV3Payload(payload);
+    expect(alerts[0].labels['service']).toBe('my-svc');
+  });
+
+  it('does not crash when eventList contains a null element', () => {
+    const payload = { events: [null, { data: { id: 'P1', title: 'OK', urgency: 'high', service: { name: 'svc' } } }] };
+    const alerts = parsePagerDutyV3Payload(payload);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].alertname).toBe('OK');
   });
 });
 

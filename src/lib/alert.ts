@@ -95,7 +95,9 @@ interface PagerDutyV2Incident {
 
 interface PagerDutyV2Message {
   type?: string;
+  // V2 wraps under data.incident; some older/variant payloads expose incident at the top level.
   data?: { incident?: PagerDutyV2Incident };
+  incident?: PagerDutyV2Incident;
 }
 
 interface PagerDutyV2Payload {
@@ -110,7 +112,8 @@ interface PagerDutyV3Incident {
   title?: string;
   status?: string;
   urgency?: string;
-  service?: { id?: string; name?: string };
+  // V3 service references use `summary` as the display name; `name` is absent.
+  service?: { id?: string; name?: string; summary?: string };
 }
 
 interface PagerDutyV3Payload {
@@ -181,10 +184,11 @@ export function parsePagerDutyV2Payload(
   const p = payload as PagerDutyV2Payload;
   const messages = Array.isArray(p.messages) ? p.messages : [];
   return messages.flatMap((msg) => {
-    const incident = msg?.data?.incident;
+    // Support both data-wrapped (`msg.data.incident`) and flat (`msg.incident`) V2 shapes.
+    const incident = msg?.data?.incident ?? msg?.incident;
     if (!incident) return [];
     const runbookUrl = incident.links
-      ?.find((l) => l.text?.toLowerCase().includes('runbook'))
+      ?.find((l) => l?.text?.toLowerCase()?.includes('runbook'))
       ?.href;
     return [buildPdAlert(
       incident.title, incident.id, incident.status, incident.urgency,
@@ -208,11 +212,14 @@ export function parsePagerDutyV3Payload(
     : p.event
       ? [p.event]
       : [];
-  return eventList.flatMap(({ data: incident }) => {
+  return eventList.flatMap((evt) => {
+    const incident = evt?.data;
     if (!incident) return [];
+    // V3 service references expose the display name as `summary`; fall back to `name` for compat.
+    const serviceName = incident.service?.summary ?? incident.service?.name;
     return [buildPdAlert(
       incident.title, incident.id, incident.status, incident.urgency,
-      incident.service?.name, undefined, serviceMap,
+      serviceName, undefined, serviceMap,
     )];
   });
 }
