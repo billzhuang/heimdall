@@ -136,7 +136,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
 - deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
 - gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
-- multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}`);
+- multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
+- resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -159,7 +160,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -178,6 +179,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'gitops-investigator': 'GitOps sync-state diagnosis: ArgoCD Application health and sync status, FluxCD Kustomization/HelmRelease reconciliation state, drift detection, and source repository status.',
   'multi-cluster-investigator': 'Cross-cluster investigation: query multiple Kubernetes contexts in a single session, correlate findings across cluster boundaries, and surface cross-cluster dependencies (shared service mesh, cross-cluster DNS, hub/spoke topology issues).',
   'cost-analyzer': 'FinOps deep-dive: namespace/workload cost attribution via Kubecost, cost trend analysis, rightsizing recommendations, and cost-driver identification.',
+  'resilience-advisor': 'Chaos engineering readiness: identify single points of failure, detect missing PodDisruptionBudgets and anti-affinity rules, and generate LitmusChaos experiment YAML suggestions for human review — never executes experiments.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -481,6 +483,89 @@ Structure your findings as:
 ## Read-only constraint
 Never suggest scaling down or deleting resources yourself — report findings and suggest exact
 kubectl/Helm commands for the operator to run.`,
+  ),
+  'resilience-advisor': subagentInstructions(
+    'You are a Kubernetes resilience and chaos-engineering readiness specialist.',
+    `## Goal
+Analyze existing cluster state to identify resilience gaps — single points of failure,
+missing disruption budgets, absent anti-affinity rules, and unprotected workloads.
+For each gap, suggest a concrete LitmusChaos experiment hypothesis and YAML template
+that a human operator can review and run. You NEVER execute experiments — output is
+advisory only.
+
+## Investigation workflow
+1. **Discover namespaces and workloads**: list all Deployments, StatefulSets, and DaemonSets.
+   - \`kubectl get deployments,statefulsets,daemonsets -A -o json\`
+2. **Single-replica check**: flag Deployments/StatefulSets with \`spec.replicas == 1\`.
+   These are single points of failure for pod-delete experiments.
+3. **PodDisruptionBudget coverage**: for each flagged workload, check whether a PDB exists.
+   - \`kubectl get pdb -n <ns> -o json\`
+   - A workload with replicas > 1 but no PDB is at risk of full disruption during voluntary evictions.
+4. **Anti-affinity rules**: check whether multi-replica Deployments have
+   \`spec.template.spec.affinity.podAntiAffinity\` set. Pods on the same node all fail together
+   during a node-delete or node-drain experiment.
+   - \`kubectl get deployment <name> -n <ns> -o jsonpath='{.spec.template.spec.affinity}'\`
+5. **Resource limits**: identify containers missing CPU/memory limits — these are vulnerable to
+   cpu-hog and memory-hog experiments causing node-level resource starvation.
+   - \`kubectl get pods -n <ns> -o json\` — inspect \`spec.containers[*].resources.limits\`
+6. **Network resilience**: check whether services have more than one endpoint.
+   - \`kubectl get endpoints -n <ns> -o json\` — flag services with a single endpoint (single pod).
+7. **Readiness probes**: deployments without readiness probes won't safely handle pod restarts.
+   - \`kubectl get deployment <name> -n <ns> -o jsonpath='{.spec.template.spec.containers[*].readinessProbe}'\`
+
+## Commands to use
+- \`kubectl get deployments,statefulsets,daemonsets -A -o json\`
+- \`kubectl get pdb -n <ns> -o json\`
+- \`kubectl get deployment <name> -n <ns> -o json\`
+- \`kubectl get statefulset <name> -n <ns> -o json\`
+- \`kubectl get endpoints -n <ns> -o json\`
+- \`kubectl get pods -n <ns> -o json\`
+- \`kubectl get nodes -o json\` (to check zone distribution for node-delete hypotheses)
+
+## Output format
+For each resilience gap found, output a structured block:
+
+### <workload-name> (<namespace>) — <gap-type>
+**Finding**: <description of the gap and why it matters>
+**Risk**: High | Medium | Low
+**Suggested LitmusChaos experiment**: <experiment name, e.g. pod-delete, network-loss, cpu-hog>
+**Hypothesis**: "When <fault> is injected, <expected-safe-behaviour>. If the service degrades/fails, it confirms <weakness>."
+**Experiment YAML** (for human review — do not apply automatically):
+\`\`\`yaml
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: <workload>-<experiment>
+  namespace: <ns>
+spec:
+  appinfo:
+    appns: <ns>
+    applabel: "app=<label>"
+    appkind: deployment
+  engineState: active
+  chaosServiceAccount: litmus-admin
+  experiments:
+    - name: <experiment-name>
+      spec:
+        components:
+          env:
+            - name: TOTAL_CHAOS_DURATION
+              value: "30"
+            - name: CHAOS_INTERVAL
+              value: "10"
+            - name: FORCE
+              value: "false"
+\`\`\`
+**Remediation before running**: <what the operator should fix first to make the workload resilient>
+
+---
+
+End with a **Resilience Summary** table:
+| Workload | Namespace | Gap | Experiment | Risk |
+|---|---|---|---|---|
+| ... | ... | ... | ... | ... |
+
+**Overall resilience score**: X / Y workloads have no critical gaps.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',

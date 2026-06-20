@@ -92,6 +92,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'netpol-auditor',
       'network-debugger',
       'oomkill-analyzer',
+      'resilience-advisor',
       'resource-analyzer',
       'security-auditor',
       'triage',
