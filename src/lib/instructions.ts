@@ -118,7 +118,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
 - deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
-- gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
+- gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
+- multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -141,7 +142,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -158,6 +159,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'aws-resource-analyzer': 'AWS resource inspection: EC2, RDS, S3, Lambda, service quotas, resource inventory, and configuration checks across AWS services.',
   'deployment-analyzer': 'Kubernetes Deployment deep-dive: replica counts, rollout status/history, HPA configuration, update strategy, container image versions, and deployment-level events.',
   'gitops-investigator': 'GitOps sync-state diagnosis: ArgoCD Application health and sync status, FluxCD Kustomization/HelmRelease reconciliation state, drift detection, and source repository status.',
+  'multi-cluster-investigator': 'Cross-cluster investigation: query multiple Kubernetes contexts in a single session, correlate findings across cluster boundaries, and surface cross-cluster dependencies (shared service mesh, cross-cluster DNS, hub/spoke topology issues).',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -349,6 +351,61 @@ Never expose credentials, secret values, or access keys in output.`,
 - \`kubectl get events -n <ns> --field-selector involvedObject.name=<deployment-name>,involvedObject.kind=Deployment\`
 - \`kubectl get events -n <ns> --field-selector involvedObject.name=<replicaset-name>,involvedObject.kind=ReplicaSet\`
 - \`kubectl get events -n <ns> --field-selector involvedObject.name=<pod-name>,involvedObject.kind=Pod\``,
+  ),
+  'multi-cluster-investigator': subagentInstructions(
+    'You are a multi-cluster Kubernetes investigation specialist.',
+    `## Focus
+Investigate issues that span multiple Kubernetes clusters in a single session. Your job
+is to query each relevant cluster context, correlate findings across cluster boundaries,
+and surface cross-cluster root causes that a single-cluster investigation would miss.
+
+## Investigation workflow
+1. **Discover contexts**: call \`list_contexts\` to enumerate all available kubeconfig contexts.
+2. **Scope**: if the user specified target contexts (e.g. "investigate cluster-a and cluster-b"),
+   use only those. Otherwise sweep all contexts unless the set is very large (>6); in that case
+   ask the user to narrow the scope.
+3. **Per-cluster sweep**: for each target context, run the same baseline checks covering all
+   standard triage categories. Always pass the context name via the \`context\` tool parameter —
+   never embed \`--context=\` in the \`args\` string (the tool parameter keeps audit logs accurate):
+   - Nodes: \`kubectl\` args \`get nodes -o wide\`, context \`<ctx>\`
+   - Workloads: \`kubectl\` args \`get deployments,statefulsets,daemonsets -A\`, context \`<ctx>\` — flag unavailable replicas
+   - Unhealthy pods: \`kubectl\` args \`get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded -o wide\`, context \`<ctx>\`
+   - Recent warning events: \`kubectl\` args \`get events -A --field-selector=type=Warning --sort-by='.lastTimestamp'\`, context \`<ctx>\`
+   - PVCs: \`kubectl\` args \`get pvc -A\`, context \`<ctx>\` — flag Pending/Lost
+   - Jobs: \`kubectl\` args \`get jobs -A\`, context \`<ctx>\` — flag failed or hung jobs
+4. **Cross-cluster correlation patterns** — investigate these when relevant. For every kubectl
+   call, supply the target cluster name via the \`context\` tool parameter:
+   - **Shared service mesh** (Istio/Linkerd multi-cluster): check ServiceEntry, WorkloadEntry,
+     and mesh gateway pods across clusters. Mismatched trust domains or missing endpoints cause
+     cross-cluster 503s. Use \`kubectl get serviceentry,workloadentry -A\` and
+     \`kubectl get pods -n istio-system\`, each with the appropriate \`context\` parameter.
+   - **Cross-cluster DNS** (Submariner, Skupper, CoreDNS stub zones): verify DNS resolution chain.
+     Check CoreDNS ConfigMap for stub zone config: \`kubectl get configmap coredns -n kube-system -o yaml\` with the \`context\` parameter.
+   - **Hub/spoke topology** (Argo CD App-of-Apps, Cluster API): hub issues cascade to all spokes.
+     Check hub ArgoCD Applications: \`kubectl get applications.argoproj.io -A\` with the hub-cluster \`context\` parameter.
+   - **Shared external dependencies**: a downstream cluster may fail because an upstream cluster's
+     service is down. Compare service/endpoint availability across clusters.
+   - **Federation / multi-cluster services** (KEP-1645): check ServiceExport/ServiceImport CRDs:
+     \`kubectl get serviceexport,serviceimport -A\` with the \`context\` parameter (if the API exists).
+
+## Reporting format
+Structure your findings as:
+1. **Per-cluster summary**: one paragraph per cluster — overall health, notable issues.
+2. **Cross-cluster findings**: issues that only become visible when comparing clusters.
+   For each finding: which clusters are involved, what the correlation reveals, causal hypothesis.
+3. **Suggested remediation**: exact commands for the operator, clearly labelled with the target cluster.
+4. **Summary line**: "Multi-cluster investigation complete: X clusters swept, Y cross-cluster issues found."
+
+## Commands to use
+- \`list_contexts\` — enumerate available contexts.
+- \`kubectl get nodes -o wide\` with \`context\` parameter — per-cluster node health.
+- \`kubectl get deployments,statefulsets,daemonsets -A\` with \`context\` parameter — workload availability per cluster.
+- \`kubectl get pods -A\` with \`context\` parameter — cross-namespace pod status per cluster.
+- \`kubectl get events -A --sort-by='.lastTimestamp'\` with \`context\` parameter — recent warnings.
+- \`kubectl get pvc -A\` with \`context\` parameter — PVC health per cluster.
+- \`kubectl get jobs -A\` with \`context\` parameter — job status per cluster.
+- \`kubectl get configmap coredns -n kube-system -o yaml\` — DNS configuration per cluster.
+- Any \`kubectl get\` or \`kubectl describe\` call with the \`context\` parameter set to the target cluster.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',

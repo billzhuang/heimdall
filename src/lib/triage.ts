@@ -9,6 +9,12 @@ export interface TriageOptions {
   namespace?: string;
   /** Scan all namespaces (overrides `namespace`). */
   allNamespaces?: boolean;
+  /**
+   * Run the sweep across multiple kubeconfig contexts (comma-separated or array).
+   * When set, the agent delegates to `multi-cluster-investigator` to query each
+   * context and correlate cross-cluster findings.
+   */
+  contexts?: string[];
 }
 
 /** Severity levels for triage findings. */
@@ -23,8 +29,15 @@ export type TriageCategory = (typeof TRIAGE_CATEGORIES)[number];
  *
  * The prompt instructs the agent to run all checks in a fixed order so every
  * triage run is repeatable and comparable.
+ *
+ * When `opts.contexts` is set, the prompt triggers a multi-cluster sweep via
+ * the `multi-cluster-investigator` subagent instead of a single-cluster check.
  */
 export function buildTriagePrompt(opts: TriageOptions = {}): string {
+  if (opts.contexts && opts.contexts.length > 0) {
+    return buildMultiClusterTriagePrompt(opts.contexts, opts);
+  }
+
   const nsSuffix = opts.namespace
     ? ` -n ${opts.namespace}`
     : opts.allNamespaces
@@ -64,6 +77,30 @@ For each finding provide:
 - **Suggested remediation**: the exact command the operator should run — never execute it yourself
 
 End your answer with a one-line summary: "Triage complete: X critical, Y warning, Z info findings."`;
+}
+
+/**
+ * Build a multi-cluster triage prompt that delegates cross-cluster investigation
+ * to the `multi-cluster-investigator` subagent.
+ */
+function buildMultiClusterTriagePrompt(contexts: string[], opts: TriageOptions): string {
+  const contextList = contexts.map((c) => `- ${c}`).join('\n');
+  const nsSuffix = opts.namespace
+    ? ` scoped to namespace "${opts.namespace}"`
+    : opts.allNamespaces
+      ? ' across all namespaces'
+      : '';
+
+  return `Run a multi-cluster health triage sweep${nsSuffix} across the following Kubernetes contexts:
+
+${contextList}
+
+Delegate this investigation to the \`multi-cluster-investigator\` subagent. It will:
+1. Query each context listed above for all standard triage categories: node health, pod status, workload availability (deployments/statefulsets/daemonsets), recent warning events, PVC health (Pending/Lost), and failed/hung Jobs.
+2. Correlate findings across cluster boundaries to detect cross-cluster issues (shared service mesh problems, cross-cluster DNS failures, hub/spoke cascade failures, missing ServiceExport/ServiceImport endpoints).
+3. Produce a per-cluster summary and a cross-cluster findings section.
+
+After the subagent reports, synthesise its findings into your final answer following the standard response format. End with a summary line: "Multi-cluster triage complete: X clusters swept, Y cross-cluster issues found, Z total findings."`;
 }
 
 /**
