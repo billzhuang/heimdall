@@ -101,7 +101,10 @@ export async function runTrivy(
 
   // Build argv that will be passed to execFile. We construct the full command
   // string solely for audit logging and validation; execution uses the argv.
-  const argv: string[] = [scanType, ...extraArgs, target];
+  // The `--` end-of-flags marker ensures `target` is always treated as a
+  // positional argument even when it starts with `-` (e.g. a mistyped image ref
+  // like `--download-db-only`), preventing flag-injection via the target param.
+  const argv: string[] = [scanType, ...extraArgs, '--', target];
   const cmd = `trivy ${argv.join(' ')}`;
 
   const validation = validateTrivyCommand(cmd);

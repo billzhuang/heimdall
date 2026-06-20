@@ -201,8 +201,9 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl auth can-i\`.
 
 ## Image vulnerability scanning (when trivy_scan is available)
-- After auditing RBAC and security contexts, list unique container images from running pods:
-  \`kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\\n"}{end}{end}'\`
+- After auditing RBAC and security contexts, list unique container images from running pods
+  (including init containers — they run with the same privileges and may carry CVEs):
+  \`kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\\n"}{end}{range .spec.initContainers[*]}{.image}{"\\n"}{end}{end}'\`
 - For each unique image, call \`trivy_scan\` with scanType "image" and severity "CRITICAL,HIGH".
 - Report: image ref, CVE IDs, severity, fixed-in version, and whether a fix is available.
 - Prioritise images with CRITICAL CVEs that have available fixes — these are immediate action items.
