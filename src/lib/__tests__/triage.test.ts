@@ -74,6 +74,39 @@ describe('buildTriagePrompt', () => {
     expect(prompt).toContain('-n staging');
     expect(prompt).not.toContain('-A');
   });
+
+  it('generates a multi-cluster prompt when contexts is set', () => {
+    const prompt = buildTriagePrompt({ contexts: ['cluster-a', 'cluster-b'] });
+    expect(prompt).toContain('cluster-a');
+    expect(prompt).toContain('cluster-b');
+    expect(prompt).toMatch(/multi-cluster/i);
+    expect(prompt).toContain('multi-cluster-investigator');
+  });
+
+  it('multi-cluster prompt lists all supplied contexts', () => {
+    const contexts = ['prod-us-east', 'prod-eu-west', 'staging'];
+    const prompt = buildTriagePrompt({ contexts });
+    for (const ctx of contexts) {
+      expect(prompt).toContain(ctx);
+    }
+  });
+
+  it('multi-cluster prompt includes namespace scope when namespace is set', () => {
+    const prompt = buildTriagePrompt({ contexts: ['cluster-a', 'cluster-b'], namespace: 'prod' });
+    expect(prompt).toContain('"prod"');
+    expect(prompt).toMatch(/multi-cluster/i);
+  });
+
+  it('multi-cluster prompt includes all-namespace scope when allNamespaces is set', () => {
+    const prompt = buildTriagePrompt({ contexts: ['cluster-a'], allNamespaces: true });
+    expect(prompt).toMatch(/all namespaces/i);
+  });
+
+  it('falls back to single-cluster prompt when contexts is empty array', () => {
+    const prompt = buildTriagePrompt({ contexts: [] });
+    expect(prompt).toContain('default namespace');
+    expect(prompt).not.toMatch(/multi-cluster-investigator/i);
+  });
 });
 
 describe('parseSeverity', () => {

@@ -68,14 +68,19 @@ async function runAgent(prompt: string): Promise<void> {
 export async function runTriageMode(opts: {
   namespace?: string;
   allNamespaces?: boolean;
+  contexts?: string[];
 } = {}): Promise<void> {
   const prompt = buildTriagePrompt(opts);
 
-  process.stderr.write('[heimdall-triage] Starting cluster health sweep...\n');
-  if (opts.namespace) {
-    process.stderr.write(`[heimdall-triage] Scope: namespace "${opts.namespace}"\n`);
-  } else if (opts.allNamespaces) {
-    process.stderr.write('[heimdall-triage] Scope: all namespaces\n');
+  if (opts.contexts && opts.contexts.length > 0) {
+    process.stderr.write(`[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}\n`);
+  } else {
+    process.stderr.write('[heimdall-triage] Starting cluster health sweep...\n');
+    if (opts.namespace) {
+      process.stderr.write(`[heimdall-triage] Scope: namespace "${opts.namespace}"\n`);
+    } else if (opts.allNamespaces) {
+      process.stderr.write('[heimdall-triage] Scope: all namespaces\n');
+    }
   }
 
   await runAgent(prompt);
@@ -83,7 +88,7 @@ export async function runTriageMode(opts: {
 
 // --- CLI arg parsing when run directly ---
 const args = process.argv.slice(2);
-const opts: { namespace?: string; allNamespaces?: boolean } = {};
+const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -102,20 +107,36 @@ for (let i = 0; i < args.length; i++) {
     opts.namespace = ns;
   } else if (arg === '-A' || arg === '--all-namespaces') {
     opts.allNamespaces = true;
+  } else if (arg === '--contexts') {
+    if (!args[i + 1] || args[i + 1].startsWith('-')) {
+      process.stderr.write(`Error: --contexts requires a comma-separated list of context names\n`);
+      process.exit(1);
+    }
+    opts.contexts = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
+  } else if (arg.startsWith('--contexts=')) {
+    const raw = arg.slice('--contexts='.length);
+    if (!raw) {
+      process.stderr.write(`Error: --contexts= requires a non-empty comma-separated list\n`);
+      process.exit(1);
+    }
+    opts.contexts = raw.split(',').map((c) => c.trim()).filter(Boolean);
   } else if (arg === '-h' || arg === '--help') {
-    process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A]
+    process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
 
 Run a structured whole-cluster health sweep and report findings by severity.
 
 Options:
-  -n, --namespace <ns>   Scope the sweep to a single namespace
-  -A, --all-namespaces   Sweep all namespaces
-  -h, --help             Show this help message
+  -n, --namespace <ns>          Scope the sweep to a single namespace
+  -A, --all-namespaces          Sweep all namespaces
+  --contexts <ctx1,ctx2,...>    Sweep multiple kubeconfig contexts (multi-cluster mode)
+  -h, --help                    Show this help message
 
 Examples:
-  heimdall triage                # sweep the default namespace
-  heimdall triage -A             # sweep all namespaces
-  heimdall triage -n prod        # sweep only the prod namespace
+  heimdall triage                                     # sweep the default namespace
+  heimdall triage -A                                  # sweep all namespaces
+  heimdall triage -n prod                             # sweep only the prod namespace
+  heimdall triage --contexts cluster-a,cluster-b      # multi-cluster sweep
+  heimdall triage --contexts=prod-us,prod-eu -A       # multi-cluster, all namespaces
   npm run triage -- -n staging
 `);
     process.exit(0);

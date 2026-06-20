@@ -87,6 +87,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'gitops-investigator',
       'iam-auditor',
       'log-analyzer',
+      'multi-cluster-investigator',
       'netpol-auditor',
       'network-debugger',
       'oomkill-analyzer',
@@ -221,6 +222,48 @@ describe('gitops-investigator subagent', () => {
 
   it('rereads the read-only policy', () => {
     const inst = SUBAGENT_INSTRUCTIONS['gitops-investigator'];
+    expect(inst).toMatch(/read-only/i);
+    expect(inst).toMatch(/Thinking Summary/);
+  });
+});
+
+describe('multi-cluster-investigator subagent', () => {
+  it('is listed in the specialist subagents section of buildInstructions', () => {
+    const out = buildInstructions();
+    expect(out).toContain('multi-cluster-investigator');
+  });
+
+  it('instructions describe cross-cluster investigation workflow', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
+    expect(inst).toMatch(/list_contexts/i);
+    expect(inst).toMatch(/context/i);
+    expect(inst).toMatch(/cross-cluster/i);
+  });
+
+  it('instructions cover shared service mesh correlation', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
+    expect(inst).toMatch(/service.?mesh|Istio|Linkerd/i);
+  });
+
+  it('instructions cover cross-cluster DNS', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
+    expect(inst).toMatch(/DNS/i);
+    expect(inst).toMatch(/CoreDNS/i);
+  });
+
+  it('instructions cover hub/spoke topology', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
+    expect(inst).toMatch(/hub.*spoke|spoke.*hub/i);
+  });
+
+  it('instructions include a per-cluster and cross-cluster reporting format', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
+    expect(inst).toMatch(/Per-cluster/i);
+    expect(inst).toMatch(/Cross-cluster/i);
+  });
+
+  it('rereads the read-only policy', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
     expect(inst).toMatch(/read-only/i);
     expect(inst).toMatch(/Thinking Summary/);
   });
