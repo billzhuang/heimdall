@@ -50,8 +50,9 @@ export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'hel
  *   When omitted, all tools are assumed enabled (backwards-compatible default).
  * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
  * @param runbookContext  - pre-loaded runbook text to inject as a context section (before Tools).
+ * @param ragContext      - formatted past-incident context from the RAG layer (injected after runbooks).
  */
-export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string): string {
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string): string {
   const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
 
   const connectionLines = [
@@ -91,6 +92,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
 
   if (runbookContext) {
     sections.push(`## Runbook context\nThe following runbooks describe team-specific investigation playbooks. Refer to them when diagnosing issues that match their domain.\n\n${runbookContext}`);
+  }
+
+  if (ragContext) {
+    sections.push(`## Past incident precedents\n${ragContext}`);
   }
 
   sections.push(

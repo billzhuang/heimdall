@@ -121,6 +121,20 @@ const AlertSchema = v.nullish(
   }),
 );
 
+// RAG config — semantic retrieval over past task history.
+const RagSchema = v.nullish(
+  v.object({
+    // Set to true to enable RAG context injection at agent startup.
+    enabled: v.nullish(v.boolean(), false),
+    // Number of past incidents to retrieve and inject (default 5).
+    topK: v.nullish(v.number(), 5),
+    // Minimum cosine similarity threshold (0–1). Entries below this score are
+    // excluded. Default 0 (return all top-K regardless of score).
+    minSimilarity: v.nullish(v.number(), 0),
+  }),
+  { enabled: false, topK: 5, minSimilarity: 0 },
+);
+
 // Learning config — controls real-task history logging for self-improvement.
 const LearningSchema = v.nullish(
   v.object({
@@ -133,6 +147,8 @@ const LearningSchema = v.nullish(
     // In container/lambda deployments where the local filesystem is ephemeral, set this
     // to a path on a mounted persistent volume, or use HEIMDALL_LEARNING_LOG env var.
     logFile: v.nullish(v.string()),
+    // RAG-based semantic retrieval over task history (disabled by default).
+    rag: RagSchema,
   }),
   { enabled: true },
 );

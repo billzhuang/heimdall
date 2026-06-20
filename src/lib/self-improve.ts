@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
+import { retrieveSimilarEntries } from './rag.ts';
 
 export interface LearningEntry {
   /** Unique entry ID (timestamp + random suffix). */
@@ -148,17 +149,37 @@ export function resolveLogPath(
  *
  * This closes the self-research loop: observe failures → generate a focused
  * prompt → use the model to propose improvements → review → apply → re-eval.
+ *
+ * When `useRag` is true and `entries` is non-empty, semantically similar task
+ * history entries are retrieved by matching against the failed scenario prompts
+ * instead of using a simple recency-based slice.
+ *
+ * @param entries     Eval-run failures to reflect on.
+ * @param taskHistory Full task history log.
+ * @param useRag      Use semantic retrieval over task history (requires entries).
+ * @param ragTopK     Max task history entries to retrieve when useRag is true.
  */
 export function buildReflectionPrompt(
   entries: LearningEntry[],
   taskHistory: TaskHistoryEntry[] = [],
+  useRag = false,
+  ragTopK = 10,
 ): string {
   if (entries.length === 0 && taskHistory.length === 0) {
     return 'No failures to reflect on. All scenarios passed!';
   }
 
   const hasFailures = entries.length > 0;
-  const hasHistory = taskHistory.length > 0;
+
+  // When RAG is enabled, retrieve task history entries that are semantically
+  // similar to the failed scenario prompts, rather than taking the last N entries.
+  let relevantHistory = taskHistory;
+  if (useRag && hasFailures && taskHistory.length > 0) {
+    const combinedQuery = entries.map((e) => e.prompt).join(' ');
+    relevantHistory = retrieveSimilarEntries(combinedQuery, taskHistory, ragTopK, 0);
+  }
+
+  const hasHistory = relevantHistory.length > 0;
 
   const scenarioList = hasFailures
     ? entries
@@ -172,11 +193,14 @@ export function buildReflectionPrompt(
         .join('\n\n')
     : '';
 
+  const historyLabel = useRag && hasFailures
+    ? 'semantically similar to the failing scenario prompts'
+    : 'most recent';
   const historySection = hasHistory
-    ? `## Recent Real-World Investigations (task history)\n\n` +
-      `The following are real prompts the agent handled recently. Review them for ` +
+    ? `## Real-World Investigations (${historyLabel})\n\n` +
+      `The following are real prompts the agent handled. Review them for ` +
       `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n` +
-      buildTaskHistoryContext(taskHistory)
+      buildTaskHistoryContext(relevantHistory)
     : '';
 
   const failurePart = hasFailures
