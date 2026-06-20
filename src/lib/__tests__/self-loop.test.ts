@@ -25,8 +25,25 @@ describe('scoreResults', () => {
 });
 
 describe('parseProposals', () => {
-  it('returns empty array for NO_CHANGES_NEEDED', () => {
+  it('returns empty array for NO_CHANGES_NEEDED (exact match)', () => {
     expect(parseProposals('NO_CHANGES_NEEDED')).toEqual([]);
+    expect(parseProposals('  NO_CHANGES_NEEDED  ')).toEqual([]);
+  });
+
+  it('does not short-circuit when NO_CHANGES_NEEDED is embedded in a longer response', () => {
+    const output = `
+## Change 1
+FIND:
+\`\`\`
+old text
+\`\`\`
+REPLACE:
+\`\`\`
+NO_CHANGES_NEEDED for this section but new text
+\`\`\`
+`;
+    const patches = parseProposals(output);
+    expect(patches).toHaveLength(1);
   });
 
   it('parses a single FIND/REPLACE block', () => {

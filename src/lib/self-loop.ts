@@ -126,7 +126,7 @@ Rules:
  *   ```
  */
 export function parseProposals(llmOutput: string): SelfLoopPatch[] {
-  if (llmOutput.includes('NO_CHANGES_NEEDED')) return [];
+  if (llmOutput.trim() === 'NO_CHANGES_NEEDED') return [];
 
   const patches: SelfLoopPatch[] = [];
 
@@ -166,8 +166,9 @@ export async function applyProposals(
   let applied = 0;
 
   for (const patch of patches) {
-    if (content.includes(patch.find)) {
-      content = content.replace(patch.find, patch.replace);
+    const occurrences = content.split(patch.find).length - 1;
+    if (occurrences === 1) {
+      content = content.replace(patch.find, () => patch.replace);
       applied++;
     }
   }
@@ -209,11 +210,8 @@ export function extractInstructionsSnippet(content: string): string {
   // Try to include the response format and subagent instructions sections.
   const responseFormatIdx = content.indexOf('RESPONSE_FORMAT');
   const subagentIdx = content.indexOf('SUBAGENT_INSTRUCTIONS');
-  const startIdx = Math.min(
-    responseFormatIdx >= 0 ? responseFormatIdx : content.length,
-    subagentIdx >= 0 ? subagentIdx : content.length,
-    500,
-  );
+  const sectionStarts = [responseFormatIdx, subagentIdx].filter(i => i >= 0);
+  const startIdx = sectionStarts.length > 0 ? Math.min(...sectionStarts) : 0;
 
   return content.slice(startIdx, startIdx + maxLen) + '\n... (truncated)';
 }

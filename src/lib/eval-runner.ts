@@ -51,7 +51,7 @@ export async function runScenario(
   scenario: EvalScenario,
 ): Promise<EvalResult> {
   const tmpFile = join(tmpdir(), `heimdall-eval-${randomBytes(8).toString('hex')}.json`);
-  await writeFile(tmpFile, JSON.stringify(scenario.mocks), 'utf8');
+  await writeFile(tmpFile, JSON.stringify(scenario.mocks ?? {}), 'utf8');
 
   const failures: string[] = [];
   let finding: OneShotFinding | undefined;

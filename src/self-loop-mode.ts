@@ -87,6 +87,10 @@ async function main(): Promise<void> {
       }
     } else if (args[i].startsWith('--max-iterations=')) {
       maxIterations = parseInt(args[i].slice('--max-iterations='.length), 10);
+      if (isNaN(maxIterations) || maxIterations < 1) {
+        process.stderr.write('Error: --max-iterations must be a positive integer\n');
+        process.exit(1);
+      }
     } else if (args[i] === '--dry-run') {
       dryRun = true;
     } else if ((args[i] === '--backend' || args[i] === '-b') && args[i + 1]) {
@@ -129,6 +133,9 @@ Examples:
   heimdall self-loop --backend codex-cli      # use OpenAI Codex CLI for reflection
 `);
       process.exit(0);
+    } else {
+      process.stderr.write(`Error: unknown option '${args[i]}'\nRun with --help for usage.\n`);
+      process.exit(1);
     }
   }
 
@@ -157,7 +164,7 @@ Examples:
   const taskHistoryPath = config.learning?.file
     ? resolve(config.learning.file)
     : join(scenariosDir, TASK_HISTORY_NAME);
-  const instructionsPath = resolve(__dirname, 'lib', 'instructions.ts');
+  const instructionsPath = resolve(__dirname, '..', 'src', 'lib', 'instructions.ts');
   const binPath = resolveBinPath(__dirname);
 
   let scenarios: Awaited<ReturnType<typeof loadScenarios>>;
@@ -270,19 +277,30 @@ Examples:
     // Take snapshot before applying.
     const snapshot = instructionsContent;
 
-    // Apply patches.
-    const appliedCount = await applyProposals(patches, instructionsPath);
-    process.stdout.write(`Applied ${appliedCount}/${patches.length} patches to instructions.ts\n`);
+    // Apply patches, reverting to snapshot on any unexpected error.
+    let appliedCount = 0;
+    let newResults: EvalResult[];
+    let newScore: number;
+    let improved: boolean;
+    try {
+      appliedCount = await applyProposals(patches, instructionsPath);
+      process.stdout.write(`Applied ${appliedCount}/${patches.length} patches to instructions.ts\n`);
 
-    if (appliedCount === 0) {
-      process.stdout.write('No patches matched current content. Stopping self-loop.\n');
+      if (appliedCount === 0) {
+        process.stdout.write('No patches matched current content. Stopping self-loop.\n');
+        break;
+      }
+
+      // Re-score.
+      newResults = await runAndPrint('Re-running evals after patch...');
+      newScore = scoreResults(newResults);
+      improved = newScore > currentScore;
+    } catch (err) {
+      process.stderr.write(`Error during patch/eval: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stdout.write('Reverting patches due to error.\n');
+      await revertToSnapshot(snapshot, instructionsPath);
       break;
     }
-
-    // Re-score.
-    const newResults = await runAndPrint('Re-running evals after patch...');
-    const newScore = scoreResults(newResults);
-    const improved = newScore > currentScore;
 
     process.stdout.write(
       `Score: ${(currentScore * 100).toFixed(0)}% → ${(newScore * 100).toFixed(0)}% ` +
