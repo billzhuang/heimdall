@@ -22,6 +22,11 @@ tools:
   # iam-auditor, aws-resource-analyzer). Also accepted as `aws_cli: true`.
   # awsCli: false
 
+  # Trivy image/IaC vulnerability scanning — disabled by default; requires trivy on PATH.
+  # Set to true to enable `trivy_scan` tool and CVE-aware security-auditor behaviour.
+  # Also accepted as `trivy_scan: true`.
+  # trivyScan: false
+
 # Prometheus HTTP API (required when tools.prometheus_query is enabled).
 # prometheus:
 #   url: http://prometheus-operated.monitoring:9090
