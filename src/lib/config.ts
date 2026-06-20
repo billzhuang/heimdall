@@ -27,8 +27,10 @@ const ToolsSchema = v.nullish(
     kubecostQuery: v.nullish(v.boolean(), false),
     // Disabled by default: requires a running Grafana Loki instance.
     lokiQuery: v.nullish(v.boolean(), false),
+    // Disabled by default: requires a running Jaeger or Grafana Tempo instance.
+    jaegerQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
@@ -45,6 +47,18 @@ const PrometheusSchema = v.nullish(
 const KubecostSchema = v.nullish(
   v.object({
     // Base URL for the Kubecost HTTP API. Also readable from KUBECOST_URL env var.
+    url: v.nullish(v.string()),
+    // Request timeout in milliseconds (default 10 000).
+    timeoutMs: v.nullish(v.number(), 10_000),
+  }),
+);
+
+// Jaeger / Grafana Tempo HTTP API config — optional, disabled by default.
+// Point url at Jaeger Query (port 16686) or Tempo's Jaeger-compatible API.
+// Also readable from JAEGER_URL env var.
+const JaegerSchema = v.nullish(
+  v.object({
+    // Base URL for the Jaeger HTTP API. Also readable from JAEGER_URL env var.
     url: v.nullish(v.string()),
     // Request timeout in milliseconds (default 10 000).
     timeoutMs: v.nullish(v.number(), 10_000),
@@ -191,6 +205,7 @@ const HeimdallConfigSchema = v.object({
   prometheus: PrometheusSchema,
   kubecost: KubecostSchema,
   loki: LokiSchema,
+  jaeger: JaegerSchema,
   // User-configurable regex redaction rules (disabled by default).
   redaction: RedactionSchema,
   namespace: NamespaceSchema,
@@ -218,6 +233,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   trivyScan: true,
   kubecostQuery: true,
   lokiQuery: true,
+  jaegerQuery: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -235,6 +251,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   trivy_scan: 'trivyScan',
   kubecost_query: 'kubecostQuery',
   loki_query: 'lokiQuery',
+  jaeger_query: 'jaegerQuery',
 };
 
 /**

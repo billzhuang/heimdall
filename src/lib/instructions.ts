@@ -41,7 +41,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -81,6 +81,8 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '- `kubecost_query`: query the Kubecost API for Kubernetes cost attribution (read-only).\n  Endpoints: "allocation" (namespace/workload cost breakdown) and "assets" (node/disk infrastructure costs).\n  Params: window (e.g. "7d", "24h", "lastweek"), aggregate (namespace/pod/deployment/controller/service/node),\n  namespace (optional filter for allocation queries), accumulate (bool, default true).\n  Use to answer FinOps questions: which namespace or workload is most expensive, cost trends over time.',
     has('lokiQuery') &&
       '- `loki_query`: query Grafana Loki for structured log search using LogQL (read-only).\n  Use for label-based log filtering, full-text search across multiple pods, and historical log retrieval\n  beyond what `kubectl logs` provides. Params: query (LogQL expression with stream selector),\n  start/end (ISO8601 or relative e.g. "-1h", "-30m"), limit (default 100).\n  Example: query=\'{namespace="prod", app="payments"} |= "ERROR"\', start="-1h".',
+    has('jaegerQuery') &&
+      '- `jaeger_query`: query Jaeger or Grafana Tempo for distributed traces (read-only).\n  Surfaces slow spans, error spans, and upstream dependency failures that metrics and logs alone cannot explain.\n  Params: service (required), operation (span name filter), start/end (ISO8601 or relative e.g. "-1h"),\n  limit (default 20), minDuration (e.g. "1s", "500ms"), tags (key=value pairs e.g. "error=true").\n  Use to diagnose P99 latency spikes, trace error propagation across services, and identify slow dependency calls.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -205,7 +207,12 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - Debug DNS resolution, service endpoints, and selectors.
 - Analyze ingress configuration and network policies.
 - Trace the network path step by step to find where connectivity breaks.
-- Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl logs\`.`,
+- Use \`kubectl get\`, \`kubectl describe\`, and \`kubectl logs\`.
+- When \`jaeger_query\` is available, use it to investigate latency and error propagation across services:
+  \`jaeger_query({service: "<service>", minDuration: "1s", limit: 5})\` to surface the slowest traces,
+  or \`jaeger_query({service: "<service>", tags: "error=true", start: "-1h"})\` to find error spans.
+  Distributed traces reveal which downstream dependency is introducing latency or failures, complementing
+  what kubectl endpoint and service checks can show.`,
   ),
   'security-auditor': subagentInstructions(
     'You are a Kubernetes security-audit specialist.',

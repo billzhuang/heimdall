@@ -21,6 +21,7 @@ import { makeAwsCli } from '../tools/aws.ts';
 import { makeTrivyScan } from '../tools/trivy.ts';
 import { makeKubecostQuery } from '../tools/kubecost.ts';
 import { makeLokiQuery } from '../tools/loki.ts';
+import { makeJaegerQuery } from '../tools/jaeger.ts';
 import { readFileSync } from 'node:fs';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
@@ -89,6 +90,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   trivyScan: makeTrivyScan({ audit: config.audit }, regexRedactionRules),
   kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules, lockedNs),
   lokiQuery: makeLokiQuery(config.loki, regexRedactionRules, lockedNs),
+  jaegerQuery: makeJaegerQuery(config.jaeger, regexRedactionRules),
 };
 
 const enabledToolKeys = new Set(
