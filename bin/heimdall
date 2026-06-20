@@ -45,10 +45,13 @@ Options:
       --json            Emit a single JSON object to stdout (one-shot mode only)
       --format json     Alias for --json
       --no-learn        Skip appending this investigation to the task-history log
-      --backend <name>  LLM backend: 'flue' (default) or 'claude-cli'
-                        Override with env var HEIMDALL_BACKEND=claude-cli.
+      --backend <name>  LLM backend: 'flue' (default), 'claude-cli', or 'codex-cli'
+                        Override with env var HEIMDALL_BACKEND=<name>.
                         'claude-cli' calls \`claude -p\` directly (no tool use;
                         requires the Claude Code CLI to be installed and authenticated).
+                        'codex-cli' calls \`codex -q\` directly (no tool use;
+                        requires the OpenAI Codex CLI to be installed and authenticated
+                        via \`codex auth login\` or OPENAI_API_KEY env var).
   -h, --help            Show this help message
 
 Subcommands:
@@ -84,6 +87,9 @@ Backends:
                   Requires ANTHROPIC_API_KEY (or another provider key).
   claude-cli      One-shot call to \`claude -p\`. No tool use. Requires the
                   Claude Code CLI (\`claude\`) to be installed and authenticated.
+  codex-cli       One-shot call to \`codex -q\`. No tool use. Requires the
+                  OpenAI Codex CLI (\`codex\`) to be installed and authenticated
+                  via \`codex auth login\` or OPENAI_API_KEY env var.
 
 Watch mode reads the 'watch:' block from heimdall.config.yaml for
 namespace/reason filters and an optional webhook URL.
@@ -157,8 +163,8 @@ while [[ $# -gt 0 ]]; do
     --backend)
       [[ $# -lt 2 ]] && { echo "Error: --backend requires an argument" >&2; exit 1; }
       case "$2" in
-        flue|claude-cli) BACKEND="$2" ;;
-        *) echo "Error: unknown backend '$2'; supported: flue, claude-cli" >&2; exit 1 ;;
+        flue|claude-cli|codex-cli) BACKEND="$2" ;;
+        *) echo "Error: unknown backend '$2'; supported: flue, claude-cli, codex-cli" >&2; exit 1 ;;
       esac
       shift 2
       ;;
@@ -211,6 +217,22 @@ if [[ "$BACKEND" == "claude-cli" ]] && [[ "$EVAL" == "true" ]]; then
 fi
 if [[ "$BACKEND" == "claude-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
   echo "Error: --backend claude-cli is not compatible with the self-improve subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "codex-cli" ]] && [[ "$WATCH" == "true" ]]; then
+  echo "Error: --backend codex-cli is not compatible with --watch" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "codex-cli" ]] && [[ "$TRIAGE" == "true" ]]; then
+  echo "Error: --backend codex-cli is not compatible with the triage subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "codex-cli" ]] && [[ "$EVAL" == "true" ]]; then
+  echo "Error: --backend codex-cli is not compatible with the eval subcommand" >&2
+  exit 1
+fi
+if [[ "$BACKEND" == "codex-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
+  echo "Error: --backend codex-cli is not compatible with the self-improve subcommand" >&2
   exit 1
 fi
 
@@ -321,6 +343,39 @@ if [[ "$BACKEND" == "claude-cli" ]]; then
     fi
   else
     claude -p "$PROMPT"
+  fi
+  exit $?
+fi
+
+# ---- codex-cli backend: delegate to `codex -q` --------------------------
+if [[ "$BACKEND" == "codex-cli" ]]; then
+  # Verify the CLI is available before trying to invoke it.
+  if ! command -v codex &>/dev/null; then
+    echo "Error: codex CLI not found. Install the OpenAI Codex CLI and run 'codex auth login'." >&2
+    exit 1
+  fi
+
+  if [[ "$JSON_OUTPUT" == "true" ]]; then
+    FORMAT_JSON_COMPILED="${ROOT_DIR}/dist/format-json.mjs"
+    FORMAT_JSON_SOURCE="${ROOT_DIR}/src/format-json.ts"
+
+    _LEARN_ENV_ARGS=()
+    [[ "$NO_LEARN" == "true" ]] && _LEARN_ENV_ARGS=("HEIMDALL_NO_LEARN=1")
+
+    if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
+      codex -q "$PROMPT" | \
+        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
+    elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
+      codex -q "$PROMPT" | \
+        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
+    else
+      echo "Error: JSON formatter not available." >&2
+      echo "  Production: run 'npm run build' first." >&2
+      echo "  Development: run 'npm install' to get tsx." >&2
+      exit 1
+    fi
+  else
+    codex -q "$PROMPT"
   fi
   exit $?
 fi
