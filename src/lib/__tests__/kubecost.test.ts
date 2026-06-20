@@ -137,22 +137,19 @@ describe('runKubecostQuery — assets', () => {
     expect(url).not.toContain('/model/allocation');
   });
 
-  it('does not append filterNamespaces for assets queries even when namespace is provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
+  it('returns an error when namespace is provided for assets queries', async () => {
+    const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
-    await runKubecostQuery(
+    const result = await runKubecostQuery(
       'assets',
       { window: '7d', aggregate: 'node', namespace: 'prod' },
       BASE_CONFIG,
     );
 
-    const url = fetchMock.mock.calls[0][0] as string;
-    expect(url).not.toContain('filterNamespaces');
+    expect(result).toMatch(/Error/);
+    expect(result).toMatch(/namespace.*allocation|allocation.*namespace/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

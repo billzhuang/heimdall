@@ -293,4 +293,47 @@ describe('loadConfig', () => {
       expect(config.tools.prometheusQuery).toBe(true);
     });
   });
+
+  describe('kubecost config block', () => {
+    it('defaults kubecost to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.kubecost).toBeUndefined();
+    });
+
+    it('loads kubecost url and timeoutMs', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `kubecost:\n  url: http://kubecost:9090\n  timeoutMs: 5000\n`);
+      const config = loadConfig(configPath);
+      expect(config.kubecost?.url).toBe('http://kubecost:9090');
+      expect(config.kubecost?.timeoutMs).toBe(5000);
+    });
+
+    it('defaults timeoutMs to 10000 when kubecost block is present but timeoutMs is omitted', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `kubecost:\n  url: http://kubecost:9090\n`);
+      const config = loadConfig(configPath);
+      expect(config.kubecost?.timeoutMs).toBe(10_000);
+    });
+
+    it('defaults kubecostQuery tool to false even when kubecost block is present', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `kubecost:\n  url: http://kubecost:9090\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubecostQuery).toBe(false);
+    });
+
+    it('allows enabling kubecostQuery independently of kubecost block', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  kubecostQuery: true\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubecostQuery).toBe(true);
+    });
+
+    it('accepts kubecost_query as a snake_case alias for kubecostQuery', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  kubecost_query: true\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.kubecostQuery).toBe(true);
+    });
+  });
 });

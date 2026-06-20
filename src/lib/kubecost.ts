@@ -60,11 +60,15 @@ export async function runKubecostQuery(
     const baseUrl = new URL(config.url);
     baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + ENDPOINT_PATH[endpoint];
 
+    if (endpoint === 'assets' && params.namespace) {
+      return 'Error: the "namespace" filter only applies to allocation queries, not to assets queries. Omit namespace and re-run, or use endpoint "allocation" instead.';
+    }
+
     baseUrl.searchParams.set('window', params.window);
     baseUrl.searchParams.set('aggregate', params.aggregate);
     baseUrl.searchParams.set('accumulate', String(params.accumulate ?? true));
 
-    if (endpoint === 'allocation' && params.namespace) {
+    if (params.namespace) {
       baseUrl.searchParams.set('filterNamespaces', params.namespace);
     }
 
