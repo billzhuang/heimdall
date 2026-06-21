@@ -374,32 +374,37 @@ if [[ "$EVAL" == "true" ]]; then
   fi
 fi
 
+# Validate and export the model (flag takes precedence over env var; both must be valid)
+RESOLVED_MODEL="${HEIMDALL_MODEL_FLAG:-${HEIMDALL_MODEL:-}}"
+if [[ -n "$RESOLVED_MODEL" ]]; then
+  if [[ "$RESOLVED_MODEL" != */* ]]; then
+    echo "Error: model requires a 'provider/model' value (e.g. 'anthropic/claude-opus-4-8')" >&2
+    exit 1
+  fi
+  if [[ -n "$HEIMDALL_MODEL_FLAG" ]]; then
+    export HEIMDALL_MODEL="$HEIMDALL_MODEL_FLAG"
+  fi
+fi
+
 # --- Watch mode -----------------------------------------------------------
 if [[ "$WATCH" == "true" ]]; then
   WATCH_COMPILED="${ROOT_DIR}/dist/watch-mode.mjs"
   WATCH_SOURCE="${ROOT_DIR}/src/watch-mode.ts"
+  WATCH_MODEL_ARGS=()
+  [[ -n "$HEIMDALL_MODEL_FLAG" ]] && WATCH_MODEL_ARGS=("--model" "$HEIMDALL_MODEL_FLAG")
 
   if [[ -f "$WATCH_COMPILED" ]]; then
     # Production path: use the pre-built JS bundle (npm run build).
-    exec node "$WATCH_COMPILED"
+    exec node "$WATCH_COMPILED" "${WATCH_MODEL_ARGS[@]}"
   elif [[ -x "$TSX" ]] && [[ -f "$WATCH_SOURCE" ]]; then
     # Development path: run the TypeScript source directly via tsx.
-    exec "$TSX" "$WATCH_SOURCE"
+    exec "$TSX" "$WATCH_SOURCE" "${WATCH_MODEL_ARGS[@]}"
   else
     echo "Error: watch mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1
   fi
-fi
-
-# Validate and export model override if set
-if [[ -n "$HEIMDALL_MODEL_FLAG" ]]; then
-  if [[ "$HEIMDALL_MODEL_FLAG" != */* ]]; then
-    echo "Error: --model requires a 'provider/model' value (e.g. 'anthropic/claude-opus-4-8')" >&2
-    exit 1
-  fi
-  export HEIMDALL_MODEL="$HEIMDALL_MODEL_FLAG"
 fi
 
 # --- One-shot prompt mode -------------------------------------------------

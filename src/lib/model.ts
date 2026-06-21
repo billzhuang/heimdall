@@ -10,13 +10,11 @@ export const DEFAULT_MODEL = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-son
  * Throws a clear error if the flag value is not in "provider/model" format.
  */
 export function resolveModel(cliFlag?: string): string {
-  if (cliFlag !== undefined && cliFlag !== '') {
-    if (!cliFlag.includes('/')) {
-      throw new Error(
-        `Invalid model "${cliFlag}": expected "provider/model" format (e.g. "anthropic/claude-opus-4-8")`,
-      );
-    }
-    return cliFlag;
+  const model = cliFlag || DEFAULT_MODEL;
+  if (!model.includes('/')) {
+    throw new Error(
+      `Invalid model "${model}": expected "provider/model" format (e.g. "anthropic/claude-opus-4-8")`,
+    );
   }
-  return DEFAULT_MODEL;
+  return model;
 }

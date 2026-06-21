@@ -36,10 +36,19 @@ async function main(): Promise<void> {
       scenarioFilter = args[++i];
     } else if (args[i].startsWith('--scenario=')) {
       scenarioFilter = args[i].slice('--scenario='.length);
-    } else if ((args[i] === '--model' || args[i] === '-m') && args[i + 1]) {
+    } else if (args[i] === '--model' || args[i] === '-m') {
+      if (!args[i + 1] || args[i + 1].startsWith('-')) {
+        process.stderr.write(`Error: ${args[i]} requires a value\n`);
+        process.exit(1);
+      }
       modelFlag = args[++i];
     } else if (args[i].startsWith('--model=')) {
-      modelFlag = args[i].slice('--model='.length);
+      const m = args[i].slice('--model='.length);
+      if (!m) {
+        process.stderr.write(`Error: --model= requires a non-empty value\n`);
+        process.exit(1);
+      }
+      modelFlag = m;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(`Usage: heimdall eval [--scenario <name-substring>]
 
