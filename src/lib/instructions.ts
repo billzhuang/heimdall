@@ -166,7 +166,7 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- newrelic-investigator — New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.',
   ] : [];
 
-  const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery')) ? [
+  const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery') || has('newRelicQuery')) ? [
     '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
   ] : [];
 

@@ -10,7 +10,7 @@
  * model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { parseDurationMs } from './duration.ts';
+import { resolveTimeISO } from './datadog.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -56,39 +56,8 @@ function truncate(text: string): string {
   );
 }
 
-/**
- * Convert a Heimdall-style relative duration or ISO8601 string to an ISO8601
- * timestamp for use in NRQL SINCE/UNTIL clauses (single-quoted).
- *
- * - Relative starting with '-': subtract duration from nowMs and return ISO8601.
- * - ISO8601 / RFC3339: pass through as-is.
- * - Bare integer (epoch seconds or milliseconds): convert to ISO8601.
- * - Returns null when the expression cannot be resolved.
- */
-export function resolveNrqlTime(expr: string, nowMs: number): string | null {
-  if (expr.startsWith('-')) {
-    const durationMs = parseDurationMs(expr.slice(1));
-    if (durationMs === null) return null;
-    if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
-    return new Date(nowMs - durationMs).toISOString();
-  }
-  // Bare integer → epoch
-  if (/^\d{1,13}$/.test(expr)) {
-    const n = Number(expr);
-    const ms = expr.length <= 10 ? n * 1_000 : n;
-    return new Date(ms).toISOString();
-  }
-  // ISO8601 — pass through
-  if (!Number.isNaN(Date.parse(expr))) return expr;
-  return null;
-}
-
-function buildHeaders(apiKey: string): Record<string, string> {
-  return {
-    'Api-Key': apiKey,
-    'Content-Type': 'application/json',
-  };
-}
+/** Resolve a Heimdall-style time expression to ISO8601 for NRQL SINCE/UNTIL clauses. */
+export const resolveNrqlTime = resolveTimeISO;
 
 function effectiveLimit(limit: number | null | undefined): number {
   if (typeof limit === 'number' && Number.isFinite(limit)) {
@@ -105,7 +74,7 @@ async function nerdgraph(
 ): Promise<string> {
   const response = await fetch(NERDGRAPH_URL, {
     method: 'POST',
-    headers: buildHeaders(apiKey),
+    headers: { 'Api-Key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: gql }),
     signal,
   });
@@ -123,11 +92,12 @@ async function queryMetrics(
   config: NewRelicConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  if (!params.query?.trim()) {
+  const q = params.query?.trim() ?? '';
+  if (!q) {
     return 'Error: query is required for metrics (e.g. "SELECT average(cpuPercent) FROM SystemSample SINCE 1 hour ago").';
   }
 
-  let nrql = params.query.trim();
+  let nrql = q;
   const nowMs = Date.now();
 
   if (params.from) {
@@ -170,7 +140,8 @@ async function queryApm(
   if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
   if (params.to && until === null) return `Error: could not parse "to" time: "${params.to}".`;
 
-  const whereClause = params.query?.trim() ? `WHERE ${params.query.trim()} ` : '';
+  const qApm = params.query?.trim() ?? '';
+  const whereClause = qApm ? `WHERE ${qApm} ` : '';
   const untilClause = until ? ` UNTIL '${until}'` : '';
   const lim = effectiveLimit(params.limit);
 
@@ -203,7 +174,8 @@ async function queryAlerts(
   if (params.to && until === null) return `Error: could not parse "to" time: "${params.to}".`;
 
   // Wrap in parentheses so OR in the filter doesn't escape the event='open' predicate.
-  const extraWhere = params.query?.trim() ? ` AND (${params.query.trim()})` : '';
+  const qAlerts = params.query?.trim() ?? '';
+  const extraWhere = qAlerts ? ` AND (${qAlerts})` : '';
   const untilClause = until ? ` UNTIL '${until}'` : '';
   const lim = effectiveLimit(params.limit);
 
