@@ -833,26 +833,35 @@ Adapt the PromQL queries to the service's actual metric labels. Common patterns:
   \`sum(rate(http_requests_total{namespace="<ns>",service="<svc>",status_code=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="<ns>",service="<svc>"}[5m]))\`
   (label is \`status_code\` in Go's promhttp and many exporters; use \`code=~"5.."\` or \`status=~"5.."\` if your exporter differs)
 - **CPU saturation**:
-  \`sum(rate(container_cpu_usage_seconds_total{namespace="<ns>",pod=~"<svc>.*"}[5m])) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="cpu",unit="core"})\`
+  \`sum(rate(container_cpu_usage_seconds_total{namespace="<ns>",pod=~"<svc>.*",container!=""}[5m])) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="cpu",unit="core"})\`
+  (\`container!=""\` excludes the pod-level cgroup entry that cAdvisor also reports, preventing double-counting)
 - **Memory saturation**:
-  \`sum(container_memory_working_set_bytes{namespace="<ns>",pod=~"<svc>.*"}) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="memory",unit="byte"})\`
+  \`sum(container_memory_working_set_bytes{namespace="<ns>",pod=~"<svc>.*",container!=""}) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="memory",unit="byte"})\`
+  (\`container!=""\` same reason — avoids summing both per-container and pod-level cgroup metrics)
 
 If standard histogram metric names are not found, try \`istio_request_duration_milliseconds_bucket\`,
 \`grpc_server_handling_seconds_bucket\`, or similar — note the alternate source in the report.
 
 ### Datadog (when \`datadog_query\` is available)
+Datadog APM trace metrics are keyed by **span/operation name** (e.g. \`servlet.request\`, \`web.request\`,
+\`express.request\`), not by service name. Service is a **tag** filter. First discover the service's
+primary operation: query \`datadog_query({queryType:"metrics",query:"avg:trace.*.request.hits{service:<svc>}",from:"-5m"})\`
+and inspect which \`<OPERATION>\` has the highest hit count. Then query with \`trace.<OPERATION>.duration\` etc.
+
 - **Latency p50/p99**:
-  \`avg:trace.<svc>.request.duration.by.resource_name.50p{service:<svc>}\`
-  \`avg:trace.<svc>.request.duration.by.resource_name.99p{service:<svc>}\`
-  (If APM is available; otherwise use \`kubernetes.http.request.duration.quantile\` or similar)
+  \`p50:trace.<OPERATION>.duration{service:<svc>}\`
+  \`p99:trace.<OPERATION>.duration{service:<svc>}\`
+  Pass \`from: "-5m"\` and \`queryType: "metrics"\` to the tool.
 - **Traffic (RPS)**:
-  \`sum:trace.<svc>.request.hits{service:<svc>}.as_rate()\`
+  \`sum:trace.<OPERATION>.hits{service:<svc>}.as_rate()\` with \`from: "-5m"\`
 - **Error rate**:
-  \`sum:trace.<svc>.request.errors{service:<svc>}.as_rate() / sum:trace.<svc>.request.hits{service:<svc>}.as_rate()\`
+  \`sum:trace.<OPERATION>.errors{service:<svc>}.as_rate() / sum:trace.<OPERATION>.hits{service:<svc>}.as_rate()\` with \`from: "-5m"\`
 - **CPU saturation**:
-  \`avg:kubernetes.cpu.usage.total{kube_namespace:<ns>,kube_deployment:<svc>} / avg:kubernetes.cpu.limits{kube_namespace:<ns>,kube_deployment:<svc>}\`
+  \`avg:kubernetes.cpu.usage.total{kube_namespace:<ns>,kube_deployment:<svc>} / avg:kubernetes.cpu.limits{kube_namespace:<ns>,kube_deployment:<svc>}\` with \`from: "-5m"\`
 - **Memory saturation**:
-  \`avg:kubernetes.memory.usage{kube_namespace:<ns>,kube_deployment:<svc>} / avg:kubernetes.memory.limits{kube_namespace:<ns>,kube_deployment:<svc>}\`
+  \`avg:kubernetes.memory.usage{kube_namespace:<ns>,kube_deployment:<svc>} / avg:kubernetes.memory.limits{kube_namespace:<ns>,kube_deployment:<svc>}\` with \`from: "-5m"\`
+
+Always pass \`from: "-5m"\` to all Datadog metric queries so results match the 5m window in the output table.
 
 ### When both backends are enabled
 Query both and report results from each. Highlight any discrepancies (e.g. Datadog shows higher
