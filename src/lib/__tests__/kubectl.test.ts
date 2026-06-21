@@ -61,6 +61,7 @@ describe('isJsonOutput', () => {
     expect(isJsonOutput(['get', 'pods', '-o', 'json'])).toBe(true);
     expect(isJsonOutput(['get', 'pods', '--output', 'json'])).toBe(true);
     expect(isJsonOutput(['get', 'pods', '-o=json'])).toBe(true);
+    expect(isJsonOutput(['get', 'pods', '-ojson'])).toBe(true);
   });
 
   it('is false for non-json output', () => {

@@ -136,14 +136,14 @@ export function tokenizeArgs(input: string): string[] {
   return tokens;
 }
 
-/** True when the argv requests JSON output (`-o json` / `--output=json`). */
+/** True when the argv requests JSON output (`-o json` / `-ojson` / `--output=json`). */
 export function isJsonOutput(argv: string[]): boolean {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-o' || a === '--output') {
       return argv[i + 1] === 'json';
     }
-    if (a === '-o=json' || a === '--output=json') {
+    if (a === '-ojson' || a === '-o=json' || a === '--output=json') {
       return true;
     }
   }
@@ -233,6 +233,17 @@ async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<str
   return null;
 }
 
+/** Extract a human-readable detail string from an unknown execFile error. */
+function extractExecError(err: unknown): string {
+  if (typeof err === 'object' && err !== null) {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.stderr === 'string' && obj.stderr) return obj.stderr;
+    if (typeof obj.stdout === 'string' && obj.stdout) return obj.stdout;
+    if (typeof obj.message === 'string' && obj.message) return obj.message;
+  }
+  return String(err);
+}
+
 /**
  * Validate and run a read-only kubectl command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
@@ -300,7 +311,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
 
   const context = !inCluster ? options.context : undefined;
   if (context && !hasContextFlag(argv)) {
-    argv.unshift(`--context=${context}`);
+    argv = [`--context=${context}`, ...argv];
   }
 
   const resolvedKubeconfig = !inCluster ? options.kubeconfig : undefined;
@@ -386,8 +397,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
-    const err = error as { stderr?: string; stdout?: string; message?: string };
-    const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const rawDetail = extractExecError(error).trim();
     const detail = applyRedaction(redactSecrets ? redactSecretValues(rawDetail, argv) : rawDetail, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
