@@ -1,37 +1,66 @@
 locals {
   name = "heimdall"
 
-  # Build heimdall.config.yaml content when any optional tool is configured.
-  tools_config_parts = compact([
-    var.tools.prometheus_url != "" ? "  prometheus:\n    enabled: true\n    url: ${var.tools.prometheus_url}" : "",
-    var.tools.loki_url != "" ? "  loki:\n    enabled: true\n    url: ${var.tools.loki_url}" : "",
-    var.tools.jaeger_url != "" ? "  jaeger:\n    enabled: true\n    url: ${var.tools.jaeger_url}" : "",
-    var.tools.kubecost_url != "" ? "  kubecost:\n    enabled: true\n    url: ${var.tools.kubecost_url}" : "",
+  # tools: section — only emit keys that differ from the built-in defaults.
+  tools_section_lines = compact([
+    var.tools.prometheus_url != "" ? "  prometheusQuery: true" : "",
+    var.tools.loki_url != "" ? "  lokiQuery: true" : "",
+    var.tools.jaeger_url != "" ? "  jaegerQuery: true" : "",
+    var.tools.kubecost_url != "" ? "  kubecostQuery: true" : "",
     var.tools.aws_cli ? "  awsCli: true" : "",
     var.tools.trivy_scan ? "  trivyScan: true" : "",
     var.tools.datadog_api_key != "" ? "  datadogQuery: true" : "",
   ])
 
-  datadog_config = var.tools.datadog_api_key != "" ? join("\n", [
+  # Top-level service-config sections for each optional integration.
+  prometheus_section = var.tools.prometheus_url != "" ? join("\n", [
+    "prometheus:",
+    "  url: ${var.tools.prometheus_url}",
+  ]) : ""
+
+  loki_section = var.tools.loki_url != "" ? join("\n", [
+    "loki:",
+    "  url: ${var.tools.loki_url}",
+  ]) : ""
+
+  jaeger_section = var.tools.jaeger_url != "" ? join("\n", [
+    "jaeger:",
+    "  url: ${var.tools.jaeger_url}",
+  ]) : ""
+
+  kubecost_section = var.tools.kubecost_url != "" ? join("\n", [
+    "kubecost:",
+    "  url: ${var.tools.kubecost_url}",
+  ]) : ""
+
+  datadog_section = var.tools.datadog_api_key != "" ? join("\n", [
     "datadog:",
     "  apiKey: ${var.tools.datadog_api_key}",
     "  appKey: ${var.tools.datadog_app_key}",
     "  site: ${var.tools.datadog_site}",
   ]) : ""
 
-  slack_config = var.slack_webhook_url != "" ? join("\n", [
+  slack_section = var.slack_webhook_url != "" ? join("\n", [
     "slack:",
     "  enabled: true",
     "  webhookUrl: ${var.slack_webhook_url}",
   ]) : ""
 
   # Emit a ConfigMap only when there is something to configure.
-  need_configmap = length(local.tools_config_parts) > 0 || local.slack_config != "" || local.datadog_config != ""
+  need_configmap = (
+    length(local.tools_section_lines) > 0 ||
+    local.slack_section != "" ||
+    local.datadog_section != ""
+  )
 
   heimdall_config_yaml = local.need_configmap ? join("\n", compact([
-    length(local.tools_config_parts) > 0 ? "tools:\n${join("\n", local.tools_config_parts)}" : "",
-    local.datadog_config,
-    local.slack_config,
+    length(local.tools_section_lines) > 0 ? "tools:\n${join("\n", local.tools_section_lines)}" : "",
+    local.prometheus_section,
+    local.loki_section,
+    local.jaeger_section,
+    local.kubecost_section,
+    local.datadog_section,
+    local.slack_section,
   ])) : ""
 }
 
