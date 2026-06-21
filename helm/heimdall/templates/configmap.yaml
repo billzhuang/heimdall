@@ -1,4 +1,4 @@
-{{- if .Values.config.enabled }}
+{{- if or .Values.config.enabled .Values.slack.webhookUrl }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -8,5 +8,10 @@ metadata:
     {{- include "heimdall.labels" . | nindent 4 }}
 data:
   heimdall.config.yaml: |
+    {{- if .Values.config.enabled }}
     {{- .Values.config.content | nindent 4 }}
+    {{- else }}
+    slack:
+      enabled: true
+    {{- end }}
 {{- end }}

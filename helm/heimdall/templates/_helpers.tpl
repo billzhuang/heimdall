@@ -7,13 +7,18 @@ Expand the name of the chart.
 
 {{/*
 Create a default fully qualified app name.
+Includes the release name so multiple installs in the same cluster don't collide.
 */}}
 {{- define "heimdall.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
 {{- $name := default .Chart.Name .Values.nameOverride }}
-{{- printf "%s" $name | trunc 63 | trimSuffix "-" }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- end }}
 {{- end }}
 

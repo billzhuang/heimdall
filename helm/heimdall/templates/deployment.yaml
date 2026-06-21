@@ -60,9 +60,12 @@ spec:
             {{- end }}
             {{- if .Values.slack.webhookUrl }}
             - name: SLACK_WEBHOOK_URL
-              value: {{ .Values.slack.webhookUrl | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "heimdall.fullname" . }}-slack
+                  key: SLACK_WEBHOOK_URL
             {{- end }}
-            {{- if .Values.config.enabled }}
+            {{- if or .Values.config.enabled .Values.slack.webhookUrl }}
             - name: HEIMDALL_CONFIG
               value: /etc/heimdall/heimdall.config.yaml
             {{- end }}
@@ -83,7 +86,7 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            {{- if .Values.config.enabled }}
+            {{- if or .Values.config.enabled .Values.slack.webhookUrl }}
             - name: heimdall-config
               mountPath: /etc/heimdall
               readOnly: true
@@ -91,7 +94,7 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if .Values.config.enabled }}
+        {{- if or .Values.config.enabled .Values.slack.webhookUrl }}
         - name: heimdall-config
           configMap:
             name: {{ include "heimdall.fullname" . }}-config
