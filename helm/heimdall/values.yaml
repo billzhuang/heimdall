@@ -59,6 +59,11 @@ config:
 # tools.slack.webhookUrl inside config.content.
 slack:
   webhookUrl: ""
+  # Use a pre-existing Secret instead of providing the URL in values.
+  # When set, no slack Secret is created and webhookUrl is ignored.
+  existingSecret:
+    name: ""
+    key: "SLACK_WEBHOOK_URL"
 
 podAnnotations: {}
 podSecurityContext:

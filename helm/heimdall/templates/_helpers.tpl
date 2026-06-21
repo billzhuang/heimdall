@@ -52,6 +52,17 @@ Service account name
 {{- end }}
 
 {{/*
+Slack webhook secret name (auto-created or existing).
+*/}}
+{{- define "heimdall.slackSecretName" -}}
+{{- if .Values.slack.existingSecret.name }}
+{{- .Values.slack.existingSecret.name }}
+{{- else }}
+{{- include "heimdall.fullname" . }}-slack
+{{- end }}
+{{- end }}
+
+{{/*
 API key secret name
 */}}
 {{- define "heimdall.secretName" -}}
