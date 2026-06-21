@@ -34,10 +34,26 @@ function extractInlineFlags(pattern: string): { pattern: string; extraFlags: str
 }
 
 /**
+ * Heuristic check for patterns that can cause catastrophic (exponential)
+ * backtracking — e.g. `(a+)+` or `(.+)+`. Looks for a group that contains a
+ * quantifier and is itself followed by a quantifier. Returns true when the
+ * pattern is likely to be dangerous so callers can skip it.
+ *
+ * This is necessarily a heuristic: complex patterns like `(?:a|b)+` are safe
+ * but would be flagged, while subtle hand-crafted patterns might slip through.
+ * A false positive (skipping a legitimate rule) is always safer than hanging.
+ */
+function hasPotentialReDoS(pattern: string): boolean {
+  // A group whose body contains + or * followed by a top-level + / * / {n,}
+  return /\([^)]*[+*][^)]*\)[+*{]/.test(pattern);
+}
+
+/**
  * Compile raw rule definitions into RegExp objects.
  * Invalid patterns are skipped with a console warning rather than crashing.
  * Leading inline flag groups (`(?i)`, `(?im)`, etc.) are extracted and
  * applied as JS regex flags so patterns copied from other languages work.
+ * Patterns with nested quantifiers (potential ReDoS) are also skipped.
  */
 export function compileRules(rules: RedactionRule[]): CompiledRedactionRule[] {
   const compiled: CompiledRedactionRule[] = [];
@@ -45,6 +61,10 @@ export function compileRules(rules: RedactionRule[]): CompiledRedactionRule[] {
     const { pattern, extraFlags } = extractInlineFlags(rule.pattern);
     if (!pattern) {
       console.warn(`[heimdall] Skipping invalid redaction rule "${rule.name}": pattern is empty after stripping inline flags`);
+      continue;
+    }
+    if (hasPotentialReDoS(pattern)) {
+      console.warn(`[heimdall] Skipping redaction rule "${rule.name}": pattern "${rule.pattern}" may cause catastrophic backtracking`);
       continue;
     }
     // Deduplicate flags via Set so `(?ii)` or a user-supplied `g` can't cause a SyntaxError.

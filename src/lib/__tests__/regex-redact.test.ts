@@ -62,6 +62,27 @@ describe('compileRules', () => {
     expect(() => compileRules([{ name: 'dup_g', pattern: '(?g)SECRET' }])).not.toThrow();
     warnSpy.mockRestore();
   });
+
+  it('skips a pattern with nested quantifiers (potential ReDoS) and logs a warning', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rules = compileRules([{ name: 'redos', pattern: '(a+)+b' }]);
+    expect(rules).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('catastrophic backtracking'));
+    warnSpy.mockRestore();
+  });
+
+  it('skips nested-quantifier variant (.+)+ and logs a warning', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rules = compileRules([{ name: 'redos2', pattern: '(.+)+end' }]);
+    expect(rules).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('catastrophic backtracking'));
+    warnSpy.mockRestore();
+  });
+
+  it('allows a safe quantified non-capturing group like (?:foo)+', () => {
+    const rules = compileRules([{ name: 'safe', pattern: '(?:foo)+bar' }]);
+    expect(rules).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
