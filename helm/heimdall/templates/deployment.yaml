@@ -1,3 +1,6 @@
+{{- if and (not .Values.existingSecret.name) (not .Values.anthropicApiKey) }}
+{{- fail "An Anthropic API key must be provided. Set either 'existingSecret.name' or 'anthropicApiKey'." }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,7 +40,7 @@ spec:
       {{- end }}
       containers:
         - name: heimdall
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

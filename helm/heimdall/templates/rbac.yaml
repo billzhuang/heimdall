@@ -2,6 +2,9 @@
 {{- $sa := include "heimdall.serviceAccountName" . -}}
 {{- $ns := .Release.Namespace -}}
 {{- $variant := .Values.rbac.variant -}}
+{{- if not (has $variant (list "default" "with-secrets" "namespaced")) }}
+{{- fail "rbac.variant must be one of 'default', 'with-secrets', or 'namespaced'" }}
+{{- end }}
 
 {{- if or (eq $variant "default") (eq $variant "with-secrets") }}
 ---
@@ -129,7 +132,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ $fullname }}-readonly
-  namespace: {{ .Values.rbac.namespacedTarget }}
+  namespace: {{ .Values.rbac.namespacedTarget | default .Release.Namespace }}
   labels:
     {{- include "heimdall.labels" . | nindent 4 }}
 rules:
@@ -186,7 +189,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ $fullname }}-readonly
-  namespace: {{ .Values.rbac.namespacedTarget }}
+  namespace: {{ .Values.rbac.namespacedTarget | default .Release.Namespace }}
   labels:
     {{- include "heimdall.labels" . | nindent 4 }}
 roleRef:

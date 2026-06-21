@@ -2,7 +2,7 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/billzhuang/heimdall
-  tag: "latest"
+  tag: ""
   pullPolicy: Always
 
 nameOverride: ""
@@ -14,9 +14,10 @@ fullnameOverride: ""
 #   namespaced – Role + RoleBinding scoped to rbac.namespacedTarget namespace only
 rbac:
   variant: "default"
-  namespacedTarget: "default"
+  namespacedTarget: ""
 
 serviceAccount:
+  create: true
   name: ""
 
 resources:
