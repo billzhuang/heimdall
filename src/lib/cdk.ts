@@ -66,8 +66,10 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   const trimmed = args.trim();
   if (!trimmed) return 'Error: no CDK CLI arguments provided.';
 
-  // Ensure 'cdk' prefix so the validator can parse the subcommand.
-  const cmdStr = /^cdk\b/.test(trimmed) ? trimmed : `cdk ${trimmed}`;
+  // Ensure lowercase 'cdk' prefix so the validator can parse the subcommand.
+  // Use /i for case-insensitivity (CDK → cdk) and (\s|$) instead of \b so
+  // 'cdk-real synth' is not mistakenly treated as already having the prefix.
+  const cmdStr = /^cdk(\s|$)/i.test(trimmed) ? trimmed.replace(/^cdk/i, 'cdk') : `cdk ${trimmed}`;
   const validation = validateCdkCommand(cmdStr);
 
   if (!validation) {
