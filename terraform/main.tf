@@ -1,0 +1,385 @@
+locals {
+  name = "heimdall"
+
+  # Build heimdall.config.yaml content when any optional tool is configured.
+  tools_config_parts = compact([
+    var.tools.prometheus_url != "" ? "  prometheus:\n    enabled: true\n    url: ${var.tools.prometheus_url}" : "",
+    var.tools.loki_url != "" ? "  loki:\n    enabled: true\n    url: ${var.tools.loki_url}" : "",
+    var.tools.jaeger_url != "" ? "  jaeger:\n    enabled: true\n    url: ${var.tools.jaeger_url}" : "",
+    var.tools.kubecost_url != "" ? "  kubecost:\n    enabled: true\n    url: ${var.tools.kubecost_url}" : "",
+    var.tools.aws_cli ? "  awsCli: true" : "",
+    var.tools.trivy_scan ? "  trivyScan: true" : "",
+    var.tools.datadog_api_key != "" ? "  datadogQuery: true" : "",
+  ])
+
+  datadog_config = var.tools.datadog_api_key != "" ? join("\n", [
+    "datadog:",
+    "  apiKey: ${var.tools.datadog_api_key}",
+    "  appKey: ${var.tools.datadog_app_key}",
+    "  site: ${var.tools.datadog_site}",
+  ]) : ""
+
+  slack_config = var.slack_webhook_url != "" ? join("\n", [
+    "slack:",
+    "  enabled: true",
+    "  webhookUrl: ${var.slack_webhook_url}",
+  ]) : ""
+
+  # Emit a ConfigMap only when there is something to configure.
+  need_configmap = length(local.tools_config_parts) > 0 || local.slack_config != "" || local.datadog_config != ""
+
+  heimdall_config_yaml = local.need_configmap ? join("\n", compact([
+    length(local.tools_config_parts) > 0 ? "tools:\n${join("\n", local.tools_config_parts)}" : "",
+    local.datadog_config,
+    local.slack_config,
+  ])) : ""
+}
+
+# ---------------------------------------------------------------------------
+# Namespace
+# ---------------------------------------------------------------------------
+resource "kubernetes_namespace" "heimdall" {
+  metadata {
+    name = var.namespace
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+}
+
+# ---------------------------------------------------------------------------
+# ServiceAccount
+# ---------------------------------------------------------------------------
+resource "kubernetes_service_account" "heimdall" {
+  metadata {
+    name      = local.name
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+    # Annotate with IRSA role ARN when provided (EKS only).
+    annotations = var.irsa_role_arn != "" ? {
+      "eks.amazonaws.com/role-arn" = var.irsa_role_arn
+    } : {}
+  }
+  automount_service_account_token = true
+}
+
+# ---------------------------------------------------------------------------
+# ClusterRole — read-only access to every resource Heimdall can inspect
+# ---------------------------------------------------------------------------
+resource "kubernetes_cluster_role" "heimdall_readonly" {
+  metadata {
+    name = "${local.name}-readonly"
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  # Core resources
+  rule {
+    api_groups = [""]
+    resources = [
+      "configmaps",
+      "endpoints",
+      "events",
+      "limitranges",
+      "namespaces",
+      "nodes",
+      "persistentvolumeclaims",
+      "persistentvolumes",
+      "pods",
+      "pods/log",
+      "replicationcontrollers",
+      "resourcequotas",
+      "serviceaccounts",
+      "services",
+    ]
+    verbs = ["get", "list", "watch"]
+  }
+
+  # apps
+  rule {
+    api_groups = ["apps"]
+    resources  = ["daemonsets", "deployments", "replicasets", "statefulsets"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # batch
+  rule {
+    api_groups = ["batch"]
+    resources  = ["cronjobs", "jobs"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # autoscaling
+  rule {
+    api_groups = ["autoscaling"]
+    resources  = ["horizontalpodautoscalers"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # networking
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingressclasses", "ingresses", "networkpolicies"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # storage
+  rule {
+    api_groups = ["storage.k8s.io"]
+    resources  = ["storageclasses", "volumeattachments"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # policy
+  rule {
+    api_groups = ["policy"]
+    resources  = ["poddisruptionbudgets"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # RBAC inspection
+  rule {
+    api_groups = ["rbac.authorization.k8s.io"]
+    resources  = ["clusterrolebindings", "clusterroles", "rolebindings", "roles"]
+    verbs      = ["get", "list", "watch"]
+  }
+
+  # Metrics API (kubectl top)
+  rule {
+    api_groups = ["metrics.k8s.io"]
+    resources  = ["nodes", "pods"]
+    verbs      = ["get", "list"]
+  }
+
+  # events.k8s.io (Kubernetes >= 1.26)
+  rule {
+    api_groups = ["events.k8s.io"]
+    resources  = ["events"]
+    verbs      = ["get", "list", "watch"]
+  }
+}
+
+# ---------------------------------------------------------------------------
+# ClusterRoleBinding
+# ---------------------------------------------------------------------------
+resource "kubernetes_cluster_role_binding" "heimdall_readonly" {
+  metadata {
+    name = "${local.name}-readonly"
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role.heimdall_readonly.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.heimdall.metadata[0].name
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Secret — Anthropic API key
+# ---------------------------------------------------------------------------
+resource "kubernetes_secret_v1" "heimdall_api_key" {
+  metadata {
+    name      = "heimdall-api-key"
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  data = {
+    ANTHROPIC_API_KEY = var.anthropic_api_key
+  }
+}
+
+# ---------------------------------------------------------------------------
+# ConfigMap — optional heimdall.config.yaml (tools, Slack, etc.)
+# ---------------------------------------------------------------------------
+resource "kubernetes_config_map_v1" "heimdall_config" {
+  count = local.need_configmap ? 1 : 0
+
+  metadata {
+    name      = "${local.name}-config"
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  data = {
+    "heimdall.config.yaml" = local.heimdall_config_yaml
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Deployment
+# ---------------------------------------------------------------------------
+resource "kubernetes_deployment" "heimdall" {
+  metadata {
+    name      = local.name
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        "app.kubernetes.io/name" = local.name
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          "app.kubernetes.io/name" = local.name
+        }
+      }
+
+      spec {
+        service_account_name            = kubernetes_service_account.heimdall.metadata[0].name
+        automount_service_account_token = true
+
+        security_context {
+          run_as_non_root = true
+          seccomp_profile {
+            type = "RuntimeDefault"
+          }
+        }
+
+        container {
+          name              = local.name
+          image             = "${var.image_repository}:${var.image_tag}"
+          image_pull_policy = "Always"
+
+          port {
+            name           = "http"
+            container_port = 3000
+            protocol       = "TCP"
+          }
+
+          env {
+            name = "ANTHROPIC_API_KEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.heimdall_api_key.metadata[0].name
+                key  = "ANTHROPIC_API_KEY"
+              }
+            }
+          }
+
+          env {
+            name  = "HEIMDALL_KUBECTL_CACHE_DIR"
+            value = "/tmp/heimdall-cache"
+          }
+
+          dynamic "env" {
+            for_each = var.model != "" ? [var.model] : []
+            content {
+              name  = "HEIMDALL_MODEL"
+              value = env.value
+            }
+          }
+
+          dynamic "env" {
+            for_each = local.need_configmap ? [1] : []
+            content {
+              name  = "HEIMDALL_CONFIG"
+              value = "/etc/heimdall/heimdall.config.yaml"
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = var.resources.requests_cpu
+              memory = var.resources.requests_memory
+            }
+            limits = {
+              cpu    = var.resources.limits_cpu
+              memory = var.resources.limits_memory
+            }
+          }
+
+          security_context {
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = true
+            capabilities {
+              drop = ["ALL"]
+            }
+          }
+
+          liveness_probe {
+            tcp_socket {
+              port = 3000
+            }
+            initial_delay_seconds = 15
+            period_seconds        = 30
+          }
+
+          readiness_probe {
+            tcp_socket {
+              port = 3000
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 10
+          }
+
+          volume_mount {
+            name       = "tmp"
+            mount_path = "/tmp"
+          }
+
+          dynamic "volume_mount" {
+            for_each = local.need_configmap ? [1] : []
+            content {
+              name       = "heimdall-config"
+              mount_path = "/etc/heimdall"
+              read_only  = true
+            }
+          }
+        }
+
+        volume {
+          name = "tmp"
+          empty_dir {}
+        }
+
+        dynamic "volume" {
+          for_each = local.need_configmap ? [1] : []
+          content {
+            name = "heimdall-config"
+            config_map {
+              name = kubernetes_config_map_v1.heimdall_config[0].metadata[0].name
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    kubernetes_cluster_role_binding.heimdall_readonly,
+    kubernetes_secret_v1.heimdall_api_key,
+  ]
+}

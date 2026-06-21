@@ -363,6 +363,90 @@ The Deployment is hardened by default:
 | Writable `/tmp` | `emptyDir` volume (kubectl cache + Node.js temp) |
 | In-cluster auth | `automountServiceAccountToken: true` (uses the ServiceAccount above) |
 
+## Deploy with Terraform
+
+The `terraform/` directory contains a self-contained Terraform module that deploys
+Heimdall to any Kubernetes cluster using the [hashicorp/kubernetes](https://registry.terraform.io/providers/hashicorp/kubernetes/latest) provider.
+
+### Quick start (Kind / local cluster)
+
+```bash
+cd terraform
+
+# Configure the provider to talk to your current kubeconfig context
+export KUBE_CONFIG_PATH=~/.kube/config
+
+terraform init
+terraform plan -var="anthropic_api_key=$ANTHROPIC_API_KEY"
+terraform apply -var="anthropic_api_key=$ANTHROPIC_API_KEY"
+```
+
+### Variables
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `anthropic_api_key` | Anthropic API key (required, sensitive) | — |
+| `namespace` | Kubernetes namespace to deploy into | `heimdall` |
+| `image_repository` | Container image repository | `ghcr.io/billzhuang/heimdall` |
+| `image_tag` | Container image tag | `latest` |
+| `model` | Override the Heimdall model (e.g. `anthropic/claude-opus-4-8`) | `""` |
+| `slack_webhook_url` | Slack incoming-webhook URL for alerts (sensitive) | `""` |
+| `irsa_role_arn` | IAM Role ARN for IRSA ServiceAccount annotation (EKS) | `""` |
+| `tools` | Tool-enablement overrides (see object shape below) | `{}` |
+| `resources` | Container resource requests/limits | see defaults |
+
+`tools` object shape:
+
+```hcl
+tools = {
+  prometheus_url  = "http://prometheus.monitoring:9090"  # enables prometheus_query
+  loki_url        = "http://loki.monitoring:3100"        # enables loki_query
+  jaeger_url      = "http://jaeger.monitoring:16686"     # enables jaeger_query
+  kubecost_url    = "http://kubecost.monitoring:9090"    # enables kubecost_query
+  aws_cli         = true                                 # enables aws_cli (use with irsa_role_arn)
+  trivy_scan      = true                                 # enables trivy_scan
+  datadog_api_key = "..."
+  datadog_app_key = "..."
+  datadog_site    = "datadoghq.com"                      # enables datadog_query
+}
+```
+
+### EKS with IRSA
+
+The `terraform/examples/eks/` directory shows how to wire IRSA so the Heimdall
+ServiceAccount assumes an IAM role with `ReadOnlyAccess`, enabling the `aws_cli`
+tool to query EKS, EC2, and IAM without static credentials.
+
+```bash
+cd terraform/examples/eks
+
+terraform init
+terraform apply \
+  -var="anthropic_api_key=$ANTHROPIC_API_KEY" \
+  -var="irsa_role_arn=arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>"
+```
+
+Create the IAM role via eksctl before applying:
+
+```bash
+eksctl create iamserviceaccount \
+  --name heimdall \
+  --namespace heimdall \
+  --cluster <cluster-name> \
+  --region <region> \
+  --attach-policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess \
+  --approve \
+  --override-existing-serviceaccounts
+```
+
+### Outputs
+
+| Output | Description |
+| --- | --- |
+| `deployment_name` | Name of the Heimdall Deployment |
+| `service_account_name` | Name of the Heimdall ServiceAccount |
+| `namespace` | Namespace where Heimdall is deployed |
+
 ## Configuration
 
 All configuration is via environment variables (see `.env.example`):
