@@ -709,17 +709,18 @@ a NotReady node, not the other way around.
    \`kubectl api-resources --api-group=cluster.x-k8s.io\`
    If the output is empty or the resource type is not found, report "CAPI is not installed in this cluster" and stop.
 
-2. **List all Machines cluster-wide** and identify non-Running phases:
-   \`kubectl get machine -A -o wide\`
+2. **List all Machines** and identify non-Running phases. Use \`-n <namespace>\` if namespace-locked,
+   or \`-A\` for a cluster-wide sweep (default when not scoped):
+   \`kubectl get machine -A -o wide\` (or \`-n <namespace>\`)
    Machine phases: Pending → Provisioning → Provisioned → Running → Deleting → Failed.
    Flag any Machine not in the Running phase.
 
 3. **Inspect MachineDeployments** for rollout state and replica health:
-   \`kubectl get machinedeployment -A -o wide\`
+   \`kubectl get machinedeployment -A -o wide\` (or \`-n <namespace>\`)
    Flag: READY < DESIRED (degraded replica count), or phase != Running.
 
 4. **Inspect MachineSets** to understand the replica hierarchy under each MachineDeployment:
-   \`kubectl get machineset -A -o wide\`
+   \`kubectl get machineset -A -o wide\` (or \`-n <namespace>\`)
 
 5. **Deep-inspect failed/non-Running Machines** — for each flagged Machine, check conditions and error messages:
    \`kubectl describe machine <name> -n <namespace>\`
@@ -742,22 +743,29 @@ a NotReady node, not the other way around.
    Flag stuck rollouts (old MachineSet machines draining while new ones fail to provision).
 
 8. **Check MachineHealthCheck objects** (if present) for auto-remediation policy:
-   \`kubectl get machinehealthcheck -A -o wide\`
+   \`kubectl get machinehealthcheck -A -o wide\` (or \`-n <namespace>\`)
    Note MaxUnhealthy limits and whether remediations are being blocked by them.
 
 ## Commands to use
+Use \`-n <namespace>\` if the session is namespace-locked; use \`-A\` for a cluster-wide sweep otherwise.
 - \`kubectl api-resources --api-group=cluster.x-k8s.io\`
-- \`kubectl get machine -A -o wide\`
-- \`kubectl get machineset -A -o wide\`
-- \`kubectl get machinedeployment -A -o wide\`
+- \`kubectl get machine -A -o wide\` (or \`-n <ns>\`)
+- \`kubectl get machineset -A -o wide\` (or \`-n <ns>\`)
+- \`kubectl get machinedeployment -A -o wide\` (or \`-n <ns>\`)
 - \`kubectl describe machine <name> -n <ns>\`
 - \`kubectl describe machinedeployment <name> -n <ns>\`
-- \`kubectl get machinehealthcheck -A -o wide\`
+- \`kubectl get machinehealthcheck -A -o wide\` (or \`-n <ns>\`)
 - \`kubectl get nodes -o wide\` (to correlate Machines with Nodes)
 - \`kubectl describe node <name>\` (when a Node is NotReady and correlates to a failed Machine)
 
 ## Reporting format
-Structure your findings as:
+Structure your findings using the standard response sections:
+
+Thinking Summary:
+- <2-4 bullets: CAPI detection result, Machines checked, highest-signal findings>
+
+Answer:
+<CAPI object inventory table and key findings>
 
 **CAPI object inventory**:
 | Kind | Name | Namespace | Phase | Ready |
@@ -776,8 +784,16 @@ Structure your findings as:
 - Underlying MachineSets: (list with replica counts)
 - Assessment: rolling / stuck / scaling
 
-**Remediation recommendations**:
-For each failed Machine, suggest the exact commands the operator should run to remediate —
+Causal Chain:
+- <infrastructure symptom> → <Machine lifecycle/condition failure> → <node readiness impact>
+
+Evidence:
+- <finding>: <kubectl output snippet or field value>
+
+Validity Score: <0.0–1.0; higher when multiple Machines and nodes corroborate the root cause>
+
+Remediation Steps:
+For each failed Machine, provide the exact command the operator should run —
 for example, deleting and re-creating a failed Machine to trigger re-provisioning.
 Never execute any of these commands yourself.
 

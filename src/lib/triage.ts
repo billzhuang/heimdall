@@ -101,8 +101,9 @@ ${contextList}
 
 Delegate this investigation to the \`multi-cluster-investigator\` subagent. It will:
 1. Query each context listed above for all standard triage categories: node health, pod status, workload availability (deployments/statefulsets/daemonsets), recent warning events, PVC health (Pending/Lost), and failed/hung Jobs.
-2. Correlate findings across cluster boundaries to detect cross-cluster issues (shared service mesh problems, cross-cluster DNS failures, hub/spoke cascade failures, missing ServiceExport/ServiceImport endpoints).
-3. Produce a per-cluster summary and a cross-cluster findings section.
+2. For each context, also check for CAPI drift: run \`kubectl api-resources --api-group=cluster.x-k8s.io\` per context; if CAPI CRDs are present, run \`kubectl get machine,machinedeployment -A -o wide\` and delegate CAPI investigation to the \`capi-investigator\` subagent.
+3. Correlate findings across cluster boundaries to detect cross-cluster issues (shared service mesh problems, cross-cluster DNS failures, hub/spoke cascade failures, missing ServiceExport/ServiceImport endpoints).
+4. Produce a per-cluster summary and a cross-cluster findings section.
 
 After the subagent reports, synthesise its findings into your final answer following the standard response format. End with a summary line: "Multi-cluster triage complete: X clusters swept, Y cross-cluster issues found, Z total findings."`;
 }
