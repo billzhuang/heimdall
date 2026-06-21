@@ -3,6 +3,7 @@
  *
  * No I/O — all functions are deterministic and unit-testable without a cluster.
  */
+import type { SloDefinition } from './slo.ts';
 
 export interface TriageOptions {
   /** Scope the sweep to a single namespace. */
@@ -15,6 +16,11 @@ export interface TriageOptions {
    * context and correlate cross-cluster findings.
    */
   contexts?: string[];
+  /**
+   * SLO definitions from the config.  When non-empty, an SLO evaluation step is
+   * appended to the triage prompt and breaching SLOs are surfaced as HIGH severity findings.
+   */
+  slos?: SloDefinition[];
 }
 
 /** Severity levels for triage findings. */
@@ -80,7 +86,31 @@ For each finding provide:
 - **Message**: concise description of the problem
 - **Suggested remediation**: the exact command the operator should run — never execute it yourself
 
-End your answer with a one-line summary: "Triage complete: X critical, Y warning, Z info findings."`;
+End your answer with a one-line summary: "Triage complete: X critical, Y warning, Z info findings."${opts.slos && opts.slos.length > 0 ? `
+
+${buildSloTriageStep(opts.slos)}` : ''}`;
+}
+
+/**
+ * Build the SLO evaluation step for the triage prompt when SLOs are configured.
+ * Each SLO metric is listed inline so the agent can query Prometheus for each one.
+ */
+function buildSloTriageStep(slos: SloDefinition[]): string {
+  const sloList = slos
+    .map(
+      (s) =>
+        `   - **${s.name}**: metric \`${s.metric}\` | budget ${s.budget} | target ${s.target} | window ${s.window}`,
+    )
+    .join('\n');
+
+  return `8. **SLO evaluation** (requires \`prometheus_query\` tool) — delegate to \`slo-evaluator\` subagent.
+   For each SLO below, call \`prometheus_query\` with an instant query for the metric, then compute:
+     burn_rate = metric_value / budget
+     remaining_budget = max(0, 1 − burn_rate)
+   Flag any SLO where burn_rate > 1.0 as a **HIGH** severity finding with name, burn rate, and remaining budget.
+   List healthy SLOs (burn_rate ≤ 1.0) in a "Healthy SLOs" summary table.
+
+${sloList}`;
 }
 
 /**
