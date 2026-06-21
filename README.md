@@ -7,7 +7,7 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 ## Features
 
 - **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`; `kubectl rollout` allows only `status`/`history`; `kubectl config` is blocked entirely.
-- **Rich observability toolset** — optional integrations for Prometheus (PromQL), Helm, Grafana Loki (LogQL), Jaeger/Tempo (distributed traces), Kubecost (cost attribution), Datadog (metrics/logs/events/monitors), AWS CLI (read-only describe-*/list-*/get-*), and Trivy (CVE + misconfiguration scanning). All disabled by default; enable per-tool in `heimdall.config.yaml`.
+- **Rich observability toolset** — optional integrations for Prometheus (PromQL), Grafana Loki (LogQL), Jaeger/Tempo (distributed traces), Kubecost (cost attribution), Datadog (metrics/logs/events/monitors), AWS CLI (read-only describe-*/list-*/get-*), and Trivy (CVE + misconfiguration scanning). These are disabled by default; enable per-tool in `heimdall.config.yaml`. Helm release inspection is enabled by default alongside `kubectl`.
 - **Specialist subagents** — 17 focused diagnostic profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`, `netpol-auditor`, `triage`, `crashloop-analyzer`, `oomkill-analyzer`, `deployment-analyzer`, `gitops-investigator`, `multi-cluster-investigator`, `resilience-advisor`, plus optional `eks-troubleshooter`, `iam-auditor`, `aws-resource-analyzer`, `cost-analyzer`, and `datadog-investigator` when the relevant tools are enabled.
 - **Triage mode** — `heimdall triage` runs a structured, repeatable whole-cluster health sweep (nodes → pods → workloads → events → PVCs → jobs) and produces a severity-ranked report (critical / warning / info).
 - **Watch mode** — `heimdall watch` continuously monitors `kubectl events --watch` for Kubernetes Warning events and triggers AI diagnosis on each one, optionally posting findings to a Slack/webhook.
@@ -195,26 +195,40 @@ npm run build            # flue build --target node  -> dist/
 Continuously monitor Kubernetes Warning events and trigger AI diagnosis on each one:
 
 ```bash
-heimdall watch                # watch all namespaces
-heimdall watch -n prod        # watch only the prod namespace
+heimdall --watch              # watch all namespaces (flag, not a subcommand)
 
-npm run watch                 # via npm
+npm run watch                 # via npm (equivalent)
 ```
 
-Optionally post findings to a Slack channel or custom webhook by setting `SLACK_WEBHOOK_URL`
-or configuring `watch.webhook` in `heimdall.config.yaml`. A configurable cooldown window
-(default 5 minutes) prevents duplicate alerts for the same object and reason.
+Namespace scope and webhook URL are not CLI flags — configure them in `heimdall.config.yaml`:
+
+```yaml
+watch:
+  namespaces: [prod, staging]  # omit to watch all namespaces
+  webhook: https://hooks.slack.com/...  # optional webhook for findings
+  reasons: [BackOff, OOMKilled]          # omit to diagnose all Warning events
+  cooldownSeconds: 300                   # default: suppress repeats for 5 min
+```
+
+A configurable cooldown (default 5 minutes) prevents duplicate alerts for the same object and reason.
 
 ### Alert mode
 
-Accept a PagerDuty webhook payload and dispatch an AI investigation:
+Accept an alert payload (Grafana AlertManager, PagerDuty, or raw text) and dispatch an AI
+investigation. Alert mode is invoked via `npm run alert` (not a `heimdall` subcommand):
 
 ```bash
-# Pipe a raw PagerDuty webhook JSON body into heimdall:
-cat pd-webhook.json | heimdall alert
+# PagerDuty webhook JSON file:
+npm run alert -- --source pagerduty pd-webhook.json
 
-# Or pass the payload inline:
-echo '{"messages":[...]}' | heimdall alert
+# Grafana AlertManager payload:
+npm run alert -- --source grafana alertmanager-webhook.json
+
+# Raw text alert:
+npm run alert -- --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
+
+# Skip pre-fetching kubectl context:
+npm run alert -- --source grafana grafana-alert.json --no-seed
 ```
 
 Map PagerDuty service names to K8s targets in `heimdall.config.yaml`:
