@@ -87,10 +87,14 @@ export const CDK_OPTIONS_WITH_VALUE = new Set([
 
 /**
  * Tokenize a command string into parts, handling single- and double-quoted
- * strings so that multi-word option values (e.g. --app "node app.js") are
- * treated as a single token.
+ * strings and backslash escapes so that multi-word option values (e.g.
+ * --app "node app.js") are treated as a single token.
+ *
+ * Exported so that `cdk.ts` can reuse the same tokenizer at execution time,
+ * eliminating the validation/execution discrepancy that would otherwise allow
+ * a crafted command to pass validation with one parse and execute differently.
  */
-function tokenizeForParse(command: string): string[] {
+export function tokenizeCdkCommand(command: string): string[] {
   const tokens: string[] = [];
   let current = '';
   let inSingle = false;
@@ -106,8 +110,13 @@ function tokenizeForParse(command: string): string[] {
       continue;
     }
     if (inDouble) {
-      if (ch === '"') inDouble = false;
-      else current += ch;
+      if (ch === '"') {
+        inDouble = false;
+      } else if (ch === '\\' && i + 1 < command.length && (command[i + 1] === '"' || command[i + 1] === '\\')) {
+        current += command[++i];
+      } else {
+        current += ch;
+      }
       continue;
     }
 
@@ -116,6 +125,9 @@ function tokenizeForParse(command: string): string[] {
       hasToken = true;
     } else if (ch === '"') {
       inDouble = true;
+      hasToken = true;
+    } else if (ch === '\\' && i + 1 < command.length) {
+      current += command[++i];
       hasToken = true;
     } else if (/\s/.test(ch)) {
       if (hasToken) {
@@ -149,7 +161,7 @@ export function parseCdkCommand(command: string): ParsedCdkCommand {
 
   if (!trimmed) return result;
 
-  const parts = tokenizeForParse(trimmed);
+  const parts = tokenizeCdkCommand(trimmed);
   if (parts.length === 0) return result;
 
   const binary = parts[0].toLowerCase();

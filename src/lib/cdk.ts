@@ -9,7 +9,7 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { validateCdkCommand } from './cdk-safety.ts';
+import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -42,55 +42,12 @@ export interface RunCdkOptions {
 }
 
 /**
- * Tokenize CDK CLI args. Strips the leading `cdk` token if present.
- * Uses shell-like tokenization without invoking a shell.
+ * Tokenize CDK CLI args. Delegates to the shared `tokenizeCdkCommand` from
+ * cdk-safety.ts (same tokenizer used at validation time) then strips the
+ * leading `cdk` token if present, so validation and execution can never diverge.
  */
 export function tokenizeCdkArgs(input: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-  let hasToken = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-
-    if (inSingle) {
-      if (ch === "'") inSingle = false;
-      else current += ch;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"') inDouble = false;
-      else if (ch === '\\' && i + 1 < input.length && (input[i + 1] === '"' || input[i + 1] === '\\')) {
-        current += input[++i];
-      } else current += ch;
-      continue;
-    }
-
-    if (ch === "'") {
-      inSingle = true;
-      hasToken = true;
-    } else if (ch === '"') {
-      inDouble = true;
-      hasToken = true;
-    } else if (ch === '\\' && i + 1 < input.length) {
-      current += input[++i];
-      hasToken = true;
-    } else if (/\s/.test(ch)) {
-      if (hasToken) {
-        tokens.push(current);
-        current = '';
-        hasToken = false;
-      }
-    } else {
-      current += ch;
-      hasToken = true;
-    }
-  }
-  if (hasToken) tokens.push(current);
-
-  // Strip leading "cdk" if present.
+  const tokens = tokenizeCdkCommand(input);
   if (tokens.length > 0 && tokens[0].toLowerCase() === 'cdk') {
     tokens.shift();
   }
