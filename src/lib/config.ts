@@ -286,6 +286,16 @@ const ScheduleSchema = v.nullish(
   }),
 );
 
+// Performance telemetry — disabled by default; auto-enabled by HEIMDALL_TELEMETRY_FILE env var.
+const TelemetrySchema = v.nullish(
+  v.object({
+    enabled: v.nullish(v.boolean(), false),
+    // File path for the JSON output blob. Omit to write to stderr.
+    file: v.nullish(v.string()),
+  }),
+  { enabled: false },
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
@@ -313,6 +323,8 @@ const HeimdallConfigSchema = v.object({
   schedule: ScheduleSchema,
   // Service Level Objectives to evaluate against Prometheus (empty by default).
   slos: SlosSchema,
+  // Performance telemetry: token usage, cache hit rate, tool-call latency (disabled by default).
+  telemetry: TelemetrySchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;

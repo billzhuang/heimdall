@@ -20,6 +20,7 @@ import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
+import { recordCacheHit, recordCacheMiss } from './telemetry.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -356,8 +357,10 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       // contain raw secret values.
       const safeOutput = applyRedaction(redactSecrets ? redactSecretValues(cached, argv) : cached, regexRedactionRules);
       await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
+      recordCacheHit();
       return truncate(safeOutput);
     }
+    recordCacheMiss();
   }
 
   // For `kubectl wait`, extend the exec timeout to match --timeout so Node
