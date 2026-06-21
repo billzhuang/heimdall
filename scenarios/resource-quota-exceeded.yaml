@@ -1,0 +1,58 @@
+description: "Pod pending due to namespace ResourceQuota exceeded"
+prompt: "My new deployment pods are stuck in Pending state and won't schedule. What's wrong?"
+mocks:
+  "get pods -n staging": |
+    NAME                            READY   STATUS    RESTARTS   AGE
+    new-service-deploy-7f9d8c       0/3     Pending   0          12m
+    existing-api-6b4c9d-abc12       1/1     Running   0          7d
+    existing-worker-5a3b8e-def45    1/1     Running   0          7d
+  "describe pod new-service-deploy-7f9d8c -n staging": |
+    Name:             new-service-deploy-7f9d8c
+    Namespace:        staging
+    Priority:         0
+    Node:             <none>
+    Labels:           app=new-service
+    Status:           Pending
+    IP:
+    Containers:
+      new-service:
+        Image:          myregistry.io/new-service:1.0.0
+        Port:           8080/TCP
+        Requests:
+          cpu:     500m
+          memory:  512Mi
+        Limits:
+          cpu:     1000m
+          memory:  1Gi
+    Conditions:
+      Type           Status
+      PodScheduled   False
+    Events:
+      Type     Reason            Age    From               Message
+      ----     ------            ----   ----               -------
+      Warning  FailedScheduling  12m    default-scheduler  0/2 nodes are available: 2 Insufficient cpu. preemption: 0/2 nodes are available: 2 No preemption victims found for incoming pod.
+      Warning  FailedScheduling  11m    default-scheduler  exceeded quota: staging-quota, requested: cpu=1500m,memory=1536Mi, used: cpu=3500m,memory=6656Mi, limited: cpu=4,memory=8Gi
+  "get resourcequota -n staging": |
+    NAME            AGE   REQUEST                                    LIMIT
+    staging-quota   30d   cpu: 3500m/4, memory: 6656Mi/8Gi, pods: 5/10   cpu: 6/8, memory: 12Gi/16Gi
+  "describe resourcequota staging-quota -n staging": |
+    Name:            staging-quota
+    Namespace:       staging
+    Resource         Used    Hard
+    --------         ----    ----
+    cpu              3500m   4
+    limits.cpu       6       8
+    limits.memory    12Gi    16Gi
+    memory           6656Mi  8Gi
+    pods             5       10
+  "get events -n staging": |
+    LAST SEEN   TYPE      REASON            OBJECT                              MESSAGE
+    12m         Warning   FailedScheduling  pod/new-service-deploy-7f9d8c       exceeded quota: staging-quota, requested: cpu=1500m
+    11m         Warning   FailedScheduling  pod/new-service-deploy-7f9d8c       0/2 nodes are available: 2 Insufficient cpu
+expectedSeverity: warning
+expectedKeywords:
+  - quota
+  - cpu
+  - pending
+forbiddenKeywords:
+  - "I don't know"

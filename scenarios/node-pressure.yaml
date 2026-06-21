@@ -1,0 +1,59 @@
+description: "Node MemoryPressure evicting pods"
+prompt: "Several pods are being evicted from node ip-10-0-1-88. What's happening and how do I fix it?"
+mocks:
+  "get nodes": |
+    NAME                                     STATUS     ROLES    AGE   VERSION
+    ip-10-0-1-88.us-east-1.compute.internal  Ready,SchedulingDisabled   <none>   14d   v1.29.3
+    ip-10-0-1-42.us-east-1.compute.internal  Ready      <none>   14d   v1.29.3
+  "describe node": |
+    Name:               ip-10-0-1-88.us-east-1.compute.internal
+    Roles:              <none>
+    Labels:             beta.kubernetes.io/arch=amd64
+                        kubernetes.io/os=linux
+                        node.kubernetes.io/instance-type=t3.medium
+    Annotations:        node.alpha.kubernetes.io/ttl: 0
+    CreationTimestamp:  Mon, 09 Jun 2026 10:00:00 +0000
+    Taints:             node.kubernetes.io/memory-pressure:NoSchedule
+    Conditions:
+      Type                 Status  Reason
+      ----                 ------  ------
+      MemoryPressure       True    KubeletHasInsufficientMemory
+      DiskPressure         False   KubeletHasNoDiskPressure
+      PIDPressure          False   KubeletHasSufficientPID
+      Ready                True    KubeletReady
+    Capacity:
+      cpu:                2
+      memory:             3929188Ki
+      pods:               17
+    Allocatable:
+      cpu:                1930m
+      memory:             3326788Ki
+      pods:               17
+    Allocated resources:
+      Resource           Requests      Limits
+      --------           --------      ------
+      cpu                1850m (95%)   2900m (150%)
+      memory             3200Mi (98%)  3800Mi (116%)
+    Events:
+      Type     Reason                 Age    From     Message
+      ----     ------                 ----   ----     -------
+      Warning  SystemOOM              5m     kubelet  System OOM encountered, victim process: java, pid: 5432
+      Warning  EvictionThresholdMet   4m     kubelet  Attempting to reclaim memory
+      Normal   NodeHasInsufficientMemory 3m  kubelet  Node ip-10-0-1-88 status is now: NodeHasInsufficientMemory
+  "get pods": |
+    NAME                        READY   STATUS    RESTARTS   AGE
+    api-deployment-abc123       0/1     Evicted   0          10m
+    worker-deployment-def456    0/1     Evicted   0          8m
+    cache-deployment-ghi789     1/1     Running   0          14d
+  "get events": |
+    LAST SEEN   TYPE      REASON      OBJECT                         MESSAGE
+    5m          Warning   Evicted     pod/api-deployment-abc123      The node was low on resource: memory. Threshold quantity: 100Mi, available: 82Mi.
+    4m          Warning   Evicted     pod/worker-deployment-def456   The node was low on resource: memory. Threshold quantity: 100Mi, available: 45Mi.
+    3m          Warning   SystemOOM   node/ip-10-0-1-88              System OOM encountered, victim process: java, pid: 5432
+expectedSeverity: critical
+expectedKeywords:
+  - MemoryPressure
+  - evict
+  - memory
+forbiddenKeywords:
+  - "I don't know"

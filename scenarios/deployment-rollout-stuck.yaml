@@ -1,0 +1,81 @@
+description: "Deployment rollout stuck due to readiness probe failure"
+prompt: "My deployment rollout has been stuck for 20 minutes and the new pods never become ready. What's happening?"
+mocks:
+  "get deployments -n default": |
+    NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+    payment-service    2/3     1            2           45m
+  "rollout status deployment/payment-service": |
+    Waiting for deployment "payment-service" rollout to finish: 1 out of 3 new replicas have been updated...
+  "describe deployment payment-service": |
+    Name:                   payment-service
+    Namespace:              default
+    CreationTimestamp:      Thu, 19 Jun 2026 07:00:00 +0000
+    Labels:                 app=payment-service
+    Replicas:               3 desired | 1 updated | 3 total | 2 available | 1 unavailable
+    StrategyType:           RollingUpdate
+    MinReadySeconds:        0
+    RollingUpdateStrategy:  25% max unavailable, 25% max surge
+    Pod Template:
+      Labels:  app=payment-service
+               version=v3.1.0
+      Containers:
+       payment:
+        Image:        myregistry.io/payment-service:v3.1.0
+        Port:         8080/TCP
+        Readiness:    http-get http://:8080/health delay=10s timeout=5s period=10s #success=1 #failure=3
+        Liveness:     http-get http://:8080/health delay=30s timeout=5s period=15s #success=1 #failure=3
+    Conditions:
+      Type             Status  Reason
+      ----             ------  ------
+      Progressing      True    NewReplicaSetAvailable
+      Available        False   MinimumReplicasUnavailable
+  "get pods -l app=payment-service": |
+    NAME                               READY   STATUS    RESTARTS   AGE
+    payment-service-v310-7f9d8c-abc    0/1     Running   0          22m
+    payment-service-v290-6b4c9d-def    1/1     Running   0          8d
+    payment-service-v290-6b4c9d-ghi    1/1     Running   0          8d
+  "describe pod payment-service-v310-7f9d8c-abc": |
+    Name:             payment-service-v310-7f9d8c-abc
+    Namespace:        default
+    Node:             ip-10-0-1-42.us-east-1.compute.internal/10.0.1.42
+    Labels:           app=payment-service
+                      version=v3.1.0
+    Status:           Running
+    Containers:
+      payment:
+        Image:          myregistry.io/payment-service:v3.1.0
+        Port:           8080/TCP
+        State:          Running
+          Started:      Thu, 19 Jun 2026 09:00:00 +0000
+        Ready:          False
+        Restart Count:  0
+        Readiness:      http-get http://:8080/health delay=10s timeout=5s period=10s #success=1 #failure=3
+        Liveness:       http-get http://:8080/health delay=30s timeout=5s period=15s #success=1 #failure=3
+    Conditions:
+      Type              Status
+      Initialized       True
+      Ready             False
+      ContainersReady   False
+      PodScheduled      True
+    Events:
+      Type     Reason     Age                    From               Message
+      ----     ------     ----                   ----               -------
+      Normal   Scheduled  22m                    default-scheduler  Successfully assigned default/payment-service-v310-7f9d8c-abc
+      Normal   Pulled     22m                    kubelet            Container image "myregistry.io/payment-service:v3.1.0" already present
+      Normal   Created    22m                    kubelet            Created container payment
+      Normal   Started    22m                    kubelet            Started container payment
+      Warning  Unhealthy  21m (x63 over 22m)    kubelet            Readiness probe failed: HTTP probe failed with statuscode: 503
+  "logs payment-service-v310-7f9d8c-abc": |
+    [2026-06-19 09:00:05] INFO  Starting payment-service v3.1.0
+    [2026-06-19 09:00:06] INFO  Connecting to database at db.internal:5432
+    [2026-06-19 09:00:07] ERROR Failed to connect to database: dial tcp db.internal:5432: connect: connection refused
+    [2026-06-19 09:00:07] WARN  Retrying database connection (attempt 1/5)
+    [2026-06-19 09:22:00] ERROR Max retries exceeded, service degraded: database unavailable
+    [2026-06-19 09:22:01] WARN  /health endpoint returning 503 until DB connection restored
+expectedSeverity: critical
+expectedKeywords:
+  - readiness
+  - probe
+  - database
+forbiddenKeywords:
+  - "I don't know"
