@@ -32,14 +32,20 @@ import { nextFireTime, formatDelay, validateCronExpression } from './lib/schedul
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
+const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Invoke the Heimdall agent with a prompt, streaming output to stdout. */
-async function runAgent(prompt: string): Promise<void> {
+async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
 
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error('Aborted'));
+      return;
+    }
+
     let settled = false;
     const settle = (err?: Error) => {
       if (!settled) {
@@ -53,17 +59,43 @@ async function runAgent(prompt: string): Promise<void> {
       stdio: ['ignore', 'inherit', 'inherit'],
     });
 
+    let timedOut = false;
+    let aborted = false;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill('SIGTERM');
-      settle(new Error('triage timed out after 5 minutes'));
+      // Escalate to SIGKILL if the child doesn't exit after SIGTERM.
+      killTimer = setTimeout(() => child.kill('SIGKILL'), SIGKILL_GRACE_MS);
     }, TRIAGE_TIMEOUT_MS);
 
-    child.on('close', (code: number | null, signal: string | null) => {
+    const onAbort = () => {
+      aborted = true;
       clearTimeout(timer);
-      if (code !== null && code !== 0) {
+      if (killTimer) clearTimeout(killTimer);
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), SIGKILL_GRACE_MS);
+    };
+
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    child.on('close', (code: number | null, signalName: string | null) => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
+      if (aborted) {
+        settle(new Error('Aborted'));
+      } else if (timedOut) {
+        settle(new Error('triage timed out after 5 minutes'));
+      } else if (code !== null && code !== 0) {
         settle(new Error(`heimdall exited with code ${code}`));
-      } else if (code === null && signal !== null) {
-        settle(new Error(`heimdall killed by signal ${signal}`));
+      } else if (code === null && signalName !== null) {
+        settle(new Error(`heimdall killed by signal ${signalName}`));
       } else {
         settle();
       }
@@ -71,13 +103,17 @@ async function runAgent(prompt: string): Promise<void> {
 
     child.on('error', (err: Error) => {
       clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
       settle(err);
     });
   });
 }
 
-/** Run one triage sweep and return when complete. */
-async function runTriage(opts: TriageOptions): Promise<void> {
+/** Run one triage sweep. Returns true on success, false on failure. */
+async function runTriage(opts: TriageOptions, signal?: AbortSignal): Promise<boolean> {
   const scope = opts.namespace
     ? `namespace "${opts.namespace}"`
     : opts.allNamespaces
@@ -86,19 +122,32 @@ async function runTriage(opts: TriageOptions): Promise<void> {
   process.stderr.write(`[heimdall-schedule] Running scheduled triage (scope: ${scope})...\n`);
 
   try {
-    await runAgent(buildTriagePrompt(opts));
+    await runAgent(buildTriagePrompt(opts), signal);
     process.stderr.write('[heimdall-schedule] Triage complete.\n');
+    return true;
   } catch (err: unknown) {
     const detail = err instanceof Error ? err.message : String(err);
     process.stderr.write(`[heimdall-schedule] Triage failed: ${detail}\n`);
+    return false;
   }
 }
 
 /** Interruptible sleep that resolves early when the abort signal fires. */
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise<void>((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -121,15 +170,19 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
     process.exit(1);
   }
 
-  const triageOpts: TriageOptions = {
-    namespace: triageCfg.namespace ?? undefined,
-    allNamespaces: triageCfg.allNamespaces ?? false,
-  };
+  // allNamespaces takes precedence; drop namespace when both are set.
+  const triageOpts: TriageOptions = triageCfg.allNamespaces
+    ? { allNamespaces: true }
+    : {
+        namespace: triageCfg.namespace ?? undefined,
+        allNamespaces: false,
+      };
 
   process.stderr.write(`[heimdall-schedule] Schedule mode started. Triage cron: "${cron}" (UTC)\n`);
 
   if (runOnce) {
-    await runTriage(triageOpts);
+    const ok = await runTriage(triageOpts);
+    if (!ok) process.exit(1);
     return;
   }
 
@@ -150,7 +203,7 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
     await sleep(delayMs, controller.signal);
     if (controller.signal.aborted) break;
 
-    await runTriage(triageOpts);
+    await runTriage(triageOpts, controller.signal);
   }
 
   process.stderr.write('[heimdall-schedule] Shutting down cleanly.\n');
@@ -159,15 +212,16 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
 }
 
 // --- CLI arg parsing when run directly ---
-const args = process.argv.slice(2);
-let runOnce = false;
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  const args = process.argv.slice(2);
+  let runOnce = false;
 
-for (let i = 0; i < args.length; i++) {
-  const arg = args[i];
-  if (arg === '--once') {
-    runOnce = true;
-  } else if (arg === '-h' || arg === '--help') {
-    process.stdout.write(`Usage: heimdall schedule [--once]
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--once') {
+      runOnce = true;
+    } else if (arg === '-h' || arg === '--help') {
+      process.stdout.write(`Usage: heimdall schedule [--once]
 
 Run Heimdall operations on a cron schedule defined in heimdall.config.yaml.
 
@@ -186,17 +240,19 @@ Config (heimdall.config.yaml):
 Examples:
   npm run schedule              # long-running cron loop
   npm run schedule -- --once    # one-shot, exit when done
+  heimdall schedule --once      # same via the bin CLI
   flue run triage --target node # run triage as a Flue workflow (for external schedulers)
 `);
-    process.exit(0);
-  } else {
-    process.stderr.write(`Error: unknown option: ${arg}\n`);
-    process.exit(1);
+      process.exit(0);
+    } else {
+      process.stderr.write(`Error: unknown option: ${arg}\n`);
+      process.exit(1);
+    }
   }
-}
 
-runScheduleMode(runOnce).catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-schedule] Fatal error: ${detail}\n`);
-  process.exit(1);
-});
+  runScheduleMode(runOnce).catch((err: unknown) => {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[heimdall-schedule] Fatal error: ${detail}\n`);
+    process.exit(1);
+  });
+}

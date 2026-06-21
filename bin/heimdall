@@ -34,6 +34,7 @@ show_help() {
 Usage: heimdall -p <prompt> [--json]
        heimdall --watch
        heimdall triage [-n <namespace>] [-A]
+       heimdall schedule [--once]
        heimdall eval [--scenario <name>]
        heimdall self-improve [--scenario <name>] [--reflect] [--from-log]
        heimdall self-loop [--max-iterations <N>] [--dry-run] [--backend <name>]
@@ -59,6 +60,8 @@ Subcommands:
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
+  schedule              Run triage on a cron schedule defined in heimdall.config.yaml
+    --once                Fire once immediately and exit (for CronJob/CI use)
   eval                  Run synthetic RCA evaluation against known failure scenarios
   self-improve          Run evals and record failures as learning entries for instruction improvement
     --reflect             After running, print a meta-prompt for proposing instruction fixes
@@ -77,6 +80,8 @@ Examples:
   heimdall triage                         # full health sweep (default namespace)
   heimdall triage -A                      # sweep all namespaces
   heimdall triage -n prod                 # sweep only the prod namespace
+  heimdall schedule                       # long-running cron loop (reads heimdall.config.yaml)
+  heimdall schedule --once                # one-shot triage and exit
   heimdall eval                           # run all eval scenarios
   heimdall eval --scenario crashloop      # run only matching scenarios
   heimdall self-improve                   # run evals, record failures in learning log
@@ -111,6 +116,8 @@ PROMPT=""
 WATCH=false
 TRIAGE=false
 TRIAGE_ARGS=()
+SCHEDULE=false
+SCHEDULE_ARGS=()
 EVAL=false
 EVAL_ARGS=()
 SELF_IMPROVE=false
@@ -129,6 +136,13 @@ while [[ $# -gt 0 ]]; do
       shift
       # Pass remaining args to the triage script.
       TRIAGE_ARGS=("$@")
+      break
+      ;;
+    schedule)
+      SCHEDULE=true
+      shift
+      # Pass remaining args to the schedule script.
+      SCHEDULE_ARGS=("$@")
       break
       ;;
     eval)
@@ -200,7 +214,7 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, 'eval' for synthetic RCA evaluation, 'self-improve' for the self-improvement loop, or 'self-loop' for the automated closed-loop" >&2
+      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, 'schedule' for the cron scheduler, 'eval' for synthetic RCA evaluation, 'self-improve' for the self-improvement loop, or 'self-loop' for the automated closed-loop" >&2
       show_help >&2
       exit 1
       ;;
@@ -214,6 +228,10 @@ if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$WATCH" == "true" ]]; then
 fi
 if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$TRIAGE" == "true" ]]; then
   echo "Error: --json is not compatible with the triage subcommand" >&2
+  exit 1
+fi
+if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$SCHEDULE" == "true" ]]; then
+  echo "Error: --json is not compatible with the schedule subcommand" >&2
   exit 1
 fi
 if [[ "$JSON_OUTPUT" == "true" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
@@ -255,6 +273,23 @@ fi
 if [[ "$BACKEND" == "codex-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
   echo "Error: --backend codex-cli is not compatible with the self-improve subcommand" >&2
   exit 1
+fi
+
+# --- Schedule mode --------------------------------------------------------
+if [[ "$SCHEDULE" == "true" ]]; then
+  SCHEDULE_COMPILED="${ROOT_DIR}/dist/schedule-mode.mjs"
+  SCHEDULE_SOURCE="${ROOT_DIR}/src/schedule-mode.ts"
+
+  if [[ -f "$SCHEDULE_COMPILED" ]]; then
+    exec node "$SCHEDULE_COMPILED" "${SCHEDULE_ARGS[@]}"
+  elif [[ -x "$TSX" ]] && [[ -f "$SCHEDULE_SOURCE" ]]; then
+    exec "$TSX" "$SCHEDULE_SOURCE" "${SCHEDULE_ARGS[@]}"
+  else
+    echo "Error: schedule mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
 fi
 
 # --- Triage mode ----------------------------------------------------------
