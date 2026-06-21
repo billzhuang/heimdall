@@ -103,6 +103,7 @@ Run a structured, whole-cluster health sweep with severity-ranked findings:
 heimdall triage               # sweep the default namespace
 heimdall triage -A            # sweep all namespaces
 heimdall triage -n prod       # sweep only the prod namespace
+heimdall triage --model anthropic/claude-opus-4-8  # use a different model
 
 npm run triage                # via npm (default namespace)
 npm run triage -- -n staging  # scope to a namespace
@@ -127,6 +128,7 @@ kubeconfig or cluster is required.
 ```bash
 heimdall eval                       # run all scenarios
 heimdall eval --scenario crashloop  # run only scenarios matching "crashloop"
+heimdall eval --model anthropic/claude-opus-4-8  # use a different model
 
 npm run eval                        # via npm (runs all scenarios)
 ```
@@ -196,6 +198,7 @@ Continuously monitor Kubernetes Warning events and trigger AI diagnosis on each 
 
 ```bash
 heimdall --watch              # watch all namespaces (flag, not a subcommand)
+heimdall --watch --model anthropic/claude-opus-4-8  # use a different model
 
 npm run watch                 # via npm (equivalent)
 ```
@@ -229,6 +232,9 @@ npm run alert -- --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff
 
 # Skip pre-fetching kubectl context:
 npm run alert -- --source grafana grafana-alert.json --no-seed
+
+# Use a different model:
+npm run alert -- --source raw "high latency" --model anthropic/claude-opus-4-8
 ```
 
 Map PagerDuty service names to K8s targets in `heimdall.config.yaml`:
@@ -364,7 +370,7 @@ All configuration is via environment variables (see `.env.example`):
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | Provider credential (required) | — |
-| `HEIMDALL_MODEL` | Flue `provider/model` specifier | `anthropic/claude-sonnet-4-6` |
+| `HEIMDALL_MODEL` | Flue `provider/model` specifier (overridden by `--model` CLI flag) | `anthropic/claude-sonnet-4-6` |
 | `KUBECONFIG` | Path to kubeconfig | `~/.kube/config` |
 | `HEIMDALL_CONFIG` | Path to `heimdall.config.yaml` | `<cwd>/heimdall.config.yaml` |
 | `HEIMDALL_KUBECTL_CACHE` | Set to `0` to disable the JSON cache | enabled |

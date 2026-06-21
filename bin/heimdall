@@ -47,6 +47,9 @@ Options:
       --json            Emit a single JSON object to stdout (one-shot mode only)
       --format json     Alias for --json
       --no-learn        Skip appending this investigation to the task-history log
+      --model <provider/model>  Override the LLM model (default: anthropic/claude-sonnet-4-6)
+                        Overrides HEIMDALL_MODEL env var. Format: provider/model
+                        e.g. anthropic/claude-opus-4-8, anthropic/claude-haiku-4-5-20251001
       --backend <name>  LLM backend: 'flue' (default), 'claude-cli', or 'codex-cli'
                         Override with env var HEIMDALL_BACKEND=<name>.
                         'claude-cli' calls \`claude -p\` directly (no tool use;
@@ -128,6 +131,7 @@ JSON_OUTPUT=false
 NO_LEARN=false
 # Backend: 'flue' (default, full agent with tool use) or 'claude-cli' (external LLM via claude -p).
 BACKEND="${HEIMDALL_BACKEND:-flue}"
+HEIMDALL_MODEL_FLAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -198,6 +202,16 @@ while [[ $# -gt 0 ]]; do
         *) echo "Error: unknown backend '$2'; supported: flue, claude-cli, codex-cli" >&2; exit 1 ;;
       esac
       shift 2
+      ;;
+    --model)
+      [[ $# -lt 2 ]] && { echo "Error: --model requires an argument" >&2; exit 1; }
+      HEIMDALL_MODEL_FLAG="$2"
+      shift 2
+      ;;
+    --model=*)
+      HEIMDALL_MODEL_FLAG="${1#--model=}"
+      [[ -z "$HEIMDALL_MODEL_FLAG" ]] && { echo "Error: --model= requires a non-empty value" >&2; exit 1; }
+      shift
       ;;
     -h|--help)
       show_help
@@ -377,6 +391,15 @@ if [[ "$WATCH" == "true" ]]; then
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1
   fi
+fi
+
+# Validate and export model override if set
+if [[ -n "$HEIMDALL_MODEL_FLAG" ]]; then
+  if [[ "$HEIMDALL_MODEL_FLAG" != */* ]]; then
+    echo "Error: --model requires a 'provider/model' value (e.g. 'anthropic/claude-opus-4-8')" >&2
+    exit 1
+  fi
+  export HEIMDALL_MODEL="$HEIMDALL_MODEL_FLAG"
 fi
 
 # --- One-shot prompt mode -------------------------------------------------
