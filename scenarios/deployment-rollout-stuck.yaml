@@ -1,5 +1,5 @@
 description: "Deployment rollout stuck due to readiness probe failure"
-prompt: "My deployment rollout has been stuck for 20 minutes and the new pods never become ready. What's happening?"
+prompt: "My payment-service deployment rollout in the default namespace has been stuck for 20 minutes and the new pods never become ready. What's happening?"
 mocks:
   "get deployments -n default": |
     NAME               READY   UP-TO-DATE   AVAILABLE   AGE

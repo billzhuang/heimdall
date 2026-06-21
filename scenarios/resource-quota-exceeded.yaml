@@ -59,19 +59,19 @@ mocks:
     Events:
       Type     Reason        Age                   From                   Message
       ----     ------        ----                  ----                   -------
-      Warning  FailedCreate  15m (x18 over 15m)   replicaset-controller  Error creating: pods "new-service-7f9d8c-" is forbidden: exceeded quota: staging-quota, requested: cpu=500m,memory=512Mi, used: cpu=3500m,memory=6656Mi, limited: cpu=4,memory=8Gi
+      Warning  FailedCreate  15m (x18 over 15m)   replicaset-controller  Error creating: pods "new-service-7f9d8c-" is forbidden: exceeded quota: staging-quota, requested: cpu=500m,memory=512Mi, used: cpu=3700m,memory=7168Mi, limited: cpu=4,memory=8Gi
   "get resourcequota -n staging": |
     NAME            AGE   REQUEST                                    LIMIT
-    staging-quota   30d   cpu: 3500m/4, memory: 6656Mi/8Gi, pods: 5/10   cpu: 6/8, memory: 12Gi/16Gi
+    staging-quota   30d   cpu: 3700m/4, memory: 7168Mi/8Gi, pods: 5/10   cpu: 6/8, memory: 12Gi/16Gi
   "describe resourcequota staging-quota -n staging": |
     Name:            staging-quota
     Namespace:       staging
     Resource         Used    Hard
     --------         ----    ----
-    cpu              3500m   4
+    cpu              3700m   4
     limits.cpu       6       8
     limits.memory    12Gi    16Gi
-    memory           6656Mi  8Gi
+    memory           7168Mi  8Gi
     pods             5       10
   "get pods -n staging": |
     NAME                            READY   STATUS    RESTARTS   AGE
