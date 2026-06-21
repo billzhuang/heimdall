@@ -57,22 +57,20 @@ function truncate(text: string): string {
 }
 
 /**
- * Convert a Heimdall-style relative duration or ISO8601 string to a NRQL
- * time expression for use in SINCE/UNTIL clauses.
+ * Convert a Heimdall-style relative duration or ISO8601 string to an ISO8601
+ * timestamp for use in NRQL SINCE/UNTIL clauses (single-quoted).
  *
- * - Relative starting with '-': convert to NRQL literal (e.g. "-1h" → "1 hour ago").
- * - ISO8601 / RFC3339: pass through as-is (NRQL accepts ISO8601 in SINCE/UNTIL).
- * - Bare integer (epoch seconds): convert to ISO8601.
+ * - Relative starting with '-': subtract duration from nowMs and return ISO8601.
+ * - ISO8601 / RFC3339: pass through as-is.
+ * - Bare integer (epoch seconds or milliseconds): convert to ISO8601.
  * - Returns null when the expression cannot be resolved.
  */
 export function resolveNrqlTime(expr: string, nowMs: number): string | null {
   if (expr.startsWith('-')) {
     const durationMs = parseDurationMs(expr.slice(1));
     if (durationMs === null) return null;
-    const seconds = Math.round(durationMs / 1_000);
-    if (!Number.isFinite(seconds) || seconds <= 0) return null;
-    // Convert to NRQL time literal, e.g. "3600 seconds ago"
-    return `${seconds} seconds ago`;
+    if (!Number.isFinite(durationMs) || durationMs <= 0) return null;
+    return new Date(nowMs - durationMs).toISOString();
   }
   // Bare integer → epoch
   if (/^\d{1,13}$/.test(expr)) {
@@ -80,7 +78,7 @@ export function resolveNrqlTime(expr: string, nowMs: number): string | null {
     const ms = expr.length <= 10 ? n * 1_000 : n;
     return new Date(ms).toISOString();
   }
-  // ISO8601 or already a NRQL literal — pass through
+  // ISO8601 — pass through
   if (!Number.isNaN(Date.parse(expr))) return expr;
   return null;
 }
@@ -129,10 +127,27 @@ async function queryMetrics(
     return 'Error: query is required for metrics (e.g. "SELECT average(cpuPercent) FROM SystemSample SINCE 1 hour ago").';
   }
 
+  let nrql = params.query.trim();
+  const nowMs = Date.now();
+
+  if (params.from) {
+    const since = resolveNrqlTime(params.from, nowMs);
+    if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
+    if (!/\bSINCE\b/i.test(nrql)) nrql += ` SINCE '${since}'`;
+  }
+  if (params.to) {
+    const until = resolveNrqlTime(params.to, nowMs);
+    if (until === null) return `Error: could not parse "to" time: "${params.to}".`;
+    if (!/\bUNTIL\b/i.test(nrql)) nrql += ` UNTIL '${until}'`;
+  }
+  if (!/\bLIMIT\b/i.test(nrql)) {
+    nrql += ` LIMIT ${effectiveLimit(params.limit)}`;
+  }
+
   const gql = `{
   actor {
     account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(params.query.trim())}) {
+      nrql(query: ${JSON.stringify(nrql)}) {
         results
         metadata { facets timeWindow { begin end since until } }
       }
@@ -149,7 +164,7 @@ async function queryApm(
   signal: AbortSignal,
 ): Promise<string> {
   const nowMs = Date.now();
-  const since = params.from ? resolveNrqlTime(params.from, nowMs) : '1 hour ago';
+  const since = params.from ? resolveNrqlTime(params.from, nowMs) : new Date(nowMs - 3_600_000).toISOString();
   const until = params.to ? resolveNrqlTime(params.to, nowMs) : null;
 
   if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
@@ -181,16 +196,19 @@ async function queryAlerts(
   signal: AbortSignal,
 ): Promise<string> {
   const nowMs = Date.now();
-  const since = params.from ? resolveNrqlTime(params.from, nowMs) : '24 hours ago';
+  const since = params.from ? resolveNrqlTime(params.from, nowMs) : new Date(nowMs - 86_400_000).toISOString();
+  const until = params.to ? resolveNrqlTime(params.to, nowMs) : null;
 
   if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
+  if (params.to && until === null) return `Error: could not parse "to" time: "${params.to}".`;
 
   const extraWhere = params.query?.trim() ? ` AND ${params.query.trim()}` : '';
+  const untilClause = until ? ` UNTIL '${until}'` : '';
   const lim = effectiveLimit(params.limit);
 
   // NrAiIncident captures New Relic AI (applied intelligence) incidents.
   // Filtering event = 'open' surfaces currently active violations.
-  const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}' LIMIT ${lim}`;
+  const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${untilClause} LIMIT ${lim}`;
 
   const gql = `{
   actor {

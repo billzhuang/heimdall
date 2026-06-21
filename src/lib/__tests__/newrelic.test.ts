@@ -30,16 +30,16 @@ afterEach(() => {
 describe('resolveNrqlTime', () => {
   const NOW = new Date('2024-06-01T12:00:00Z').getTime();
 
-  it('converts "-1h" to NRQL seconds-ago literal', () => {
-    expect(resolveNrqlTime('-1h', NOW)).toBe('3600 seconds ago');
+  it('converts "-1h" to ISO8601 anchored to nowMs', () => {
+    expect(resolveNrqlTime('-1h', NOW)).toBe('2024-06-01T11:00:00.000Z');
   });
 
-  it('converts "-30m" to NRQL seconds-ago literal', () => {
-    expect(resolveNrqlTime('-30m', NOW)).toBe('1800 seconds ago');
+  it('converts "-30m" to ISO8601 anchored to nowMs', () => {
+    expect(resolveNrqlTime('-30m', NOW)).toBe('2024-06-01T11:30:00.000Z');
   });
 
-  it('converts "-2d" to NRQL seconds-ago literal', () => {
-    expect(resolveNrqlTime('-2d', NOW)).toBe('172800 seconds ago');
+  it('converts "-2d" to ISO8601 anchored to nowMs', () => {
+    expect(resolveNrqlTime('-2d', NOW)).toBe('2024-05-30T12:00:00.000Z');
   });
 
   it('converts Unix second epoch to ISO8601', () => {
@@ -123,6 +123,39 @@ describe('runNewRelicQuery — metrics', () => {
     );
     expect(result).toMatch(/HTTP 400/);
   });
+
+  it('appends SINCE when from is provided and query lacks SINCE', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', from: '-1h' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toMatch(/SINCE '\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('does not double-append SINCE when query already contains it', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago', from: '-1h' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect((body.query as string).match(/\bSINCE\b/g) ?? []).toHaveLength(1);
+  });
+
+  it('appends LIMIT when limit is specified and query lacks LIMIT', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', limit: 42 },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toContain('LIMIT 42');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -142,7 +175,7 @@ describe('runNewRelicQuery — apm', () => {
     const body = JSON.parse(opts.body as string) as { query: string };
     expect(body.query).toContain('Transaction');
     expect(body.query).toContain("appName = 'payments'");
-    expect(body.query).toContain('3600 seconds ago');
+    expect(body.query).toMatch(/SINCE '\d{4}-\d{2}-\d{2}T/);
   });
 
   it('returns error for invalid from time', async () => {
@@ -196,12 +229,23 @@ describe('runNewRelicQuery — alerts', () => {
     expect(body.query).toContain("priority = 'CRITICAL'");
   });
 
-  it('uses 24 hours ago as default lookback', async () => {
+  it('uses 24 hours ago as default lookback expressed as ISO8601', async () => {
     const fetchMock = mockFetch('{"data":{}}');
     await runNewRelicQuery({ queryType: 'alerts' }, BASE_CONFIG);
     const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(opts.body as string) as { query: string };
-    expect(body.query).toContain('24 hours ago');
+    expect(body.query).toMatch(/SINCE '\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('appends UNTIL clause when to is specified', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'alerts', to: '2024-06-01T12:00:00Z' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toContain("UNTIL '2024-06-01T12:00:00Z'");
   });
 });
 
