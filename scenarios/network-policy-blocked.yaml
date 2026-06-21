@@ -1,5 +1,5 @@
 description: "NetworkPolicy blocking inter-pod traffic"
-prompt: "The frontend pods can't reach the backend service. Connections are timing out. What is blocking the traffic?"
+prompt: "The frontend pods in the production namespace can't reach the backend service. Connections are timing out. What is blocking the traffic?"
 mocks:
   "get pods -n production": |
     NAME                          READY   STATUS    RESTARTS   AGE
