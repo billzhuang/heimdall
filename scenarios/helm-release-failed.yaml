@@ -1,0 +1,56 @@
+description: "Helm release in failed state due to chart rendering error"
+prompt: "Our checkout service Helm release is failing. The deployment shows 0 pods ready and the helm status looks bad. What went wrong?"
+mocks:
+  "get pods -n checkout": |
+    NAME                                READY   STATUS             RESTARTS   AGE
+    checkout-service-7f9b4d-x2kp1       0/1     Error              3          8m
+    checkout-service-7f9b4d-mq3rt       0/1     CrashLoopBackOff   4          8m
+  "get deployments -n checkout": |
+    NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+    checkout-service   0/2     2            0           8m
+  "describe deployment checkout-service -n checkout": |
+    Name:               checkout-service
+    Namespace:          checkout
+    CreationTimestamp:  Sat, 21 Jun 2026 09:00:00 +0000
+    Labels:             app.kubernetes.io/managed-by=Helm
+                        helm.sh/chart=checkout-service-1.4.2
+    Annotations:        deployment.kubernetes.io/revision: 3
+                        meta.helm.sh/release-name: checkout-service
+                        meta.helm.sh/release-namespace: checkout
+    Replicas:           2 desired | 2 updated | 2 total | 0 available | 2 unavailable
+    StrategyType:       RollingUpdate
+    Conditions:
+      Type             Status  Reason
+      ----             ------  ------
+      Available        False   MinimumReplicasUnavailable
+      Progressing      True    ReplicaSetUpdated
+    OldReplicaSets:    checkout-service-6c8b3e (2/2 replicas created)
+    NewReplicaSet:     checkout-service-7f9b4d (2/2 replicas created)
+    Events:
+      Type     Reason             Age   From                   Message
+      ----     ------             ----  ----                   -------
+      Normal   ScalingReplicaSet  8m    deployment-controller  Scaled up replica set checkout-service-7f9b4d to 2
+  "logs checkout-service-7f9b4d-x2kp1 -n checkout": |
+    Error: failed to create containerd task: failed to create shim: OCI runtime create failed: container_linux.go:380: starting container process caused: process_linux.go:545: container init caused: rootfs_linux.go:76: mounting "/var/run/secrets/kubernetes.io/serviceaccount" to rootfs at "/var/run/secrets/kubernetes.io/serviceaccount" caused: mount through procfd: not a directory: unknown
+    Error: env var DATABASE_URL not set; refusing to start
+    panic: missing required configuration: DATABASE_URL
+  "get secret checkout-config -n checkout": |
+    Error from server (NotFound): secrets "checkout-config" not found
+  "get configmap checkout-config -n checkout": |
+    Error from server (NotFound): configmaps "checkout-config" not found
+  "get events -n checkout": |
+    LAST SEEN   TYPE      REASON              OBJECT                                 MESSAGE
+    8m          Warning   Failed              pod/checkout-service-7f9b4d-x2kp1     Error: failed to create containerd task
+    7m          Warning   BackOff             pod/checkout-service-7f9b4d-x2kp1     Back-off restarting failed container
+    8m          Warning   Failed              pod/checkout-service-7f9b4d-mq3rt     Error: env var DATABASE_URL not set
+    7m          Warning   BackOff             pod/checkout-service-7f9b4d-mq3rt     Back-off restarting failed container
+    10m         Warning   FailedInstall       helmrelease/checkout-service           Helm install failed: render error in "checkout-service/templates/secret.yaml": template: checkout-service/templates/secret.yaml:12:22: executing "checkout-service/templates/secret.yaml" at <.Values.database.url>: nil pointer evaluating interface {}.url
+  "get helmrelease checkout-service -n checkout": |
+    Error from server (NotFound): helmreleases.helm.toolkit.fluxcd.io "checkout-service" not found
+expectedSeverity: critical
+expectedKeywords:
+  - Helm
+  - render
+  - DATABASE_URL
+forbiddenKeywords:
+  - "I don't know"

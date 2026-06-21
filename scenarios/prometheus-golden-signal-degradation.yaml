@@ -1,0 +1,64 @@
+description: "Prometheus alert correlating with high pod restart rate and golden signal degradation"
+prompt: "PagerDuty fired an alert: 'HighErrorRate on payment-api — error rate is 15% over the last 5 minutes'. Pod restart counts are elevated. What is causing the golden signal degradation?"
+mocks:
+  "get pods -n payments": |
+    NAME                            READY   STATUS             RESTARTS   AGE
+    payment-api-5d8c9f-aaa11        1/1     Running            12         3h
+    payment-api-5d8c9f-bbb22        0/1     CrashLoopBackOff   9          3h
+    payment-api-5d8c9f-ccc33        1/1     Running            7          3h
+  "describe pod payment-api-5d8c9f-bbb22 -n payments": |
+    Name:         payment-api-5d8c9f-bbb22
+    Namespace:    payments
+    Labels:       app=payment-api
+    Status:       Running
+    Containers:
+      payment-api:
+        Image:         gcr.io/myorg/payment-api:v2.3.1
+        Limits:
+          memory:      256Mi
+          cpu:         500m
+        Requests:
+          memory:      128Mi
+          cpu:         250m
+        Liveness:      http-get http://:8080/healthz delay=10s timeout=3s period=15s
+        Readiness:     http-get http://:8080/ready delay=5s timeout=3s period=10s
+        Last State:    Terminated
+          Reason:      OOMKilled
+          Exit Code:   137
+          Started:     Sat, 21 Jun 2026 08:00:00 +0000
+          Finished:    Sat, 21 Jun 2026 08:02:47 +0000
+        State:         Waiting
+          Reason:      CrashLoopBackOff
+    Conditions:
+      Type              Status
+      Initialized       True
+      Ready             False
+      ContainersReady   False
+    Events:
+      Type     Reason      Age    From     Message
+      ----     ------      ----   ----     -------
+      Warning  OOMKilling  5m     kubelet  Memory cgroup out of memory: Kill process 4521 (payment-api) score 999
+      Warning  BackOff     2m     kubelet  Back-off restarting failed container
+  "logs payment-api-5d8c9f-aaa11 -n payments": |
+    2026-06-21T09:30:01Z INFO  Starting payment-api v2.3.1
+    2026-06-21T09:30:02Z INFO  Connected to database
+    2026-06-21T09:40:15Z WARN  High memory usage detected: 240Mi / 256Mi (93%)
+    2026-06-21T09:40:30Z ERROR Failed to process payment batch: OutOfMemoryError: Java heap space
+    2026-06-21T09:40:31Z WARN  Request queue depth: 1247 (threshold: 500), shedding load
+    2026-06-21T09:40:33Z ERROR 15% of requests returning 500: downstream DB query timeout after 30s
+  "get horizontalpodautoscalers -n payments": |
+    NAME          REFERENCE                    TARGETS          MINPODS   MAXPODS   REPLICAS   AGE
+    payment-api   Deployment/payment-api       cpu: 78%/70%     3         10        3          7d
+  "get events -n payments": |
+    LAST SEEN   TYPE      REASON          OBJECT                              MESSAGE
+    5m          Warning   OOMKilling      pod/payment-api-5d8c9f-bbb22        Memory cgroup out of memory: Kill process 4521
+    4m          Warning   BackOff         pod/payment-api-5d8c9f-bbb22        Back-off restarting failed container
+    3m          Warning   FailedGetScale  hpa/payment-api                     failed to get cpu utilization
+    2m          Normal    SuccessfulRescale hpa/payment-api                   New size: 3; reason: cpu resource utilization above target
+expectedSeverity: critical
+expectedKeywords:
+  - OOMKilled
+  - memory
+  - restart
+forbiddenKeywords:
+  - "I don't know"
