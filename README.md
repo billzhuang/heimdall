@@ -560,6 +560,8 @@ src/
     ├── alert.ts             # PagerDuty webhook + diagnosis dispatch
     ├── slack.ts             # Slack Block Kit notification sink
     ├── duration.ts          # human-readable duration helpers
+    ├── claude-cli-llm.ts    # claude CLI adapter for eval/self-improve harness
+    ├── codex-cli-llm.ts     # codex CLI adapter for eval/self-improve harness
     └── __tests__/           # unit + property-based tests
 ├── alert-mode.ts            # CLI entry: alert / PagerDuty mode
 ├── eval-mode.ts             # CLI entry: eval mode
