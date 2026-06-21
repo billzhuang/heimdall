@@ -17,6 +17,7 @@
     "self-improve": "tsx src/self-improve-mode.ts",
     "self-loop": "tsx src/self-loop-mode.ts",
     "alert": "tsx src/alert-mode.ts",
+    "schedule": "tsx src/schedule-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

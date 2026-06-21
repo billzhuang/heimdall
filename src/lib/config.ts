@@ -214,6 +214,28 @@ const SlackSchema = v.nullish(
 );
 
 
+// Schedule config — periodic automated triage sweeps.
+const ScheduleTriageSchema = v.nullish(
+  v.object({
+    // Set to true to enable the triage schedule.
+    enabled: v.nullish(v.boolean(), false),
+    // Standard 5-field UTC cron expression, e.g. "0 */6 * * *" (every 6 h at :00).
+    // Fields: minute hour day-of-month month day-of-week.
+    cron: v.nullish(v.string(), '0 */6 * * *'),
+    // Optional namespace scope (passed as -n to triage). Omit for default namespace.
+    namespace: v.nullish(v.string()),
+    // Sweep all namespaces (-A). Overrides namespace when true.
+    allNamespaces: v.nullish(v.boolean(), false),
+  }),
+  { enabled: false, cron: '0 */6 * * *', allNamespaces: false },
+);
+
+const ScheduleSchema = v.nullish(
+  v.object({
+    triage: ScheduleTriageSchema,
+  }),
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
@@ -236,6 +258,8 @@ const HeimdallConfigSchema = v.object({
   learning: LearningSchema,
   // Alert source configuration (PagerDuty webhook parser, etc.).
   alert: AlertSchema,
+  // Scheduled periodic operations (disabled by default).
+  schedule: ScheduleSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
