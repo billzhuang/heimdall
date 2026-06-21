@@ -116,7 +116,7 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     const sloTable = [
       '| Name | Target | Budget | Window | Metric (PromQL) |',
       '|------|--------|--------|--------|-----------------|',
-      ...slos.map((s) => `| ${s.name} | ${s.target} | ${s.budget} | ${s.window} | \`${s.metric}\` |`),
+      ...slos.map((s) => `| ${s.name.replace(/\|/g, '\\|')} | ${s.target} | ${s.budget} | ${s.window} | \`${s.metric.replace(/\|/g, '\\|')}\` |`),
     ].join('\n');
     sections.push(`## Configured SLOs\nThe following Service Level Objectives are defined for this cluster.\nUse the \`slo-evaluator\` subagent to query each metric, compute burn rates, and report breaching SLOs.\n\n${sloTable}`);
   }

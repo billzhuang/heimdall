@@ -71,7 +71,9 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
 
 export async function runTriageMode(opts: TriageOptions = {}, model?: string): Promise<void> {
   const config = loadConfig();
-  const slos = config.slos ?? [];
+  // Only inject SLO step when prometheusQuery is enabled; the slo-evaluator
+  // subagent has no Prometheus tool otherwise and cannot evaluate anything.
+  const slos = config.tools.prometheusQuery ? (config.slos ?? []) : [];
   const prompt = buildTriagePrompt({ ...opts, slos });
 
   if (opts.contexts && opts.contexts.length > 0) {

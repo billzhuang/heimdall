@@ -76,6 +76,18 @@ describe('evaluateSLO — burn rate calculation', () => {
     const result = await evaluateSLO(BASE_CONFIG, API_SLO);
     expect(result.remainingBudget).toBe(0);
   });
+
+  it('clamps negative metric values to burnRate 0 and remainingBudget 1', async () => {
+    // A metric that returns a negative value (e.g. a misconfigured counter) should
+    // not produce a negative burn rate or a remainingBudget > 1.
+    mockFetch(prometheusVectorResponse(-0.001));
+    const result = await evaluateSLO(BASE_CONFIG, API_SLO);
+    expect(result.burnRate).toBe(0);
+    expect(result.remainingBudget).toBe(1);
+    expect(result.breaching).toBe(false);
+    // currentValue reflects the raw metric value as returned by Prometheus.
+    expect(result.currentValue).toBeCloseTo(-0.001, 5);
+  });
 });
 
 // ---------------------------------------------------------------------------
