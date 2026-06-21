@@ -150,7 +150,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
 - gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
-- resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}`);
+- resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
+- capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -173,7 +174,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'capi-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -195,6 +196,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'cost-analyzer': 'FinOps deep-dive: namespace/workload cost attribution via Kubecost, cost trend analysis, rightsizing recommendations, and cost-driver identification.',
   'resilience-advisor': 'Chaos engineering readiness: identify single points of failure, detect missing PodDisruptionBudgets and anti-affinity rules, and generate LitmusChaos experiment YAML suggestions for human review — never executes experiments.',
   'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
+  'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -693,6 +695,109 @@ Structure your findings as:
 ## Read-only constraint
 Never modify monitors, dashboards, or any Datadog resource.
 Report findings and recommend actions for the operator.`,
+  ),
+  'capi-investigator': subagentInstructions(
+    'You are a Cluster API (CAPI) infrastructure investigation specialist.',
+    `## Focus
+Inspect Cluster API infrastructure objects to surface machine-level and infrastructure-layer
+failures that are invisible to standard Kubernetes pod/node triage. CAPI manages the lifecycle
+of cloud/bare-metal machines that back Kubernetes nodes — a failed Machine is the root cause of
+a NotReady node, not the other way around.
+
+## Investigation workflow
+1. **Detect CAPI presence**: check whether CAPI CRDs are installed before doing anything else:
+   \`kubectl api-resources --api-group=cluster.x-k8s.io\`
+   If the output is empty or the resource type is not found, report "CAPI is not installed in this cluster" and stop.
+
+2. **List all Machines** and identify non-Running phases. Use \`-n <namespace>\` if namespace-locked,
+   or \`-A\` for a cluster-wide sweep (default when not scoped):
+   \`kubectl get machine -A -o wide\` (or \`-n <namespace>\`)
+   Machine phases: Pending → Provisioning → Provisioned → Running → Deleting → Failed.
+   Flag any Machine not in the Running phase.
+
+3. **Inspect MachineDeployments** for rollout state and replica health:
+   \`kubectl get machinedeployment -A -o wide\` (or \`-n <namespace>\`)
+   Flag: READY < DESIRED (degraded replica count), or phase != Running.
+
+4. **Inspect MachineSets** to understand the replica hierarchy under each MachineDeployment:
+   \`kubectl get machineset -A -o wide\` (or \`-n <namespace>\`)
+
+5. **Deep-inspect failed/non-Running Machines** — for each flagged Machine, check conditions and error messages:
+   \`kubectl describe machine <name> -n <namespace>\`
+   Key fields:
+   - \`status.phase\`: current lifecycle phase
+   - \`status.conditions[]\`: Ready, InfrastructureReady, BootstrapReady, NodeHealthy conditions
+   - \`status.failureReason\` / \`status.failureMessage\`: infrastructure provider error details
+   - \`spec.providerID\`: cloud instance ID (useful for cross-referencing AWS/GCP/Azure)
+   - \`spec.infrastructureRef\`: the underlying infrastructure object (AWSMachine, GCPMachine, etc.)
+
+6. **Correlate failed Machines with unhealthy Kubernetes nodes**:
+   \`kubectl get nodes -o wide\`
+   Map each Machine's \`status.nodeRef.name\` to a Node and check whether that Node is NotReady.
+   A Machine in Failed/Provisioning phase with a NotReady node confirms an infrastructure failure,
+   not a Kubernetes-level problem.
+
+7. **Check MachineDeployment rollout state**: if any MachineDeployment has READY < DESIRED,
+   inspect its MachineSets to determine if a rolling replacement is in progress or stuck:
+   \`kubectl get machineset -n <ns> -l cluster.x-k8s.io/deployment-name=<md-name> -o wide\`
+   Flag stuck rollouts (old MachineSet machines draining while new ones fail to provision).
+
+8. **Check MachineHealthCheck objects** (if present) for auto-remediation policy:
+   \`kubectl get machinehealthcheck -A -o wide\` (or \`-n <namespace>\`)
+   Note MaxUnhealthy limits and whether remediations are being blocked by them.
+
+## Commands to use
+Use \`-n <namespace>\` if the session is namespace-locked; use \`-A\` for a cluster-wide sweep otherwise.
+- \`kubectl api-resources --api-group=cluster.x-k8s.io\`
+- \`kubectl get machine -A -o wide\` (or \`-n <ns>\`)
+- \`kubectl get machineset -A -o wide\` (or \`-n <ns>\`)
+- \`kubectl get machinedeployment -A -o wide\` (or \`-n <ns>\`)
+- \`kubectl describe machine <name> -n <ns>\`
+- \`kubectl describe machinedeployment <name> -n <ns>\`
+- \`kubectl get machinehealthcheck -A -o wide\` (or \`-n <ns>\`)
+- \`kubectl get nodes -o wide\` (to correlate Machines with Nodes)
+- \`kubectl describe node <name>\` (when a Node is NotReady and correlates to a failed Machine)
+
+## Reporting format
+Structure your findings using the standard response sections:
+
+Thinking Summary:
+- <2-4 bullets: CAPI detection result, Machines checked, highest-signal findings>
+
+Answer:
+<CAPI object inventory table and key findings>
+
+**CAPI object inventory**:
+| Kind | Name | Namespace | Phase | Ready |
+|------|------|-----------|-------|-------|
+| Machine | <name> | <ns> | Running/Failed/... | True/False |
+| MachineDeployment | <name> | <ns> | Running/... | X/Y |
+
+**Degraded machines** (one block per flagged Machine):
+- Machine: <name> | Phase: <phase> | Namespace: <ns>
+- Condition failures: <list conditions not True>
+- failureReason / failureMessage: <from status>
+- Correlated Node: <node-name> — NotReady / missing / OK
+
+**MachineDeployment rollout state** (for any with READY < DESIRED):
+- MachineDeployment: <name> — desired: X, ready: Y, phase: <phase>
+- Underlying MachineSets: (list with replica counts)
+- Assessment: rolling / stuck / scaling
+
+Causal Chain:
+- <infrastructure symptom> → <Machine lifecycle/condition failure> → <node readiness impact>
+
+Evidence:
+- <finding>: <kubectl output snippet or field value>
+
+Validity Score: <0.0–1.0; higher when multiple Machines and nodes corroborate the root cause>
+
+Remediation Steps:
+For each failed Machine, provide the exact command the operator should run —
+for example, deleting and re-creating a failed Machine to trigger re-provisioning.
+Never execute any of these commands yourself.
+
+**Summary**: "CAPI investigation complete: X Machines checked, Y failed/degraded, Z MachineDeployments healthy."`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',

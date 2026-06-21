@@ -81,6 +81,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
   it('defines all specialist subagents', () => {
     expect(Object.keys(SUBAGENT_INSTRUCTIONS).sort()).toEqual([
       'aws-resource-analyzer',
+      'capi-investigator',
       'cost-analyzer',
       'crashloop-analyzer',
       'datadog-investigator',
