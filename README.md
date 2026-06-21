@@ -460,6 +460,58 @@ datadog:
   timeoutMs: 15000
 ```
 
+### AWS CLI authentication (IRSA / EKS Pod Identity)
+
+When `awsCli: true` is set, the `aws_cli` tool uses the standard AWS credential chain. In-cluster deployments should prefer IRSA or EKS Pod Identity over static key env vars — no secrets to rotate, no risk of credential leakage.
+
+**Option A — IRSA (IAM Roles for Service Accounts)**
+
+Requires an EKS cluster with an OIDC provider. The quickest setup uses `eksctl`:
+
+```bash
+eksctl create iamserviceaccount \
+  --name heimdall \
+  --namespace heimdall \
+  --cluster <cluster-name> \
+  --region <region> \
+  --attach-policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess \
+  --approve \
+  --override-existing-serviceaccounts
+```
+
+Or apply `deploy/rbac-irsa.yaml` (fill in your account ID and role name) instead of the plain ServiceAccount inside `deploy/rbac.yaml`. The EKS node groups inject `AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE` automatically once the annotation is present.
+
+**Option B — EKS Pod Identity**
+
+EKS Pod Identity is a newer alternative that does not require an OIDC provider. Associate the IAM role with the Heimdall ServiceAccount via the EKS console or:
+
+```bash
+aws eks create-pod-identity-association \
+  --cluster-name <cluster-name> \
+  --namespace heimdall \
+  --service-account heimdall \
+  --role-arn arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>
+```
+
+EKS injects `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` into the pod; the AWS CLI picks it up automatically.
+
+**Option C — Static credentials (development / CI only)**
+
+```yaml
+# deploy/deployment.yaml env block
+env:
+  - name: AWS_ACCESS_KEY_ID
+    valueFrom:
+      secretKeyRef:
+        name: heimdall-aws
+        key: AWS_ACCESS_KEY_ID
+  - name: AWS_SECRET_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: heimdall-aws
+        key: AWS_SECRET_ACCESS_KEY
+```
+
 ### Namespace lockdown
 
 Restrict the agent to a single namespace, enforced in code:

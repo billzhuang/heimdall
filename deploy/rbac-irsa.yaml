@@ -1,0 +1,53 @@
+# Heimdall IRSA (IAM Roles for Service Accounts) ServiceAccount.
+#
+# Use this instead of the plain ServiceAccount in deploy/rbac.yaml when you
+# want Heimdall's aws_cli tool to authenticate via IRSA instead of static
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY environment variables.
+#
+# Prerequisites:
+#   * Your EKS cluster must have an OIDC provider associated:
+#       aws eks describe-cluster --name <cluster> --query cluster.identity.oidc
+#   * An IAM role with a read-only policy and a trust relationship that allows
+#     the heimdall ServiceAccount to assume it (see below).
+#
+# Quick setup (eksctl):
+#   eksctl create iamserviceaccount \
+#     --name heimdall \
+#     --namespace heimdall \
+#     --cluster <cluster-name> \
+#     --region <region> \
+#     --attach-policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess \
+#     --approve \
+#     --override-existing-serviceaccounts
+#
+# Manual setup (replace placeholders):
+#   1. Create an IAM role with ReadOnlyAccess (or a tighter custom policy).
+#   2. Add a trust policy:
+#        {
+#          "Effect": "Allow",
+#          "Principal": {
+#            "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/<OIDC_ISSUER>"
+#          },
+#          "Action": "sts:AssumeRoleWithWebIdentity",
+#          "Condition": {
+#            "StringEquals": {
+#              "<OIDC_ISSUER>:sub": "system:serviceaccount:heimdall:heimdall"
+#            }
+#          }
+#        }
+#   3. Annotate this ServiceAccount with the role ARN (see below).
+#   4. Apply:
+#        kubectl apply -f deploy/rbac.yaml     # ClusterRole + ClusterRoleBinding
+#        kubectl apply -f deploy/rbac-irsa.yaml
+#        kubectl apply -f deploy/deployment.yaml
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: heimdall
+  namespace: heimdall
+  annotations:
+    # Replace with your IAM role ARN.
+    eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>
+    # Optional: token expiry in seconds (default 86400 = 24 h).
+    # eks.amazonaws.com/token-expiration: "86400"

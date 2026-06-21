@@ -17,6 +17,30 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 const execFileAsync = promisify(execFile);
 
 const EXEC_TIMEOUT_MS = 30_000;
+
+/**
+ * Detect which AWS credential source is available in the current environment.
+ *
+ * Priority matches the AWS SDK/CLI credential chain:
+ * 1. Static key env vars (AWS_ACCESS_KEY_ID)
+ * 2. IRSA (IAM Roles for Service Accounts) via web identity token file
+ * 3. EKS Pod Identity via container credential provider URI
+ * 4. Nothing detectable — credentials may still be available via instance profile
+ *    or ~/.aws/credentials, but we can't detect those without an API call.
+ */
+export type AwsAuthMethod =
+  | 'static-keys'      // AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+  | 'irsa'             // AWS_ROLE_ARN + AWS_WEB_IDENTITY_TOKEN_FILE (IRSA / OIDC)
+  | 'pod-identity'     // AWS_CONTAINER_CREDENTIALS_RELATIVE_URI (EKS Pod Identity)
+  | 'unknown';         // instance profile / ~/.aws / not detectable
+
+export function detectAwsAuth(): AwsAuthMethod {
+  const env = process.env;
+  if (env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY) return 'static-keys';
+  if (env.AWS_ROLE_ARN && env.AWS_WEB_IDENTITY_TOKEN_FILE) return 'irsa';
+  if (env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI) return 'pod-identity';
+  return 'unknown';
+}
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 20_000;
 

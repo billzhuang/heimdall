@@ -22,7 +22,11 @@ export function makeAwsCli(options?: RunAwsCliOptions, regexRedactionRules?: Com
       'Destructive subcommands (create-*, delete-*, terminate-*, put-*, update-*, ' +
       'attach-*, detach-*, modify-*, start-*, stop-*, run-instances, ...) are blocked. ' +
       'There is no shell, so pipes/redirects do not work — use --query (JMESPath) or ' +
-      '--filter to narrow output. Requires AWS CLI credentials in the environment.',
+      '--filter to narrow output. ' +
+      'Credentials are resolved by the AWS CLI credential chain: static env vars ' +
+      '(AWS_ACCESS_KEY_ID), IRSA / OIDC web identity (AWS_ROLE_ARN + ' +
+      'AWS_WEB_IDENTITY_TOKEN_FILE), EKS Pod Identity ' +
+      '(AWS_CONTAINER_CREDENTIALS_RELATIVE_URI), or instance profile.',
     parameters: v.object({
       args: v.pipe(
         v.string(),

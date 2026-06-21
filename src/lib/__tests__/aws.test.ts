@@ -5,8 +5,8 @@
  *  1. tokenizeAwsArgs handles quoting, escaping, and strips the leading "aws" token.
  *  2. runAwsCli returns before exec for blocked commands and empty inputs.
  */
-import { describe, it, expect } from 'vitest';
-import { tokenizeAwsArgs, runAwsCli } from '../aws.ts';
+import { describe, it, expect, afterEach } from 'vitest';
+import { tokenizeAwsArgs, runAwsCli, detectAwsAuth } from '../aws.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
 
 describe('tokenizeAwsArgs', () => {
@@ -115,5 +115,82 @@ describe('runAwsCli — input validation (no exec)', () => {
   it('blocks unknown subcommands (default-deny)', async () => {
     const result = await runAwsCli('aws ec2 unknown-operation');
     expect(result).toMatch(BLOCKED_RE);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectAwsAuth
+// ---------------------------------------------------------------------------
+
+describe('detectAwsAuth', () => {
+  const saved: Record<string, string | undefined> = {};
+  const VARS = [
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
+    'AWS_ROLE_ARN',
+    'AWS_WEB_IDENTITY_TOKEN_FILE',
+    'AWS_CONTAINER_CREDENTIALS_RELATIVE_URI',
+  ];
+
+  // Save originals and clear before each test
+  function clearAwsVars() {
+    for (const v of VARS) {
+      saved[v] = process.env[v];
+      delete process.env[v];
+    }
+  }
+  function restoreAwsVars() {
+    for (const v of VARS) {
+      if (saved[v] === undefined) delete process.env[v];
+      else process.env[v] = saved[v];
+    }
+  }
+
+  afterEach(() => restoreAwsVars());
+
+  it('returns "static-keys" when AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are set', () => {
+    clearAwsVars();
+    process.env.AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret';
+    expect(detectAwsAuth()).toBe('static-keys');
+  });
+
+  it('returns "irsa" when AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE are set', () => {
+    clearAwsVars();
+    process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789:role/my-role';
+    process.env.AWS_WEB_IDENTITY_TOKEN_FILE = '/var/run/secrets/eks.amazonaws.com/serviceaccount/token';
+    expect(detectAwsAuth()).toBe('irsa');
+  });
+
+  it('returns "pod-identity" when AWS_CONTAINER_CREDENTIALS_RELATIVE_URI is set', () => {
+    clearAwsVars();
+    process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI = '/v2/credentials/abc123';
+    expect(detectAwsAuth()).toBe('pod-identity');
+  });
+
+  it('returns "static-keys" when both static keys and IRSA vars are set (static wins)', () => {
+    clearAwsVars();
+    process.env.AWS_ACCESS_KEY_ID = 'AKIAIOSFODNN7EXAMPLE';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret';
+    process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789:role/my-role';
+    process.env.AWS_WEB_IDENTITY_TOKEN_FILE = '/token';
+    expect(detectAwsAuth()).toBe('static-keys');
+  });
+
+  it('returns "unknown" when no AWS credential env vars are set', () => {
+    clearAwsVars();
+    expect(detectAwsAuth()).toBe('unknown');
+  });
+
+  it('returns "unknown" when only AWS_ROLE_ARN is set (token file missing)', () => {
+    clearAwsVars();
+    process.env.AWS_ROLE_ARN = 'arn:aws:iam::123456789:role/my-role';
+    expect(detectAwsAuth()).toBe('unknown');
+  });
+
+  it('returns "unknown" when only AWS_WEB_IDENTITY_TOKEN_FILE is set (role ARN missing)', () => {
+    clearAwsVars();
+    process.env.AWS_WEB_IDENTITY_TOKEN_FILE = '/token';
+    expect(detectAwsAuth()).toBe('unknown');
   });
 });
