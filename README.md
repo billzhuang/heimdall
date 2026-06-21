@@ -426,17 +426,42 @@ terraform apply \
   -var="irsa_role_arn=arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>"
 ```
 
-Create the IAM role via eksctl before applying:
+Create the IAM role and configure its trust policy **before** running `terraform apply`.
+The module manages the ServiceAccount itself, so do **not** use
+`eksctl create iamserviceaccount` (that command would also create the ServiceAccount,
+conflicting with Terraform). Use the AWS CLI or the AWS console instead:
 
 ```bash
-eksctl create iamserviceaccount \
-  --name heimdall \
-  --namespace heimdall \
-  --cluster <cluster-name> \
-  --region <region> \
-  --attach-policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess \
-  --approve \
-  --override-existing-serviceaccounts
+# 1. Retrieve your cluster's OIDC issuer URL
+OIDC_ISSUER=$(aws eks describe-cluster --name <cluster-name> \
+  --query "cluster.identity.oidc.issuer" --output text | sed 's|https://||')
+
+# 2. Create the IAM role with a trust policy allowing the heimdall ServiceAccount
+aws iam create-role \
+  --role-name heimdall-readonly \
+  --assume-role-policy-document "{
+    \"Version\": \"2012-10-17\",
+    \"Statement\": [{
+      \"Effect\": \"Allow\",
+      \"Principal\": {\"Federated\": \"arn:aws:iam::<ACCOUNT_ID>:oidc-provider/$OIDC_ISSUER\"},
+      \"Action\": \"sts:AssumeRoleWithWebIdentity\",
+      \"Condition\": {
+        \"StringEquals\": {
+          \"${OIDC_ISSUER}:sub\": \"system:serviceaccount:heimdall:heimdall\"
+        }
+      }
+    }]
+  }"
+
+# 3. Attach a read-only policy
+aws iam attach-role-policy \
+  --role-name heimdall-readonly \
+  --policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess
+
+# 4. Pass the role ARN to the module
+terraform apply \
+  -var="anthropic_api_key=$ANTHROPIC_API_KEY" \
+  -var="irsa_role_arn=arn:aws:iam::<ACCOUNT_ID>:role/heimdall-readonly"
 ```
 
 ### Outputs

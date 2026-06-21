@@ -40,26 +40,27 @@ locals {
     "  site: ${var.tools.datadog_site}",
   ]) : ""
 
-  slack_section = var.slack_webhook_url != "" ? join("\n", [
-    "slack:",
-    "  enabled: true",
-    "  webhookUrl: ${var.slack_webhook_url}",
-  ]) : ""
+  # Slack: only emit `slack:\n  enabled: true` in the ConfigMap — the webhook
+  # URL is injected via SLACK_WEBHOOK_URL env var from a Secret (see below).
+  slack_section = var.slack_webhook_url != "" ? "slack:\n  enabled: true" : ""
 
-  # Emit a ConfigMap only when there is something to configure.
+  # Track whether a credentials Secret is needed (Slack webhook, Datadog keys).
+  need_credentials_secret = var.slack_webhook_url != "" || var.tools.datadog_api_key != ""
+
+  # Emit a ConfigMap only when there is non-sensitive config to provide.
   need_configmap = (
     length(local.tools_section_lines) > 0 ||
-    local.slack_section != "" ||
-    local.datadog_section != ""
+    local.slack_section != ""
   )
 
+  # Datadog credentials go into a Secret as env vars — not in the ConfigMap.
+  # Only the non-sensitive site setting is written to config if needed.
   heimdall_config_yaml = local.need_configmap ? join("\n", compact([
     length(local.tools_section_lines) > 0 ? "tools:\n${join("\n", local.tools_section_lines)}" : "",
     local.prometheus_section,
     local.loki_section,
     local.jaeger_section,
     local.kubecost_section,
-    local.datadog_section,
     local.slack_section,
   ])) : ""
 }
@@ -101,7 +102,7 @@ resource "kubernetes_service_account" "heimdall" {
 # ---------------------------------------------------------------------------
 resource "kubernetes_cluster_role" "heimdall_readonly" {
   metadata {
-    name = "${local.name}-readonly"
+    name = "${local.name}-${var.namespace}-readonly"
     labels = {
       "app.kubernetes.io/name"       = local.name
       "app.kubernetes.io/managed-by" = "terraform"
@@ -199,7 +200,7 @@ resource "kubernetes_cluster_role" "heimdall_readonly" {
 # ---------------------------------------------------------------------------
 resource "kubernetes_cluster_role_binding" "heimdall_readonly" {
   metadata {
-    name = "${local.name}-readonly"
+    name = "${local.name}-${var.namespace}-readonly"
     labels = {
       "app.kubernetes.io/name"       = local.name
       "app.kubernetes.io/managed-by" = "terraform"
@@ -238,7 +239,36 @@ resource "kubernetes_secret_v1" "heimdall_api_key" {
 }
 
 # ---------------------------------------------------------------------------
-# ConfigMap — optional heimdall.config.yaml (tools, Slack, etc.)
+# Secret — sensitive integration credentials (Slack webhook, Datadog keys)
+#
+# Credentials are mounted as env vars rather than written into the ConfigMap
+# (ConfigMaps are not encrypted at rest and may be readable by workloads that
+# cannot access Secrets).
+# ---------------------------------------------------------------------------
+resource "kubernetes_secret_v1" "heimdall_credentials" {
+  count = local.need_credentials_secret ? 1 : 0
+
+  metadata {
+    name      = "heimdall-credentials"
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  data = merge(
+    var.slack_webhook_url != "" ? { SLACK_WEBHOOK_URL = var.slack_webhook_url } : {},
+    var.tools.datadog_api_key != "" ? {
+      DD_API_KEY = var.tools.datadog_api_key
+      DD_APP_KEY = var.tools.datadog_app_key
+      DD_SITE    = var.tools.datadog_site
+    } : {},
+  )
+}
+
+# ---------------------------------------------------------------------------
+# ConfigMap — optional heimdall.config.yaml (non-sensitive tool config)
 # ---------------------------------------------------------------------------
 resource "kubernetes_config_map_v1" "heimdall_config" {
   count = local.need_configmap ? 1 : 0
@@ -339,6 +369,59 @@ resource "kubernetes_deployment" "heimdall" {
             }
           }
 
+          # Inject sensitive credentials from the credentials Secret as env vars.
+          dynamic "env" {
+            for_each = var.slack_webhook_url != "" ? [1] : []
+            content {
+              name = "SLACK_WEBHOOK_URL"
+              value_from {
+                secret_key_ref {
+                  name = one(kubernetes_secret_v1.heimdall_credentials[*].metadata[0].name)
+                  key  = "SLACK_WEBHOOK_URL"
+                }
+              }
+            }
+          }
+
+          dynamic "env" {
+            for_each = var.tools.datadog_api_key != "" ? [1] : []
+            content {
+              name = "DD_API_KEY"
+              value_from {
+                secret_key_ref {
+                  name = one(kubernetes_secret_v1.heimdall_credentials[*].metadata[0].name)
+                  key  = "DD_API_KEY"
+                }
+              }
+            }
+          }
+
+          dynamic "env" {
+            for_each = var.tools.datadog_api_key != "" ? [1] : []
+            content {
+              name = "DD_APP_KEY"
+              value_from {
+                secret_key_ref {
+                  name = one(kubernetes_secret_v1.heimdall_credentials[*].metadata[0].name)
+                  key  = "DD_APP_KEY"
+                }
+              }
+            }
+          }
+
+          dynamic "env" {
+            for_each = var.tools.datadog_api_key != "" ? [1] : []
+            content {
+              name = "DD_SITE"
+              value_from {
+                secret_key_ref {
+                  name = one(kubernetes_secret_v1.heimdall_credentials[*].metadata[0].name)
+                  key  = "DD_SITE"
+                }
+              }
+            }
+          }
+
           resources {
             requests = {
               cpu    = var.resources.requests_cpu
@@ -399,7 +482,7 @@ resource "kubernetes_deployment" "heimdall" {
           content {
             name = "heimdall-config"
             config_map {
-              name = kubernetes_config_map_v1.heimdall_config[0].metadata[0].name
+              name = one(kubernetes_config_map_v1.heimdall_config[*].metadata[0].name)
             }
           }
         }
@@ -410,5 +493,6 @@ resource "kubernetes_deployment" "heimdall" {
   depends_on = [
     kubernetes_cluster_role_binding.heimdall_readonly,
     kubernetes_secret_v1.heimdall_api_key,
+    kubernetes_secret_v1.heimdall_credentials,
   ]
 }

@@ -4,17 +4,12 @@
 #   1. An EKS cluster with an OIDC provider associated:
 #        aws eks describe-cluster --name <cluster> --query cluster.identity.oidc
 #
-#   2. An IAM role with ReadOnlyAccess (or a tighter custom policy) and a trust
-#      relationship allowing the heimdall ServiceAccount to assume it.
-#      Quick setup via eksctl:
-#        eksctl create iamserviceaccount \
-#          --name heimdall \
-#          --namespace heimdall \
-#          --cluster <cluster-name> \
-#          --region <region> \
-#          --attach-policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess \
-#          --approve \
-#          --override-existing-serviceaccounts
+#   2. An IAM role with ReadOnlyAccess and a trust relationship that allows the
+#      heimdall ServiceAccount to assume it. Create this BEFORE terraform apply —
+#      do NOT use `eksctl create iamserviceaccount` because that command also
+#      creates the ServiceAccount, which would conflict with Terraform.
+#      Use the AWS CLI instead (see the README "EKS with IRSA" section for the
+#      full aws iam create-role + attach-role-policy + trust-policy commands).
 #
 #   3. Configure the kubernetes provider, e.g.:
 #        export KUBE_CONFIG_PATH=~/.kube/config
