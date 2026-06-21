@@ -1,0 +1,17 @@
+{{- if or .Values.config.enabled .Values.slack.webhookUrl .Values.slack.existingSecret.name }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "heimdall.fullname" . }}-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "heimdall.labels" . | nindent 4 }}
+data:
+  heimdall.config.yaml: |
+    {{- if .Values.config.enabled }}
+    {{- .Values.config.content | nindent 4 }}
+    {{- else }}
+    slack:
+      enabled: true
+    {{- end }}
+{{- end }}

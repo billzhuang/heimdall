@@ -1,0 +1,90 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/billzhuang/heimdall
+  tag: ""
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+# RBAC variant to deploy:
+#   default    – ClusterRole + ClusterRoleBinding (cluster-wide read-only, no Secrets)
+#   with-secrets – same as default, plus a second ClusterRole granting Secret read access
+#   namespaced – Role + RoleBinding scoped to rbac.namespacedTarget namespace only
+rbac:
+  variant: "default"
+  namespacedTarget: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"
+
+# Anthropic API key — one of:
+#   existingSecret.name   – use a pre-existing Secret (leave anthropicApiKey empty)
+#   anthropicApiKey       – create a Secret from this value (use only in dev/CI)
+anthropicApiKey: ""
+existingSecret:
+  name: ""
+  key: "ANTHROPIC_API_KEY"
+
+# Optional env var overrides
+env:
+  # Override the model (e.g. "anthropic/claude-opus-4-8")
+  modelOverride: ""
+
+# Optional Heimdall config injected as a ConfigMap and mounted at
+# /etc/heimdall/heimdall.config.yaml. Set enabled: true and supply the YAML
+# content under `content` to activate.
+config:
+  enabled: false
+  content: |
+    # tools:
+    #   prometheus:
+    #     enabled: true
+    #     url: http://prometheus:9090
+    #   slack:
+    #     enabled: true
+    #     webhookUrl: https://hooks.slack.com/services/XXX
+
+# Slack webhook URL shorthand — equivalent to setting
+# tools.slack.webhookUrl inside config.content.
+slack:
+  webhookUrl: ""
+  # Use a pre-existing Secret instead of providing the URL in values.
+  # When set, no slack Secret is created and webhookUrl is ignored.
+  existingSecret:
+    name: ""
+    key: "SLACK_WEBHOOK_URL"
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+livenessProbe:
+  initialDelaySeconds: 15
+  periodSeconds: 30
+
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

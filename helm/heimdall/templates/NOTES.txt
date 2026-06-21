@@ -1,0 +1,21 @@
+Heimdall has been deployed!
+
+1. Check that the pod is running:
+   kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+2. Connect to the agent (interactive mode):
+   POD=$(kubectl get pod -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -o name | head -1)
+   kubectl exec -it -n {{ .Release.Namespace }} $POD -- npx flue connect heimdall local
+
+3. Run a cluster triage:
+   kubectl exec -n {{ .Release.Namespace }} $POD -- node dist/server.mjs triage
+
+RBAC variant: {{ .Values.rbac.variant }}
+{{- if eq .Values.rbac.variant "namespaced" }}
+  Target namespace: {{ .Values.rbac.namespacedTarget }}
+{{- end }}
+{{- if eq .Values.rbac.variant "with-secrets" }}
+  NOTE: This release grants read access to all Secrets in the cluster.
+{{- end }}
+
+For full documentation, visit: https://github.com/billzhuang/heimdall

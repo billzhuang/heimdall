@@ -1,0 +1,101 @@
+{{- if and (not .Values.existingSecret.name) (not .Values.anthropicApiKey) }}
+{{- fail "An Anthropic API key must be provided. Set either 'existingSecret.name' or 'anthropicApiKey'." }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "heimdall.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "heimdall.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "heimdall.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "heimdall.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "heimdall.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: heimdall
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "heimdall.secretName" . }}
+                  key: {{ .Values.existingSecret.key }}
+            - name: HEIMDALL_KUBECTL_CACHE_DIR
+              value: /tmp/heimdall-cache
+            {{- if .Values.env.modelOverride }}
+            - name: HEIMDALL_MODEL
+              value: {{ .Values.env.modelOverride | quote }}
+            {{- end }}
+            {{- if or .Values.slack.webhookUrl .Values.slack.existingSecret.name }}
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "heimdall.slackSecretName" . }}
+                  key: {{ .Values.slack.existingSecret.key }}
+            {{- end }}
+            {{- if or .Values.config.enabled .Values.slack.webhookUrl .Values.slack.existingSecret.name }}
+            - name: HEIMDALL_CONFIG
+              value: /etc/heimdall/heimdall.config.yaml
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if or .Values.config.enabled .Values.slack.webhookUrl .Values.slack.existingSecret.name }}
+            - name: heimdall-config
+              mountPath: /etc/heimdall
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if or .Values.config.enabled .Values.slack.webhookUrl .Values.slack.existingSecret.name }}
+        - name: heimdall-config
+          configMap:
+            name: {{ include "heimdall.fullname" . }}-config
+        {{- end }}
