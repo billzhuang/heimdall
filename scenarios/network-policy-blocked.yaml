@@ -1,0 +1,46 @@
+description: "NetworkPolicy blocking inter-pod traffic"
+prompt: "The frontend pods in the production namespace can't reach the backend service. Connections are timing out. What is blocking the traffic?"
+mocks:
+  "get pods -n production": |
+    NAME                          READY   STATUS    RESTARTS   AGE
+    frontend-7d9f4b-xkp2t         1/1     Running   0          2d
+    backend-6c8d9f-abc12          1/1     Running   0          2d
+  "get networkpolicies -n production": |
+    NAME                    POD-SELECTOR   AGE
+    deny-all-ingress        <none>         5d
+    allow-monitoring        app=monitoring  3d
+  "describe networkpolicy deny-all-ingress -n production": |
+    Name:         deny-all-ingress
+    Namespace:    production
+    Created on:   2026-06-16 09:00:00 +0000 UTC
+    Labels:       <none>
+    Annotations:  <none>
+    Spec:
+      PodSelector:     <none> (Selects all pods in the namespace)
+      Allowing ingress traffic:
+        <none> (Selected pods are isolated for ingress connectivity)
+      Allowing egress traffic:
+        <none> (Selected pods are isolated for egress connectivity)
+      Policy Types: Ingress, Egress
+  "describe networkpolicy allow-monitoring -n production": |
+    Name:         allow-monitoring
+    Namespace:    production
+    Created on:   2026-06-18 14:00:00 +0000 UTC
+    Labels:       <none>
+    Spec:
+      PodSelector: app=monitoring
+      Allowing ingress traffic:
+        To Port: 8080/TCP
+        From: PodSelector: app=prometheus
+      Policy Types: Ingress
+  "get events -n production": |
+    LAST SEEN   TYPE      REASON      OBJECT                         MESSAGE
+    2d          Normal    Scheduled   pod/frontend-7d9f4b-xkp2t     Successfully assigned production/frontend-7d9f4b-xkp2t
+    2d          Normal    Scheduled   pod/backend-6c8d9f-abc12       Successfully assigned production/backend-6c8d9f-abc12
+expectedSeverity: warning
+expectedKeywords:
+  - NetworkPolicy
+  - deny
+  - ingress
+forbiddenKeywords:
+  - "I don't know"

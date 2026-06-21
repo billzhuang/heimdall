@@ -1,0 +1,86 @@
+description: "Pod creation blocked by namespace ResourceQuota"
+prompt: "My new-service deployment in the staging namespace shows 0/3 pods ready and hasn't created any pods in 15 minutes. What's wrong?"
+mocks:
+  "get deployments -n staging": |
+    NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+    new-service        0/3     0            0           15m
+    existing-api       1/1     1            1           7d
+    existing-worker    1/1     1            1           7d
+  "describe deployment new-service -n staging": |
+    Name:                   new-service
+    Namespace:              staging
+    CreationTimestamp:      Sat, 21 Jun 2026 04:00:00 +0000
+    Labels:                 app=new-service
+    Replicas:               3 desired | 0 updated | 0 total | 0 available | 3 unavailable
+    StrategyType:           RollingUpdate
+    Pod Template:
+      Containers:
+       new-service:
+        Image:    myregistry.io/new-service:1.0.0
+        Port:     8080/TCP
+        Requests:
+          cpu:     500m
+          memory:  512Mi
+        Limits:
+          cpu:     1000m
+          memory:  1Gi
+    Conditions:
+      Type             Status  Reason
+      ----             ------  ------
+      ReplicaFailure   True    FailedCreate
+      Available        False   MinimumReplicasUnavailable
+      Progressing      True    ReplicaSetUpdated
+    Events:
+      Type    Reason             Age   From                   Message
+      ----    ------             ----  ----                   -------
+      Normal  ScalingReplicaSet  15m   deployment-controller  Scaled up replica set new-service-7f9d8c to 3
+  "get replicasets -n staging": |
+    NAME               DESIRED   CURRENT   READY   AGE
+    new-service-7f9d8c  3        0         0       15m
+    existing-api-6b4c9d 1        1         1       7d
+  "describe replicaset new-service-7f9d8c -n staging": |
+    Name:           new-service-7f9d8c
+    Namespace:      staging
+    Selector:       app=new-service,pod-template-hash=7f9d8c
+    Labels:         app=new-service
+    Replicas:       0 current / 3 desired
+    Pods Status:    0 Running / 0 Waiting / 0 Succeeded / 0 Failed
+    Pod Template:
+      Containers:
+       new-service:
+        Image:    myregistry.io/new-service:1.0.0
+        Requests:
+          cpu:     500m
+          memory:  512Mi
+    Conditions:
+      Type             Status  Reason
+      ----             ------  ------
+      ReplicaFailure   True    FailedCreate
+    Events:
+      Type     Reason        Age                   From                   Message
+      ----     ------        ----                  ----                   -------
+      Warning  FailedCreate  15m (x18 over 15m)   replicaset-controller  Error creating: pods "new-service-7f9d8c-" is forbidden: exceeded quota: staging-quota, requested: cpu=500m,memory=512Mi, used: cpu=3700m,memory=7168Mi, limited: cpu=4,memory=8Gi
+  "get resourcequota -n staging": |
+    NAME            AGE   REQUEST                                    LIMIT
+    staging-quota   30d   cpu: 3700m/4, memory: 7168Mi/8Gi, pods: 5/10   cpu: 6/8, memory: 12Gi/16Gi
+  "describe resourcequota staging-quota -n staging": |
+    Name:            staging-quota
+    Namespace:       staging
+    Resource         Used    Hard
+    --------         ----    ----
+    cpu              3700m   4
+    limits.cpu       6       8
+    limits.memory    12Gi    16Gi
+    memory           7168Mi  8Gi
+    pods             5       10
+  "get pods -n staging": |
+    NAME                            READY   STATUS    RESTARTS   AGE
+    existing-api-6b4c9d-def         1/1     Running   0          7d
+    existing-worker-5a3b8e-ghi      1/1     Running   0          7d
+expectedSeverity: warning
+expectedKeywords:
+  - quota
+  - cpu
+  - FailedCreate
+forbiddenKeywords:
+  - "I don't know"
