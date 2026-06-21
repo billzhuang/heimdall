@@ -1,0 +1,31 @@
+description: "Multi-cluster: service present in spoke but missing in hub"
+prompt: "Our platform gateway on the hub cluster cannot resolve the inventory-service. The gateway pod logs show connection refused to inventory-service.inventory.svc.cluster.local. The service is supposed to be federated from the us-east spoke cluster."
+mocks:
+  "get pods -n gateway": |
+    NAME                          READY   STATUS    RESTARTS   AGE
+    platform-gateway-6d8f9c-tt1   1/1     Running   0          2d
+  "logs platform-gateway-6d8f9c-tt1 -n gateway": |
+    2026-06-21T08:45:01Z ERROR upstream connect error: connection refused to inventory-service.inventory.svc.cluster.local:8080
+    2026-06-21T08:45:03Z ERROR retrying request to inventory-service, attempt 3/3 failed
+    2026-06-21T08:45:05Z FATAL unable to reach inventory-service after 3 retries, circuit breaker OPEN
+  "get services -n inventory": |
+    Error from server (NotFound): namespaces "inventory" not found
+  "get namespaces": |
+    NAME              STATUS   AGE
+    default           Active   30d
+    kube-system       Active   30d
+    monitoring        Active   30d
+    gateway           Active   30d
+  "get serviceexports -n inventory": |
+    error: the server doesn't have a resource type "serviceexports"
+  "get events -n gateway": |
+    LAST SEEN   TYPE      REASON           OBJECT                              MESSAGE
+    1h          Warning   FailedMount      pod/platform-gateway-6d8f9c-tt1    Unable to resolve inventory-service.inventory.svc.cluster.local
+    2h          Warning   BackOff          pod/platform-gateway-6d8f9c-tt1    Failed upstream: inventory-service connection refused
+expectedSeverity: critical
+expectedKeywords:
+  - inventory
+  - service
+  - namespace
+forbiddenKeywords:
+  - "I don't know"

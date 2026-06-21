@@ -1,0 +1,59 @@
+description: "PodDisruptionBudget blocking a rolling upgrade"
+prompt: "Our order-processor deployment rollout has been stuck for 30 minutes. Only 2 out of 5 pods have been replaced. What is preventing the remaining pods from being updated?"
+mocks:
+  "get pods -n orders": |
+    NAME                                READY   STATUS    RESTARTS   AGE
+    order-processor-new-7d8c9f-aaa11    1/1     Running   0          28m
+    order-processor-new-7d8c9f-bbb22    1/1     Running   0          28m
+    order-processor-old-5b6d7e-ccc33    1/1     Running   0          14d
+    order-processor-old-5b6d7e-ddd44    1/1     Running   0          14d
+    order-processor-old-5b6d7e-eee55    1/1     Running   0          14d
+  "get deployments -n orders": |
+    NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+    order-processor   5/5     2            5           14d
+  "describe deployment order-processor -n orders": |
+    Name:               order-processor
+    Namespace:          orders
+    Replicas:           5 desired | 2 updated | 5 total | 5 available | 0 unavailable
+    StrategyType:       RollingUpdate
+    RollingUpdateStrategy:  25% max unavailable, 25% max surge
+    Conditions:
+      Type           Status  Reason
+      ----           ------  ------
+      Available      True    MinimumReplicasAvailable
+      Progressing    True    ReplicaSetUpdated
+    Events:
+      Type     Reason             Age   From                   Message
+      ----     ------             ----  ----                   -------
+      Normal   ScalingReplicaSet  30m   deployment-controller  Scaled up replica set order-processor-new-7d8c9f to 2
+      Warning  ProgressDeadlineExceeded  0s  deployment-controller  ReplicaSet "order-processor-new-7d8c9f" has timed out progressing.
+  "get poddisruptionbudgets -n orders": |
+    NAME                    MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
+    order-processor-pdb     4               N/A               0                     14d
+  "describe poddisruptionbudget order-processor-pdb -n orders": |
+    Name:           order-processor-pdb
+    Namespace:      orders
+    Min available:  4
+    Selector:       app=order-processor
+    Status:
+      Observed generation:  1
+      Disruptions allowed:  0
+      Current number healthy:  5
+      Desired number healthy:  4
+      Expected pods:           5
+      Unhealthy pods:          0
+    Events:         <none>
+  "rollout status deployment order-processor -n orders": |
+    Waiting for deployment "order-processor" rollout to finish: 2 out of 5 new replicas have been updated...
+  "get events -n orders": |
+    LAST SEEN   TYPE      REASON                  OBJECT                                   MESSAGE
+    30m         Normal    ScalingReplicaSet        deployment/order-processor               Scaled up replica set order-processor-new-7d8c9f to 2
+    1m          Warning   ProgressDeadlineExceeded deployment/order-processor               ReplicaSet "order-processor-new-7d8c9f" has timed out progressing.
+    0s          Warning   DisruptionTarget        pod/order-processor-old-5b6d7e-ccc33     Eviction not allowed: PDB order-processor-pdb allows 0 disruptions, 4 healthy pods required, current 5 healthy
+expectedSeverity: warning
+expectedKeywords:
+  - PodDisruptionBudget
+  - disruption
+  - rollout
+forbiddenKeywords:
+  - "I don't know"
