@@ -52,7 +52,7 @@ describe('buildInstructions', () => {
 
   it('treats no enabledTools argument as all-enabled (backwards compatibility)', () => {
     const allEnabled = buildInstructions();
-    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli', 'trivyScan', 'kubecostQuery', 'lokiQuery', 'jaegerQuery', 'datadogQuery']));
+    const explicit = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease', 'prometheusQuery', 'awsCli', 'trivyScan', 'kubecostQuery', 'lokiQuery', 'jaegerQuery', 'datadogQuery', 'newRelicQuery']));
     expect(allEnabled).toBe(explicit);
   });
 
@@ -95,6 +95,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'multi-cluster-investigator',
       'netpol-auditor',
       'network-debugger',
+      'newrelic-investigator',
       'oomkill-analyzer',
       'resilience-advisor',
       'resource-analyzer',
