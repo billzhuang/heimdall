@@ -42,7 +42,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery' | 'newRelicQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -92,6 +92,13 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '  • events — deployment markers, config changes, and infra events (queryType="events", tags="env:prod,source:kubernetes").\n' +
       '  • monitors — active monitor alert state (queryType="monitors", monitorStatus="Alert,Warn").\n' +
       '  Use to correlate Kubernetes issues with Datadog metrics/logs, check active alerts, and inspect deployment event timelines.\n' +
+      '  from/to accept ISO8601, relative durations ("-1h", "-30m", "-2d"), or Unix seconds.',
+    has('newRelicQuery') &&
+      '- `newrelic_query`: query New Relic for observability data via NerdGraph/NRQL (read-only). Three query types:\n' +
+      '  • metrics — arbitrary NRQL query (e.g. queryType="metrics", query="SELECT average(cpuPercent) FROM SystemSample SINCE 1 hour ago").\n' +
+      '  • apm — Transaction throughput/latency/error rate grouped by appName (queryType="apm", query="appName = \'payments\'").\n' +
+      '  • alerts — open New Relic AI incident violations (queryType="alerts", query="priority = \'CRITICAL\'").\n' +
+      '  Use to surface New Relic APM errors, check open alert violations, and run NRQL metric queries.\n' +
       '  from/to accept ISO8601, relative durations ("-1h", "-30m", "-2d"), or Unix seconds.',
   ].filter(Boolean) as string[];
 
@@ -147,6 +154,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- datadog-investigator — Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.',
   ] : [];
 
+  const newRelicSubagentLines = has('newRelicQuery') ? [
+    '- newrelic-investigator — New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.',
+  ] : [];
+
   const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery')) ? [
     '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
   ] : [];
@@ -167,7 +178,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
-- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}`);
+- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${newRelicSubagentLines.length > 0 ? '\n' + newRelicSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -190,7 +201,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -212,6 +223,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'cost-analyzer': 'FinOps deep-dive: namespace/workload cost attribution via Kubecost, cost trend analysis, rightsizing recommendations, and cost-driver identification.',
   'resilience-advisor': 'Chaos engineering readiness: identify single points of failure, detect missing PodDisruptionBudgets and anti-affinity rules, and generate LitmusChaos experiment YAML suggestions for human review — never executes experiments.',
   'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
+  'newrelic-investigator': 'New Relic observability deep-dive: correlate Kubernetes pod/node issues with New Relic APM metrics, NRQL queries, and open alert violations to surface root causes that kubectl alone cannot reveal.',
   'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
   'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus and/or Datadog). Use this instead of datadog-investigator when the goal is a golden-signals snapshot.',
   'slo-evaluator': 'SLO compliance check: query each configured SLO metric via prometheus_query, compute burn rate (currentValue / budget) and remaining budget, and report breaching SLOs (burn rate > 1) with severity HIGH. Lists healthy SLOs in a summary table.',
@@ -712,6 +724,47 @@ Structure your findings as:
 
 ## Read-only constraint
 Never modify monitors, dashboards, or any Datadog resource.
+Report findings and recommend actions for the operator.`,
+  ),
+  'newrelic-investigator': subagentInstructions(
+    'You are a New Relic observability investigation specialist.',
+    `## Focus
+Correlate Kubernetes cluster issues with New Relic observability data — APM metrics, NRQL
+queries, and open alert violations. Your goal is to surface root causes that kubectl alone
+cannot reveal by joining cluster state with New Relic signals.
+
+## Investigation workflow
+1. **Check open alerts first** — surface any currently firing New Relic AI incidents:
+   newrelic_query({ queryType: "alerts", query: "priority = 'CRITICAL' OR priority = 'HIGH'", limit: 50 })
+2. **Query APM for affected services** — get throughput, latency, and error rates:
+   newrelic_query({ queryType: "apm", query: "appName = '<service-name>'", from: "-1h" })
+3. **Run NRQL for custom metrics** — query system or infrastructure samples:
+   - CPU: newrelic_query({ queryType: "metrics", query: "SELECT average(cpuPercent) FROM SystemSample WHERE hostname LIKE '%<node>%' SINCE 1 hour ago FACET hostname" })
+   - Memory: newrelic_query({ queryType: "metrics", query: "SELECT average(memoryUsedPercent) FROM SystemSample SINCE 1 hour ago FACET hostname" })
+   - Error rate: newrelic_query({ queryType: "metrics", query: "SELECT count(*) FROM TransactionError WHERE appName = '<svc>' SINCE 1 hour ago FACET error.class" })
+4. **Cross-reference with kubectl** — validate New Relic findings against live cluster state:
+   kubectl get pods, describe deployment, check events for the affected namespace.
+
+## NRQL event types reference
+- SystemSample — host CPU, memory, disk, network (infrastructure agent)
+- ProcessSample — per-process CPU/memory
+- Transaction — APM service request traces (throughput, duration, errors)
+- TransactionError — APM error events with stack traces
+- K8sNodeSample — Kubernetes node metrics from New Relic Kubernetes integration
+- K8sPodSample — Kubernetes pod metrics
+- K8sContainerSample — container CPU/memory limits and usage
+- NrAiIncident — New Relic AI (applied intelligence) open incident events
+
+## Reporting format
+Structure your findings as:
+1. **Active alerts**: list any firing incidents with priority and description.
+2. **APM analysis**: throughput, p50/p99 latency, error rate for affected services.
+3. **Infrastructure metrics**: CPU/memory trends on affected nodes or pods.
+4. **Correlation summary**: how the New Relic data relates to the Kubernetes issue.
+5. **Recommended actions**: precise remediation steps with suggested commands.
+
+## Read-only constraint
+Never modify alerts, dashboards, or any New Relic resource.
 Report findings and recommend actions for the operator.`,
   ),
   'capi-investigator': subagentInstructions(

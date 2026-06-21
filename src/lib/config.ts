@@ -31,8 +31,10 @@ const ToolsSchema = v.nullish(
     jaegerQuery: v.nullish(v.boolean(), false),
     // Disabled by default: requires Datadog API key and app key.
     datadogQuery: v.nullish(v.boolean(), false),
+    // Disabled by default: requires New Relic API key and account ID.
+    newRelicQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
@@ -88,6 +90,20 @@ const DatadogSchema = v.nullish(
     // Datadog site, e.g. "datadoghq.com" (default), "datadoghq.eu", "us3.datadoghq.com".
     // Also readable from DD_SITE env var.
     site: v.nullish(v.string()),
+    // Request timeout in milliseconds (default 15 000).
+    timeoutMs: v.nullish(v.number(), 15_000),
+  }),
+);
+
+// New Relic NerdGraph API config — optional, disabled by default.
+// Requires a New Relic account, API key, and account ID.
+const NewRelicSchema = v.nullish(
+  v.object({
+    // New Relic User API key. Also readable from NEW_RELIC_API_KEY env var.
+    apiKey: v.nullish(v.string()),
+    // New Relic account ID. Also readable from NEW_RELIC_ACCOUNT_ID env var.
+    // Accept both string and number so bare YAML integers (accountId: 1234567) work.
+    accountId: v.nullish(v.pipe(v.union([v.string(), v.number()]), v.transform(String))),
     // Request timeout in milliseconds (default 15 000).
     timeoutMs: v.nullish(v.number(), 15_000),
   }),
@@ -281,6 +297,7 @@ const HeimdallConfigSchema = v.object({
   loki: LokiSchema,
   jaeger: JaegerSchema,
   datadog: DatadogSchema,
+  newRelic: NewRelicSchema,
   // User-configurable regex redaction rules (disabled by default).
   redaction: RedactionSchema,
   namespace: NamespaceSchema,
@@ -314,6 +331,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   lokiQuery: true,
   jaegerQuery: true,
   datadogQuery: true,
+  newRelicQuery: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -333,6 +351,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   loki_query: 'lokiQuery',
   jaeger_query: 'jaegerQuery',
   datadog_query: 'datadogQuery',
+  new_relic_query: 'newRelicQuery',
 };
 
 /**

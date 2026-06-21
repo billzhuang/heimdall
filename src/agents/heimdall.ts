@@ -23,6 +23,7 @@ import { makeKubecostQuery } from '../tools/kubecost.ts';
 import { makeLokiQuery } from '../tools/loki.ts';
 import { makeJaegerQuery } from '../tools/jaeger.ts';
 import { makeDatadogQuery } from '../tools/datadog.ts';
+import { makeNewRelicQuery } from '../tools/newrelic.ts';
 import { readFileSync } from 'node:fs';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
@@ -93,6 +94,7 @@ const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
   lokiQuery: makeLokiQuery(config.loki, regexRedactionRules, lockedNs),
   jaegerQuery: makeJaegerQuery(config.jaeger, regexRedactionRules),
   datadogQuery: makeDatadogQuery(config.datadog, regexRedactionRules),
+  newRelicQuery: makeNewRelicQuery(config.newRelic, regexRedactionRules),
 };
 
 const enabledToolKeys = new Set(
