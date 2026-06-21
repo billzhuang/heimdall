@@ -1,0 +1,17 @@
+apiVersion: v2
+name: heimdall
+description: AI-powered read-only Kubernetes SRE agent
+type: application
+version: 0.1.0
+appVersion: "0.2.0"
+keywords:
+  - kubernetes
+  - sre
+  - ai
+  - observability
+  - diagnostics
+home: https://github.com/billzhuang/heimdall
+sources:
+  - https://github.com/billzhuang/heimdall
+maintainers:
+  - name: billzhuang
