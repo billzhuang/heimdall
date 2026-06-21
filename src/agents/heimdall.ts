@@ -12,6 +12,7 @@
  */
 import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
+import { initTelemetry, recordToolCall } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
 import { makeKubectl } from '../tools/kubectl.ts';
 import { listContexts, makeListNamespaces } from '../tools/kubeconfig.ts';
@@ -36,6 +37,8 @@ import type { TaskHistoryEntry } from '../lib/task-history.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
+
+initTelemetry(config.telemetry ?? { enabled: false });
 
 const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
 const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);
@@ -101,9 +104,26 @@ const enabledToolKeys = new Set(
   (Object.keys(ALL_TOOLS) as ToolConfigKey[]).filter((key) => config.tools[key]),
 );
 
+const telemetryEnabled = config.telemetry?.enabled || !!process.env.HEIMDALL_TELEMETRY_FILE;
+
+function wrapWithTiming(tool: ToolDefinition): ToolDefinition {
+  const t = tool as ToolDefinition & { execute: (input: Record<string, unknown>) => Promise<string> };
+  const orig = t.execute.bind(t);
+  return Object.assign({}, tool, {
+    execute: async (input: Record<string, unknown>): Promise<string> => {
+      const start = Date.now();
+      try {
+        return await orig(input);
+      } finally {
+        recordToolCall(Date.now() - start);
+      }
+    },
+  }) as ToolDefinition;
+}
+
 const clusterTools = (Object.keys(ALL_TOOLS) as ToolConfigKey[])
   .filter((key) => enabledToolKeys.has(key))
-  .map((key) => ALL_TOOLS[key]);
+  .map((key) => (telemetryEnabled ? wrapWithTiming(ALL_TOOLS[key]) : ALL_TOOLS[key]));
 
 if (clusterTools.length === 0) {
   console.warn('[heimdall] No tools are enabled in heimdall.config.yaml — the agent has no cluster access.');
