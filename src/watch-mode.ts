@@ -28,6 +28,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { HeimdallConfig } from './lib/config.ts';
+import { resolveModel } from './lib/model.ts';
 import {
   parseEventLine,
   matchesWatchFilter,
@@ -50,7 +51,7 @@ const BACKOFF_RESET_THRESHOLD_MS = 60_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Invoke the Heimdall agent with a single prompt and return its response. */
-async function diagnoseEvent(prompt: string): Promise<string> {
+async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
 
   return new Promise((resolve) => {
@@ -62,12 +63,14 @@ async function diagnoseEvent(prompt: string): Promise<string> {
       }
     };
 
+    const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
     const child = spawn(binPath, ['-p', prompt], {
       // stderr is inherited so the agent's diagnostic output is visible on the
       // watch-mode process's stderr alongside our own status messages.  Using
       // 'pipe' without draining would risk a buffer deadlock if the agent
       // writes a lot of diagnostic text.
       stdio: ['ignore', 'pipe', 'inherit'],
+      env,
     });
 
     const timer = setTimeout(() => {
@@ -109,6 +112,7 @@ async function runWatchStream(
   cooldownSeconds: number,
   signal: AbortSignal,
   eventSink: EventSink | null,
+  model?: string,
 ): Promise<void> {
   const kubectl = spawn('kubectl', kubectlArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -169,7 +173,7 @@ async function runWatchStream(
     );
 
     const prompt = buildDiagnosticPrompt(event);
-    const diagnosis = await diagnoseEvent(prompt);
+    const diagnosis = await diagnoseEvent(prompt, model);
     const finding = formatFinding(event, ts, diagnosis);
 
     process.stdout.write(JSON.stringify(finding) + '\n');
@@ -191,7 +195,7 @@ async function runWatchStream(
   if (spawnError) throw spawnError;
 }
 
-export async function runWatchMode(): Promise<void> {
+export async function runWatchMode(model?: string): Promise<void> {
   const config = loadConfig();
   const watchCfg = config.watch;
   const namespaces = watchCfg?.namespaces ?? [];
@@ -235,7 +239,7 @@ export async function runWatchMode(): Promise<void> {
     const streamStartMs = Date.now();
 
     try {
-      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink);
+      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink, model);
     } catch (err: unknown) {
       if (controller.signal.aborted) break;
       const detail = err instanceof Error ? err.message : String(err);
@@ -278,7 +282,43 @@ export async function runWatchMode(): Promise<void> {
   process.removeListener('SIGTERM', onSignal);
 }
 
-runWatchMode().catch((err: unknown) => {
+// --- CLI arg parsing when run directly ---
+const watchArgs = process.argv.slice(2);
+let watchModelFlag: string | undefined;
+
+for (let i = 0; i < watchArgs.length; i++) {
+  const arg = watchArgs[i];
+  if (arg === '--model') {
+    if (!watchArgs[i + 1] || watchArgs[i + 1].startsWith('-')) {
+      process.stderr.write('Error: --model requires a value\n');
+      process.exit(1);
+    }
+    watchModelFlag = watchArgs[++i];
+  } else if (arg.startsWith('--model=')) {
+    const m = arg.slice('--model='.length);
+    if (!m) {
+      process.stderr.write('Error: --model= requires a non-empty value\n');
+      process.exit(1);
+    }
+    watchModelFlag = m;
+  } else if (arg === '-h' || arg === '--help') {
+    process.stdout.write(`Usage: heimdall --watch [--model <provider/model>]\n\nOptions:\n  --model <provider/model>  Override the LLM model\n  -h, --help                Show this help\n`);
+    process.exit(0);
+  } else {
+    process.stderr.write(`Error: unknown option: ${arg}\n`);
+    process.exit(1);
+  }
+}
+
+let resolvedWatchModel: string;
+try {
+  resolvedWatchModel = resolveModel(watchModelFlag);
+} catch (err) {
+  process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.exit(1);
+}
+
+runWatchMode(resolvedWatchModel).catch((err: unknown) => {
   const detail = err instanceof Error ? err.stack ?? err.message : String(err);
   process.stderr.write(`[heimdall-watch] Fatal error: ${detail}\n`);
   process.exit(1);

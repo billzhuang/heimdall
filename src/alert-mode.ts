@@ -18,6 +18,7 @@ import { parseAlertManagerPayload, parsePagerDutyPayload, buildAlertPrompt, type
 import { runKubectl } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
+import { resolveModel } from './lib/model.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,13 +56,14 @@ async function seedKubectl(alert: ParsedAlert): Promise<string> {
   return parts.join('\n\n');
 }
 
-async function runAgent(prompt: string): Promise<void> {
+async function runAgent(prompt: string, model?: string): Promise<void> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
   return new Promise((res, rej) => {
     let settled = false;
     const settle = (err?: Error) => { if (!settled) { settled = true; err ? rej(err) : res(); } };
 
-    const child = spawn(binPath, ['-p', prompt], { stdio: ['ignore', 'inherit', 'inherit'] });
+    const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
+    const child = spawn(binPath, ['-p', prompt], { stdio: ['ignore', 'inherit', 'inherit'], env });
     const timer = setTimeout(() => { child.kill('SIGTERM'); settle(new Error('alert investigation timed out')); }, ALERT_TIMEOUT_MS);
 
     child.on('close', (code: number | null, signal: string | null) => {
@@ -76,7 +78,7 @@ async function runAgent(prompt: string): Promise<void> {
 
 type AlertSource = 'grafana' | 'prometheus' | 'pagerduty' | 'raw';
 
-export async function runAlertMode(opts: { source: AlertSource; input: string; seed: boolean }): Promise<void> {
+export async function runAlertMode(opts: { source: AlertSource; input: string; seed: boolean; model?: string }): Promise<void> {
   let alerts: ParsedAlert[];
 
   if (opts.source === 'raw') {
@@ -118,7 +120,7 @@ export async function runAlertMode(opts: { source: AlertSource; input: string; s
   }
 
   const prompt = buildAlertPrompt(alert, seedContext || undefined);
-  await runAgent(prompt);
+  await runAgent(prompt, opts.model);
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
@@ -126,6 +128,7 @@ const args = process.argv.slice(2);
 let source: AlertSource = 'raw';
 let seed = true;
 let input = '';
+let modelFlag: string | undefined;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -143,13 +146,25 @@ for (let i = 0; i < args.length; i++) {
     source = s as AlertSource;
   } else if (arg === '--no-seed') {
     seed = false;
+  } else if (arg === '--model') {
+    if (!args[i + 1] || args[i + 1].startsWith('-')) {
+      process.stderr.write(`Error: --model requires a value\n`); process.exit(1);
+    }
+    modelFlag = args[++i];
+  } else if (arg.startsWith('--model=')) {
+    const m = arg.slice('--model='.length);
+    if (!m) {
+      process.stderr.write(`Error: --model= requires a non-empty value\n`); process.exit(1);
+    }
+    modelFlag = m;
   } else if (arg === '-h' || arg === '--help') {
     process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
 
 Options:
-  --source <type>   Alert format: grafana, prometheus, pagerduty, or raw text (default: raw)
-  --no-seed         Skip pre-fetching kubectl data before the LLM investigation
-  -h, --help        Show this help
+  --source <type>           Alert format: grafana, prometheus, pagerduty, or raw text (default: raw)
+  --no-seed                 Skip pre-fetching kubectl data before the LLM investigation
+  --model <provider/model>  Override the LLM model (default: anthropic/claude-sonnet-4-6)
+  -h, --help                Show this help
 
 Examples:
   heimdall alert alert.json
@@ -173,7 +188,15 @@ if (!input) {
   process.exit(1);
 }
 
-runAlertMode({ source, input, seed }).catch((err: unknown) => {
+let resolvedModel: string;
+try {
+  resolvedModel = resolveModel(modelFlag);
+} catch (err) {
+  process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.exit(1);
+}
+
+runAlertMode({ source, input, seed, model: resolvedModel }).catch((err: unknown) => {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
   process.stderr.write(`[heimdall-alert] Fatal: ${detail}\n`);
   process.exit(1);

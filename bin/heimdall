@@ -47,6 +47,9 @@ Options:
       --json            Emit a single JSON object to stdout (one-shot mode only)
       --format json     Alias for --json
       --no-learn        Skip appending this investigation to the task-history log
+      --model <provider/model>  Override the LLM model (default: anthropic/claude-sonnet-4-6)
+                        Overrides HEIMDALL_MODEL env var. Format: provider/model
+                        e.g. anthropic/claude-opus-4-8, anthropic/claude-haiku-4-5-20251001
       --backend <name>  LLM backend: 'flue' (default), 'claude-cli', or 'codex-cli'
                         Override with env var HEIMDALL_BACKEND=<name>.
                         'claude-cli' calls \`claude -p\` directly (no tool use;
@@ -128,6 +131,7 @@ JSON_OUTPUT=false
 NO_LEARN=false
 # Backend: 'flue' (default, full agent with tool use) or 'claude-cli' (external LLM via claude -p).
 BACKEND="${HEIMDALL_BACKEND:-flue}"
+HEIMDALL_MODEL_FLAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -198,6 +202,16 @@ while [[ $# -gt 0 ]]; do
         *) echo "Error: unknown backend '$2'; supported: flue, claude-cli, codex-cli" >&2; exit 1 ;;
       esac
       shift 2
+      ;;
+    --model)
+      [[ $# -lt 2 ]] && { echo "Error: --model requires an argument" >&2; exit 1; }
+      HEIMDALL_MODEL_FLAG="$2"
+      shift 2
+      ;;
+    --model=*)
+      HEIMDALL_MODEL_FLAG="${1#--model=}"
+      [[ -z "$HEIMDALL_MODEL_FLAG" ]] && { echo "Error: --model= requires a non-empty value" >&2; exit 1; }
+      shift
       ;;
     -h|--help)
       show_help
@@ -360,17 +374,31 @@ if [[ "$EVAL" == "true" ]]; then
   fi
 fi
 
+# Validate and export the model (flag takes precedence over env var; both must be valid)
+RESOLVED_MODEL="${HEIMDALL_MODEL_FLAG:-${HEIMDALL_MODEL:-}}"
+if [[ -n "$RESOLVED_MODEL" ]]; then
+  if [[ "$RESOLVED_MODEL" != */* ]]; then
+    echo "Error: model requires a 'provider/model' value (e.g. 'anthropic/claude-opus-4-8')" >&2
+    exit 1
+  fi
+  if [[ -n "$HEIMDALL_MODEL_FLAG" ]]; then
+    export HEIMDALL_MODEL="$HEIMDALL_MODEL_FLAG"
+  fi
+fi
+
 # --- Watch mode -----------------------------------------------------------
 if [[ "$WATCH" == "true" ]]; then
   WATCH_COMPILED="${ROOT_DIR}/dist/watch-mode.mjs"
   WATCH_SOURCE="${ROOT_DIR}/src/watch-mode.ts"
+  WATCH_MODEL_ARGS=()
+  [[ -n "$HEIMDALL_MODEL_FLAG" ]] && WATCH_MODEL_ARGS=("--model" "$HEIMDALL_MODEL_FLAG")
 
   if [[ -f "$WATCH_COMPILED" ]]; then
     # Production path: use the pre-built JS bundle (npm run build).
-    exec node "$WATCH_COMPILED"
+    exec node "$WATCH_COMPILED" "${WATCH_MODEL_ARGS[@]}"
   elif [[ -x "$TSX" ]] && [[ -f "$WATCH_SOURCE" ]]; then
     # Development path: run the TypeScript source directly via tsx.
-    exec "$TSX" "$WATCH_SOURCE"
+    exec "$TSX" "$WATCH_SOURCE" "${WATCH_MODEL_ARGS[@]}"
   else
     echo "Error: watch mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2

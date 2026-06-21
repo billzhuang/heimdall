@@ -19,13 +19,14 @@ import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
+import { resolveModel } from './lib/model.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Invoke the Heimdall agent with a prompt, streaming output to stdout. */
-async function runAgent(prompt: string): Promise<void> {
+async function runAgent(prompt: string, model?: string): Promise<void> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
 
   return new Promise((resolve, reject) => {
@@ -38,8 +39,10 @@ async function runAgent(prompt: string): Promise<void> {
       }
     };
 
+    const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
     const child = spawn(binPath, ['-p', prompt], {
       stdio: ['ignore', 'inherit', 'inherit'],
+      env,
     });
 
     const timer = setTimeout(() => {
@@ -65,7 +68,7 @@ async function runAgent(prompt: string): Promise<void> {
   });
 }
 
-export async function runTriageMode(opts: TriageOptions = {}): Promise<void> {
+export async function runTriageMode(opts: TriageOptions = {}, model?: string): Promise<void> {
   const prompt = buildTriagePrompt(opts);
 
   if (opts.contexts && opts.contexts.length > 0) {
@@ -84,12 +87,13 @@ export async function runTriageMode(opts: TriageOptions = {}): Promise<void> {
     }
   }
 
-  await runAgent(prompt);
+  await runAgent(prompt, model);
 }
 
 // --- CLI arg parsing when run directly ---
 const args = process.argv.slice(2);
 const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
+let modelFlag: string | undefined;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i];
@@ -131,6 +135,19 @@ for (let i = 0; i < args.length; i++) {
       process.exit(1);
     }
     opts.contexts = Array.from(new Set(parsed));
+  } else if (arg === '--model') {
+    if (!args[i + 1] || args[i + 1].startsWith('-')) {
+      process.stderr.write(`Error: --model requires a value\n`);
+      process.exit(1);
+    }
+    modelFlag = args[++i];
+  } else if (arg.startsWith('--model=')) {
+    const m = arg.slice('--model='.length);
+    if (!m) {
+      process.stderr.write(`Error: --model= requires a non-empty value\n`);
+      process.exit(1);
+    }
+    modelFlag = m;
   } else if (arg === '-h' || arg === '--help') {
     process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
 
@@ -140,6 +157,7 @@ Options:
   -n, --namespace <ns>          Scope the sweep to a single namespace
   -A, --all-namespaces          Sweep all namespaces
   --contexts <ctx1,ctx2,...>    Sweep multiple kubeconfig contexts (multi-cluster mode)
+  --model <provider/model>      Override the LLM model (default: anthropic/claude-sonnet-4-6)
   -h, --help                    Show this help message
 
 Examples:
@@ -157,7 +175,15 @@ Examples:
   }
 }
 
-runTriageMode(opts).catch((err: unknown) => {
+let resolvedModel: string;
+try {
+  resolvedModel = resolveModel(modelFlag);
+} catch (err) {
+  process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.exit(1);
+}
+
+runTriageMode(opts, resolvedModel).catch((err: unknown) => {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
   process.stderr.write(`[heimdall-triage] Fatal error: ${detail}\n`);
   process.exit(1);

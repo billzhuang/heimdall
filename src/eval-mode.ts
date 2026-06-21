@@ -20,6 +20,7 @@ import {
   type EvalScenario,
   type EvalResult,
 } from './lib/eval-runner.ts';
+import { resolveModel } from './lib/model.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -28,12 +29,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let scenarioFilter: string | undefined;
+  let modelFlag: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
       scenarioFilter = args[++i];
     } else if (args[i].startsWith('--scenario=')) {
       scenarioFilter = args[i].slice('--scenario='.length);
+    } else if (args[i] === '--model' || args[i] === '-m') {
+      if (!args[i + 1] || args[i + 1].startsWith('-')) {
+        process.stderr.write(`Error: ${args[i]} requires a value\n`);
+        process.exit(1);
+      }
+      modelFlag = args[++i];
+    } else if (args[i].startsWith('--model=')) {
+      const m = args[i].slice('--model='.length);
+      if (!m) {
+        process.stderr.write(`Error: --model= requires a non-empty value\n`);
+        process.exit(1);
+      }
+      modelFlag = m;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(`Usage: heimdall eval [--scenario <name-substring>]
 
@@ -41,8 +56,9 @@ Run synthetic RCA evaluation scenarios against the Heimdall agent.
 No real cluster is needed — kubectl responses are mocked.
 
 Options:
-  --scenario, -s <name>   Run only scenarios whose filename contains <name>
-  -h, --help              Show this help message
+  --scenario, -s <name>       Run only scenarios whose filename contains <name>
+  --model <provider/model>    Override the LLM model
+  -h, --help                  Show this help message
 
 Examples:
   heimdall eval                       # run all scenarios
@@ -55,6 +71,15 @@ Examples:
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const binPath = resolveBinPath(__dirname);
+
+  let resolvedModel: string;
+  try {
+    resolvedModel = resolveModel(modelFlag);
+  } catch (err) {
+    process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
+  process.env.HEIMDALL_MODEL = resolvedModel;
 
   let scenarios: Array<{ path: string; scenario: EvalScenario }>;
   try {
