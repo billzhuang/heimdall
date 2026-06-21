@@ -8,7 +8,7 @@ import {
 } from '../triage.ts';
 
 describe('buildTriagePrompt', () => {
-  it('covers all 6 triage categories in order', () => {
+  it('covers all 7 triage categories in order', () => {
     const prompt = buildTriagePrompt();
     // Map category keys to the heading labels used in the prompt.
     const categoryLabels: Record<string, string> = {
@@ -18,6 +18,7 @@ describe('buildTriagePrompt', () => {
       events: 'Events',
       pvcs: 'PVCs',
       jobs: 'Jobs',
+      capi: 'CAPI drift',
     };
     const positions = TRIAGE_CATEGORIES.map((cat) => {
       const label = categoryLabels[cat];

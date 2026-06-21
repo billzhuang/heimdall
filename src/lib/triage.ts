@@ -21,7 +21,7 @@ export interface TriageOptions {
 export type Severity = 'critical' | 'warning' | 'info';
 
 /** Ordered diagnostic categories — checked in this sequence every run. */
-export const TRIAGE_CATEGORIES = ['nodes', 'pods', 'workloads', 'events', 'pvcs', 'jobs'] as const;
+export const TRIAGE_CATEGORIES = ['nodes', 'pods', 'workloads', 'events', 'pvcs', 'jobs', 'capi'] as const;
 export type TriageCategory = (typeof TRIAGE_CATEGORIES)[number];
 
 /**
@@ -69,6 +69,10 @@ Work through ALL of the following checks in order. Do not skip any category.
 
 6. **Jobs** — \`kubectl get jobs${nsSuffix}\`
    Flag: any Job with failed completions (FAILED > 0) or that appears to be hung (COMPLETIONS shows 0/N and the job is old).
+
+7. **CAPI drift** (Cluster API — skip if not installed) — \`kubectl api-resources --api-group=cluster.x-k8s.io\`
+   If CAPI CRDs are present, run \`kubectl get machine,machinedeployment${nsSuffix} -o wide\` and delegate deep investigation to the \`capi-investigator\` subagent.
+   Flag: Machines not in Running phase; MachineDeployments with READY < DESIRED.
 
 For each finding provide:
 - **Severity**: critical (cluster-impacting, service down), warning (degraded, at-risk), or info (advisory, not immediately harmful)
