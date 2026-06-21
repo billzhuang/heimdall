@@ -143,6 +143,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - network-debugger — DNS, services, endpoints, ingress, connectivity.
 - security-auditor — RBAC, service accounts, security contexts, exposed secrets, image CVE scanning (when trivy_scan enabled).
 - netpol-auditor — NetworkPolicy coverage audit: detect pods with no ingress/egress policy and suggest minimal NetworkPolicy templates.
+- kyverno-auditor — Kyverno policy audit: list ClusterPolicies/Policies, read PolicyReport/ClusterPolicyReport objects, cross-reference failing pods, and summarise compliance posture.
 - triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
 - crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
 - oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
@@ -172,7 +173,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -181,6 +182,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'network-debugger': 'DNS, services, endpoints, ingress, and connectivity troubleshooting.',
   'security-auditor': 'RBAC, service accounts, security contexts, and exposed-secret review.',
   'netpol-auditor': 'NetworkPolicy coverage audit: detect pods missing network isolation, flag open ingress/egress, and suggest minimal NetworkPolicy templates.',
+  'kyverno-auditor': 'Kyverno policy audit: list ClusterPolicies/Policies, read PolicyReport/ClusterPolicyReport objects, cross-reference failing pods against their admission policies, and summarise compliance posture.',
   'triage': 'Whole-cluster health sweep: structured diagnostic triage with severity-ranked findings across nodes, pods, workloads, events, PVCs, and jobs.',
   'crashloop-analyzer': 'Diagnose CrashLoopBackOff pods: fetch previous logs, identify exit codes, check liveness/readiness probes, rank likely root causes.',
   'oomkill-analyzer': 'Diagnose OOMKilled pods: identify affected containers, report memory requests vs. limits, check node memory pressure, suggest new limits.',
@@ -253,6 +255,68 @@ export const SUBAGENT_INSTRUCTIONS: Record<SubagentName, string> = {
 - List running pods and cross-reference their labels with NetworkPolicy podSelectors.
 - Flag pods that match no NetworkPolicy (fully open — reachable from any pod in the cluster).
 - Delegate deep NetworkPolicy analysis to the \`netpol-auditor\` specialist when coverage gaps are found.`,
+  ),
+  'kyverno-auditor': subagentInstructions(
+    'You are a Kyverno admission-policy audit specialist.',
+    `## Focus
+Audit Kyverno admission-policy compliance across the cluster. Determine which pods violate
+ClusterPolicies or Policies, summarise the compliance posture, and report actionable findings.
+
+## Investigation workflow
+1. **Detect Kyverno presence**: check whether Kyverno CRDs are installed:
+   \`kubectl get clusterpolicy,policy -A\`
+   If the resource type is not found, report that Kyverno is not installed and stop.
+2. **List all policies**: retrieve ClusterPolicies (cluster-scoped) and Policies (namespace-scoped):
+   \`kubectl get clusterpolicy -o json\`
+   \`kubectl get policy -A -o json\`
+   Note each policy's \`spec.validationFailureAction\` (enforce vs. audit) and \`spec.rules[]\`.
+3. **Read policy reports**: Kyverno generates PolicyReport (namespaced) and ClusterPolicyReport
+   (cluster-scoped) objects summarising audit results per resource:
+   \`kubectl get policyreport -A -o json\`
+   \`kubectl get clusterPolicyreport -o json\`
+   For each report, inspect \`results[]\`: collect entries where \`result == "fail"\` and note
+   the \`policy\`, \`rule\`, \`message\`, and \`resources[]\` fields.
+4. **Cross-reference failing pods**: for each failed resource in the reports, check whether
+   the pod/workload still exists and is running:
+   \`kubectl get pod <name> -n <ns> -o json\`
+   Correlate the failing policy rule with the pod's spec (e.g. \`securityContext\`,
+   \`imagePullPolicy\`, image tag, required labels).
+5. **Summarise compliance posture**:
+   - Total policies (enforce vs. audit breakdown)
+   - Total resources checked vs. failing
+   - Top-failing policies ranked by violation count
+   - Namespaces with the most violations
+
+## Commands to use
+- \`kubectl get clusterpolicy -o json\`
+- \`kubectl get policy -A -o json\`
+- \`kubectl get policyreport -A -o json\`
+- \`kubectl get clusterPolicyreport -o json\`
+- \`kubectl get pod <name> -n <ns> -o json\` (for specific failing pods)
+- \`kubectl describe clusterpolicy <name>\` (for policy rule detail)
+- \`kubectl describe policyreport <name> -n <ns>\` (for per-report detail)
+
+## Reporting format
+Structure your findings as:
+
+**Policy inventory**:
+| Policy | Scope | Action | Rules |
+|--------|-------|--------|-------|
+| <name> | cluster/namespace | enforce/audit | <count> |
+
+**Violations summary**:
+| Policy | Rule | Namespace | Resource | Message |
+|--------|------|-----------|----------|---------|
+| <name> | <rule> | <ns> | <pod/resource> | <failure message> |
+
+**Compliance posture**:
+- X ClusterPolicies, Y namespace-scoped Policies
+- Z resources checked; W violations (V enforce, U audit)
+- Top failing policies: (ranked list)
+- Most affected namespaces: (ranked list)
+
+**Remediation recommendations**: for each violation, suggest the exact change the operator
+should make to bring the resource into compliance. Never apply changes yourself.`,
   ),
   'netpol-auditor': subagentInstructions(
     'You are a Kubernetes NetworkPolicy coverage audit specialist.',
