@@ -88,6 +88,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'eks-troubleshooter',
       'gitops-investigator',
       'iam-auditor',
+      'kyverno-auditor',
       'log-analyzer',
       'multi-cluster-investigator',
       'netpol-auditor',
@@ -267,6 +268,45 @@ describe('multi-cluster-investigator subagent', () => {
 
   it('rereads the read-only policy', () => {
     const inst = SUBAGENT_INSTRUCTIONS['multi-cluster-investigator'];
+    expect(inst).toMatch(/read-only/i);
+    expect(inst).toMatch(/Thinking Summary/);
+  });
+});
+
+describe('kyverno-auditor subagent', () => {
+  it('is listed in the specialist subagents section of buildInstructions', () => {
+    const out = buildInstructions();
+    expect(out).toContain('kyverno-auditor');
+  });
+
+  it('instructions cover listing policies and reading policy reports', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
+    expect(inst).toMatch(/clusterpolicy/i);
+    expect(inst).toMatch(/policyreport/i);
+    expect(inst).toMatch(/clusterpolicyreport/i);
+  });
+
+  it('instructions include workflow steps to cross-reference failing pods', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
+    expect(inst).toMatch(/cross-reference/i);
+    expect(inst).toMatch(/fail/i);
+  });
+
+  it('instructions include the key kubectl commands', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
+    expect(inst).toContain('kubectl get clusterpolicy');
+    expect(inst).toContain('kubectl get policyreport');
+    expect(inst).toContain('kubectl get clusterpolicyreport');
+  });
+
+  it('instructions describe how to summarise compliance posture', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
+    expect(inst).toMatch(/compliance posture/i);
+    expect(inst).toMatch(/violation/i);
+  });
+
+  it('rereads the read-only policy', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
     expect(inst).toMatch(/read-only/i);
     expect(inst).toMatch(/Thinking Summary/);
   });
