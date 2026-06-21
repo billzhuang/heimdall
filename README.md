@@ -6,11 +6,21 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 
 ## Features
 
-- **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`, and `kubectl config` is blocked entirely.
-- **Specialist subagents** — delegates deep investigations to focused profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`, `triage`.
+- **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`; `kubectl rollout` allows only `status`/`history`; `kubectl config` is blocked entirely.
+- **Rich observability toolset** — optional integrations for Prometheus (PromQL), Grafana Loki (LogQL), Jaeger/Tempo (distributed traces), Kubecost (cost attribution), Datadog (metrics/logs/events/monitors), AWS CLI (read-only describe-*/list-*/get-*), and Trivy (CVE + misconfiguration scanning). These are disabled by default; enable per-tool in `heimdall.config.yaml`. Helm release inspection is enabled by default alongside `kubectl`.
+- **Specialist subagents** — 17 focused diagnostic profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`, `netpol-auditor`, `triage`, `crashloop-analyzer`, `oomkill-analyzer`, `deployment-analyzer`, `gitops-investigator`, `multi-cluster-investigator`, `resilience-advisor`, plus optional `eks-troubleshooter`, `iam-auditor`, `aws-resource-analyzer`, `cost-analyzer`, and `datadog-investigator` when the relevant tools are enabled.
 - **Triage mode** — `heimdall triage` runs a structured, repeatable whole-cluster health sweep (nodes → pods → workloads → events → PVCs → jobs) and produces a severity-ranked report (critical / warning / info).
+- **Watch mode** — `heimdall watch` continuously monitors `kubectl events --watch` for Kubernetes Warning events and triggers AI diagnosis on each one, optionally posting findings to a Slack/webhook.
+- **Alert mode** — `heimdall alert` accepts a PagerDuty webhook payload, maps the alert to a K8s namespace/workload via a configurable service map, and dispatches an AI investigation.
+- **Eval mode** — `heimdall eval` runs synthetic RCA scenarios against mock kubectl fixtures to validate agent reasoning without a real cluster.
+- **Self-improve mode** — `heimdall self-improve` reflects on past task-history entries to propose and score improvements to agent instructions.
+- **Self-loop mode** — `heimdall self-loop` automates the full cycle: run evals → score → reflect → patch `instructions.ts` → re-score → keep or revert.
 - **Cluster discovery** — `list_contexts` and `list_namespaces` tools let it find what's available.
 - **kubectl JSON cache** — short‑TTL on-disk cache for `kubectl get … -o json` to avoid hammering the API server during tight diagnostic loops.
+- **Namespace lockdown** — optionally restrict the agent to a single namespace, enforced in code (not just the prompt).
+- **Runbook injection** — local markdown runbooks loaded into the system prompt at startup.
+- **RAG / past-incident recall** — semantic retrieval over a JSONL task-history log to surface relevant past incidents.
+- **Regex redaction** — user-defined patterns to scrub secrets from tool output before it reaches the model.
 - **Deploy anywhere** — Flue agents run locally via the CLI or deploy to Node.js, Cloudflare, and more.
 
 ## Prerequisites
@@ -180,6 +190,75 @@ npm run dev              # flue dev --target node
 npm run build            # flue build --target node  -> dist/
 ```
 
+### Watch mode
+
+Continuously monitor Kubernetes Warning events and trigger AI diagnosis on each one:
+
+```bash
+heimdall --watch              # watch all namespaces (flag, not a subcommand)
+
+npm run watch                 # via npm (equivalent)
+```
+
+Namespace scope and webhook URL are not CLI flags — configure them in `heimdall.config.yaml`:
+
+```yaml
+watch:
+  namespaces: [prod, staging]  # omit to watch all namespaces
+  webhook: https://hooks.slack.com/...  # optional webhook for findings
+  reasons: [BackOff, OOMKilled]          # omit to diagnose all Warning events
+  cooldownSeconds: 300                   # default: suppress repeats for 5 min
+```
+
+A configurable cooldown (default 5 minutes) prevents duplicate alerts for the same object and reason.
+
+### Alert mode
+
+Accept an alert payload (Grafana AlertManager, PagerDuty, or raw text) and dispatch an AI
+investigation. Alert mode is invoked via `npm run alert` (not a `heimdall` subcommand):
+
+```bash
+# PagerDuty webhook JSON file:
+npm run alert -- --source pagerduty pd-webhook.json
+
+# Grafana AlertManager payload:
+npm run alert -- --source grafana alertmanager-webhook.json
+
+# Raw text alert:
+npm run alert -- --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
+
+# Skip pre-fetching kubectl context:
+npm run alert -- --source grafana grafana-alert.json --no-seed
+```
+
+Map PagerDuty service names to K8s targets in `heimdall.config.yaml`:
+
+```yaml
+alert:
+  pagerduty:
+    enabled: true
+    serviceMap:
+      payments-api: "prod/payments"        # namespace/deployment
+      auth-service: "prod"                 # namespace only
+```
+
+### Self-improve mode
+
+Reflect on task history and propose improvements to agent instructions:
+
+```bash
+heimdall self-improve         # reflect on recent task history
+```
+
+### Self-loop mode
+
+Automate the full eval → score → reflect → patch → re-score cycle:
+
+```bash
+heimdall self-loop             # run until no further improvement
+heimdall self-loop --iterations 3
+```
+
 ### Example prompts
 
 ```text
@@ -187,6 +266,10 @@ check pdb configuration in kube-system
 list all deployments with fewer than 2 replicas
 explain the network policies in the payments namespace
 audit RBAC for the default service account
+query prometheus for CPU saturation in the last hour
+scan the payments container image for critical CVEs
+show Loki logs for the payments service in the last 30 minutes
+find slow Jaeger traces for the auth service
 ```
 
 ## Docker deployment
@@ -289,7 +372,14 @@ All configuration is via environment variables (see `.env.example`):
 | `HEIMDALL_KUBECTL_CACHE_DIR` | Override cache directory | OS temp dir |
 | `HEIMDALL_KUBECTL_MOCK` | Path to a JSON mock fixture file (eval mode) | — |
 | `PROMETHEUS_URL` | Prometheus base URL (overrides `prometheus.url` in config) | — |
+| `KUBECOST_URL` | Kubecost base URL (overrides `kubecost.url` in config) | — |
+| `LOKI_URL` | Grafana Loki base URL (overrides `loki.url` in config) | — |
+| `JAEGER_URL` | Jaeger / Tempo base URL (overrides `jaeger.url` in config) | — |
+| `DD_API_KEY` / `DATADOG_API_KEY` | Datadog API key (overrides `datadog.apiKey` in config) | — |
+| `DD_APP_KEY` / `DATADOG_APP_KEY` | Datadog Application key (overrides `datadog.appKey` in config) | — |
+| `DD_SITE` | Datadog site, e.g. `datadoghq.eu` (overrides `datadog.site` in config) | `datadoghq.com` |
 | `SLACK_WEBHOOK_URL` | Slack incoming webhook URL (overrides `slack.webhookUrl` in config) | — |
+| `HEIMDALL_LEARNING_LOG` | Path for self-improve learning log | `scenarios/learning-log.jsonl` |
 
 ### Slack notification sink
 
@@ -338,6 +428,84 @@ The tool supports:
 Only read-only GET endpoints (`/api/v1/query`, `/api/v1/query_range`) are called.
 Results are capped at 20 000 characters to avoid overflowing the model's context.
 
+### Additional observability integrations
+
+Enable any combination of the following in `heimdall.config.yaml`:
+
+```yaml
+tools:
+  lokiQuery: true
+  jaegerQuery: true
+  kubecostQuery: true
+  awsCli: true
+  trivyScan: true
+  datadogQuery: true
+
+loki:
+  url: http://loki.monitoring:3100
+  timeoutMs: 15000
+
+jaeger:
+  url: http://jaeger-query.monitoring:16686
+  timeoutMs: 10000
+
+kubecost:
+  url: http://kubecost.kubecost:9090
+  timeoutMs: 10000
+
+datadog:
+  apiKey: ${DD_API_KEY}
+  appKey: ${DD_APP_KEY}
+  site: datadoghq.com
+  timeoutMs: 15000
+```
+
+### Namespace lockdown
+
+Restrict the agent to a single namespace, enforced in code:
+
+```yaml
+namespace:
+  locked: prod
+```
+
+When set, `--all-namespaces` / `-A` are blocked at the tool level, and the locked
+namespace is injected automatically into every kubectl command that omits `-n`.
+
+### Runbooks
+
+Inject local markdown runbooks into the system prompt at startup:
+
+```yaml
+runbooks:
+  - path: runbooks/crashloop.md
+    tags: [crashloop, imagepullbackoff]
+  - path: runbooks/oom.md
+    tags: [oom, memory]
+```
+
+### RAG / past-incident recall
+
+Enable semantic retrieval over a JSONL task-history log:
+
+```yaml
+learning:
+  enabled: true        # log every task to scenarios/task-history.jsonl
+  rag:
+    enabled: true      # inject top-K similar past incidents into the prompt
+    topK: 5
+```
+
+### Audit log
+
+Log every tool invocation to a file (or stderr):
+
+```yaml
+audit:
+  enabled: true
+  file: /var/log/heimdall-audit.log   # omit to write to stderr
+```
+
 ### Regex redaction
 
 Heimdall already structurally redacts Kubernetes Secret `.data`/`.stringData` values from kubectl output. For broader coverage — API keys that appear in ConfigMaps or pod env vars, bearer tokens in log snippets, PEM headers in Prometheus label values — add user-defined regex rules to `heimdall.config.yaml`:
@@ -361,18 +529,64 @@ redaction:
 ```
 src/
 ├── agents/
-│   └── heimdall.ts      # the agent (default export) + read-only subagents
+│   └── heimdall.ts          # the agent (default export) + read-only subagents
 ├── tools/
-│   ├── kubectl.ts       # read-only kubectl tool
-│   └── kubeconfig.ts    # list_contexts / list_namespaces tools
+│   ├── kubectl.ts           # read-only kubectl tool
+│   ├── kubeconfig.ts        # list_contexts / list_namespaces
+│   ├── helm.ts              # helm_release (list/status/get)
+│   ├── prometheus.ts        # prometheus_query (PromQL)
+│   ├── aws.ts               # aws_cli (read-only AWS CLI)
+│   ├── trivy.ts             # trivy_scan (CVE / misconfiguration)
+│   ├── kubecost.ts          # kubecost_query (cost attribution)
+│   ├── loki.ts              # loki_query (Grafana Loki / LogQL)
+│   ├── jaeger.ts            # jaeger_query (Jaeger / Tempo traces)
+│   └── datadog.ts           # datadog_query (metrics/logs/events/monitors)
 └── lib/
-    ├── kubectl-safety.ts # pure read-only policy (parse + validate)
-    ├── kubectl.ts        # command execution (no shell) + JSON cache
-    ├── kubeconfig.ts     # kubeconfig parsing + namespace listing
-    ├── instructions.ts   # system + subagent instructions
-    ├── model.ts          # default model specifier
-    └── __tests__/        # unit + property-based tests
-flue.config.ts           # Flue build config (target: node)
+    ├── kubectl-safety.ts    # pure read-only policy (parse + validate)
+    ├── kubectl.ts           # command execution (no shell) + JSON cache
+    ├── aws-safety.ts        # pure read-only policy for AWS CLI
+    ├── aws.ts               # AWS CLI execution (no shell)
+    ├── trivy-safety.ts      # pure read-only policy for Trivy
+    ├── trivy.ts             # Trivy execution
+    ├── kubeconfig.ts        # kubeconfig parsing + namespace listing
+    ├── helm.ts              # Helm release inspection
+    ├── prometheus.ts        # Prometheus HTTP API client
+    ├── kubecost.ts          # Kubecost HTTP API client
+    ├── loki.ts              # Grafana Loki HTTP API client
+    ├── jaeger.ts            # Jaeger/Tempo HTTP API client
+    ├── datadog.ts           # Datadog API client
+    ├── config.ts            # loadConfig() + HeimdallConfig valibot schema
+    ├── instructions.ts      # system + subagent instructions
+    ├── model.ts             # default model specifier
+    ├── audit.ts             # tool-call audit log
+    ├── redact.ts            # structural Secret redaction
+    ├── regex-redact.ts      # user-defined regex redaction rules
+    ├── runbooks.ts          # local markdown runbook loader
+    ├── rag.ts               # MMR diversity selection + RAG context
+    ├── task-history.ts      # past-task JSONL log helpers
+    ├── self-improve.ts      # reflection/scoring for instruction improvement
+    ├── self-loop.ts         # automated eval → patch → re-score loop
+    ├── eval-runner.ts       # eval scenario runner
+    ├── format-output.ts     # output formatting helpers
+    ├── harness.ts           # one-shot / eval harness
+    ├── triage.ts            # triage-mode orchestration
+    ├── watch.ts             # K8s Warning event monitor loop
+    ├── alert.ts             # PagerDuty webhook + diagnosis dispatch
+    ├── slack.ts             # Slack Block Kit notification sink
+    ├── duration.ts          # human-readable duration helpers
+    ├── claude-cli-llm.ts    # claude CLI adapter for eval/self-improve harness
+    ├── codex-cli-llm.ts     # codex CLI adapter for eval/self-improve harness
+    └── __tests__/           # unit + property-based tests
+├── alert-mode.ts            # CLI entry: alert / PagerDuty mode
+├── eval-mode.ts             # CLI entry: eval mode
+├── format-json.ts           # --json output formatter
+├── self-improve-mode.ts     # CLI entry: self-improve mode
+├── self-loop-mode.ts        # CLI entry: self-loop mode
+├── triage-mode.ts           # CLI entry: triage mode
+└── watch-mode.ts            # CLI entry: watch mode
+flue.config.ts               # Flue build config (target: node)
+scenarios/                   # eval scenario YAML files + task history
+deploy/                      # Kubernetes RBAC + Deployment manifests
 ```
 
 ## Development
