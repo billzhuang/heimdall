@@ -229,6 +229,19 @@ describe('runNewRelicQuery — alerts', () => {
     expect(body.query).toContain("priority = 'CRITICAL'");
   });
 
+  it('wraps OR filter in parentheses so event=open predicate is not short-circuited', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+
+    await runNewRelicQuery(
+      { queryType: 'alerts', query: "priority = 'CRITICAL' OR priority = 'HIGH'" },
+      BASE_CONFIG,
+    );
+
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toContain("AND (priority = 'CRITICAL' OR priority = 'HIGH')");
+  });
+
   it('uses 24 hours ago as default lookback expressed as ISO8601', async () => {
     const fetchMock = mockFetch('{"data":{}}');
     await runNewRelicQuery({ queryType: 'alerts' }, BASE_CONFIG);

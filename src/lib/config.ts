@@ -101,8 +101,9 @@ const NewRelicSchema = v.nullish(
   v.object({
     // New Relic User API key. Also readable from NEW_RELIC_API_KEY env var.
     apiKey: v.nullish(v.string()),
-    // New Relic account ID (numeric). Also readable from NEW_RELIC_ACCOUNT_ID env var.
-    accountId: v.nullish(v.string()),
+    // New Relic account ID. Also readable from NEW_RELIC_ACCOUNT_ID env var.
+    // Accept both string and number so bare YAML integers (accountId: 1234567) work.
+    accountId: v.nullish(v.pipe(v.union([v.string(), v.number()]), v.transform(String))),
     // Request timeout in milliseconds (default 15 000).
     timeoutMs: v.nullish(v.number(), 15_000),
   }),

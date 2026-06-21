@@ -351,4 +351,27 @@ describe('loadConfig', () => {
       expect(config.tools.kubecostQuery).toBe(true);
     });
   });
+
+  describe('newRelic config block', () => {
+    it('coerces numeric accountId to string so bare YAML integers are accepted', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `newRelic:\n  apiKey: test-key\n  accountId: 1234567\n`);
+      const config = loadConfig(configPath);
+      expect(config.newRelic?.accountId).toBe('1234567');
+    });
+
+    it('accepts string accountId unchanged', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `newRelic:\n  apiKey: test-key\n  accountId: "1234567"\n`);
+      const config = loadConfig(configPath);
+      expect(config.newRelic?.accountId).toBe('1234567');
+    });
+
+    it('defaults newRelicQuery tool to false even when newRelic block is present', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `newRelic:\n  apiKey: test-key\n  accountId: "1234567"\n`);
+      const config = loadConfig(configPath);
+      expect(config.tools.newRelicQuery).toBe(false);
+    });
+  });
 });

@@ -202,7 +202,8 @@ async function queryAlerts(
   if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
   if (params.to && until === null) return `Error: could not parse "to" time: "${params.to}".`;
 
-  const extraWhere = params.query?.trim() ? ` AND ${params.query.trim()}` : '';
+  // Wrap in parentheses so OR in the filter doesn't escape the event='open' predicate.
+  const extraWhere = params.query?.trim() ? ` AND (${params.query.trim()})` : '';
   const untilClause = until ? ` UNTIL '${until}'` : '';
   const lim = effectiveLimit(params.limit);
 
