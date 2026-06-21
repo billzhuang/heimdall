@@ -19,6 +19,7 @@ import { type FlueContext } from '@flue/runtime';
 import heimdallAgent from '../agents/heimdall.ts';
 import { buildTriagePrompt, type TriageOptions } from '../lib/triage.ts';
 
+/** Flue workflow entry point: runs a triage sweep and returns the report text. */
 export async function run({ init, payload }: FlueContext<TriageOptions>) {
   const harness = await init(heimdallAgent);
   const session = await harness.session();

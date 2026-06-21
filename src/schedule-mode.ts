@@ -151,6 +151,13 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/**
+ * Main entry point for schedule mode.
+ *
+ * Reads the cron schedule from heimdall.config.yaml and runs triage sweeps on
+ * that cadence.  When `runOnce` is true, fires one sweep immediately and
+ * exits (non-zero on failure); otherwise runs until SIGINT/SIGTERM.
+ */
 export async function runScheduleMode(runOnce = false): Promise<void> {
   const config = loadConfig();
   const scheduleCfg = config.schedule;
