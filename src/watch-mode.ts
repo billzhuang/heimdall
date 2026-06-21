@@ -39,6 +39,7 @@ import {
   shouldResetBackoff,
   type CooldownState,
 } from './lib/watch.ts';
+import { createEventSink, type EventSink } from './lib/event-sink.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
 // Backoff: 1 s → 2 s → 4 s … capped at 30 s, ±30 % jitter.
@@ -107,6 +108,7 @@ async function runWatchStream(
   cooldownState: CooldownState,
   cooldownSeconds: number,
   signal: AbortSignal,
+  eventSink: EventSink | null,
 ): Promise<void> {
   const kubectl = spawn('kubectl', kubectlArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -177,6 +179,12 @@ async function runWatchStream(
         process.stderr.write(`[heimdall-watch] Webhook error: ${String(err)}\n`);
       });
     }
+
+    if (eventSink) {
+      eventSink.write(finding).catch((err: unknown) => {
+        process.stderr.write(`[heimdall-watch] EventSink error: ${String(err)}\n`);
+      });
+    }
   }
 
   signal.removeEventListener('abort', onAbort);
@@ -206,6 +214,16 @@ export async function runWatchMode(): Promise<void> {
   }
   process.stderr.write(`[heimdall-watch] Cooldown: ${cooldownSeconds}s per (object, reason)\n`);
 
+  const eventSink = createEventSink(watchCfg?.eventSink);
+  if (eventSink) {
+    const sinkParts = [
+      watchCfg?.eventSink?.filePath ? `file:${watchCfg.eventSink.filePath}` : null,
+      watchCfg?.eventSink?.webhookUrl ? 'webhook' : null,
+      watchCfg?.eventSink?.s3Bucket ? `s3:${watchCfg.eventSink.s3Bucket}` : null,
+    ].filter(Boolean);
+    process.stderr.write(`[heimdall-watch] EventSink enabled: ${sinkParts.join(', ')}\n`);
+  }
+
   let attempt = 0;
   const controller = new AbortController();
 
@@ -217,7 +235,7 @@ export async function runWatchMode(): Promise<void> {
     const streamStartMs = Date.now();
 
     try {
-      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal);
+      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink);
     } catch (err: unknown) {
       if (controller.signal.aborted) break;
       const detail = err instanceof Error ? err.message : String(err);
