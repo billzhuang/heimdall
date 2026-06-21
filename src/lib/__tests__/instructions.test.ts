@@ -283,7 +283,7 @@ describe('kyverno-auditor subagent', () => {
     const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
     expect(inst).toMatch(/clusterpolicy/i);
     expect(inst).toMatch(/policyreport/i);
-    expect(inst).toMatch(/clusterPolicyreport/i);
+    expect(inst).toMatch(/clusterpolicyreport/i);
   });
 
   it('instructions include workflow steps to cross-reference failing pods', () => {
@@ -296,7 +296,7 @@ describe('kyverno-auditor subagent', () => {
     const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
     expect(inst).toContain('kubectl get clusterpolicy');
     expect(inst).toContain('kubectl get policyreport');
-    expect(inst).toContain('kubectl get clusterPolicyreport');
+    expect(inst).toContain('kubectl get clusterpolicyreport');
   });
 
   it('instructions describe how to summarise compliance posture', () => {

@@ -273,7 +273,7 @@ ClusterPolicies or Policies, summarise the compliance posture, and report action
 3. **Read policy reports**: Kyverno generates PolicyReport (namespaced) and ClusterPolicyReport
    (cluster-scoped) objects summarising audit results per resource:
    \`kubectl get policyreport -A -o json\`
-   \`kubectl get clusterPolicyreport -o json\`
+   \`kubectl get clusterpolicyreport -o json\`
    For each report, inspect \`results[]\`: collect entries where \`result == "fail"\` and note
    the \`policy\`, \`rule\`, \`message\`, and \`resources[]\` fields.
 4. **Cross-reference failing pods**: for each failed resource in the reports, check whether
@@ -291,7 +291,7 @@ ClusterPolicies or Policies, summarise the compliance posture, and report action
 - \`kubectl get clusterpolicy -o json\`
 - \`kubectl get policy -A -o json\`
 - \`kubectl get policyreport -A -o json\`
-- \`kubectl get clusterPolicyreport -o json\`
+- \`kubectl get clusterpolicyreport -o json\`
 - \`kubectl get pod <name> -n <ns> -o json\` (for specific failing pods)
 - \`kubectl describe clusterpolicy <name>\` (for policy rule detail)
 - \`kubectl describe policyreport <name> -n <ns>\` (for per-report detail)
