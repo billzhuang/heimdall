@@ -34,9 +34,9 @@ mocks:
         From: PodSelector: app=prometheus
       Policy Types: Ingress
   "get events -n production": |
-    LAST SEEN   TYPE      REASON             OBJECT                     MESSAGE
-    15m         Warning   NetworkNotReady    pod/frontend-7d9f4b-xkp2t  network plugin is not ready: cni config not found
-    10m         Normal    Scheduled          pod/frontend-7d9f4b-xkp2t  Successfully assigned production/frontend-7d9f4b-xkp2t
+    LAST SEEN   TYPE      REASON      OBJECT                         MESSAGE
+    2d          Normal    Scheduled   pod/frontend-7d9f4b-xkp2t     Successfully assigned production/frontend-7d9f4b-xkp2t
+    2d          Normal    Scheduled   pod/backend-6c8d9f-abc12       Successfully assigned production/backend-6c8d9f-abc12
 expectedSeverity: warning
 expectedKeywords:
   - NetworkPolicy
