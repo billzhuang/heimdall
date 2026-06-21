@@ -88,6 +88,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'deployment-analyzer',
       'eks-troubleshooter',
       'gitops-investigator',
+      'golden-signals-investigator',
       'iam-auditor',
       'kyverno-auditor',
       'log-analyzer',
@@ -308,6 +309,75 @@ describe('kyverno-auditor subagent', () => {
 
   it('rereads the read-only policy', () => {
     const inst = SUBAGENT_INSTRUCTIONS['kyverno-auditor'];
+    expect(inst).toMatch(/read-only/i);
+    expect(inst).toMatch(/Thinking Summary/);
+  });
+});
+
+describe('golden-signals-investigator subagent', () => {
+  it('appears in buildInstructions when prometheusQuery is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'prometheusQuery']));
+    expect(out).toContain('golden-signals-investigator');
+  });
+
+  it('appears in buildInstructions when datadogQuery is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'datadogQuery']));
+    expect(out).toContain('golden-signals-investigator');
+  });
+
+  it('appears in buildInstructions when both prometheusQuery and datadogQuery are enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'prometheusQuery', 'datadogQuery']));
+    expect(out).toContain('golden-signals-investigator');
+  });
+
+  it('does not appear in buildInstructions when neither prometheusQuery nor datadogQuery is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'listContexts', 'listNamespaces', 'helmRelease']));
+    expect(out).not.toContain('golden-signals-investigator');
+  });
+
+  it('instructions include all four golden signals: latency', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/latency/i);
+    expect(inst).toMatch(/p50/i);
+    expect(inst).toMatch(/p99/i);
+  });
+
+  it('instructions include all four golden signals: traffic/RPS', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/traffic|RPS|requests per second/i);
+  });
+
+  it('instructions include all four golden signals: error rate', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/error rate/i);
+  });
+
+  it('instructions include all four golden signals: saturation', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/saturation/i);
+    expect(inst).toMatch(/CPU/i);
+    expect(inst).toMatch(/memory/i);
+  });
+
+  it('instructions mandate "unavailable" for missing data rather than omitting the row', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/unavailable/i);
+  });
+
+  it('instructions cover both Prometheus and Datadog backends', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/prometheus_query/i);
+    expect(inst).toMatch(/datadog_query/i);
+  });
+
+  it('instructions include a structured output table', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
+    expect(inst).toMatch(/\| Signal/);
+    expect(inst).toMatch(/\| Value/);
+  });
+
+  it('rereads the read-only policy', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['golden-signals-investigator'];
     expect(inst).toMatch(/read-only/i);
     expect(inst).toMatch(/Thinking Summary/);
   });

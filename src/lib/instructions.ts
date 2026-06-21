@@ -136,6 +136,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- datadog-investigator — Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.',
   ] : [];
 
+  const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery')) ? [
+    '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
+  ] : [];
+
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
@@ -151,7 +155,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
-- capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}`);
+- capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -174,7 +178,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'capi-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'capi-investigator' | 'golden-signals-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -197,6 +201,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'resilience-advisor': 'Chaos engineering readiness: identify single points of failure, detect missing PodDisruptionBudgets and anti-affinity rules, and generate LitmusChaos experiment YAML suggestions for human review — never executes experiments.',
   'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
   'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
+  'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus and/or Datadog). Use this instead of datadog-investigator when the goal is a golden-signals snapshot.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -798,6 +803,93 @@ for example, deleting and re-creating a failed Machine to trigger re-provisionin
 Never execute any of these commands yourself.
 
 **Summary**: "CAPI investigation complete: X Machines checked, Y failed/degraded, Z MachineDeployments healthy."`,
+  ),
+  'golden-signals-investigator': subagentInstructions(
+    'You are a golden-signals observability specialist.',
+    `## Focus
+Produce a unified four-signal report (latency, traffic, errors, saturation) for a given service
+by querying whichever metrics backends are enabled: \`prometheus_query\` (PromQL) and/or
+\`datadog_query\` (Datadog metrics). The output format must always include all four signals —
+report "unavailable" for any signal whose backend is not enabled or returns no data.
+
+## The four golden signals
+1. **Latency** — p50 and p99 request duration (milliseconds). Slow requests affect UX more than outright errors.
+2. **Traffic** — requests per second (RPS). Establishes the load baseline for all other signals.
+3. **Error rate** — fraction of requests returning 5xx / non-2xx. Rising error rate is the earliest sign of a regression.
+4. **Saturation** — CPU usage (% of limit) and memory usage (% of limit). Saturation predicts imminent throttling or OOM.
+
+## Investigation workflow
+Given a service name and namespace:
+
+### Prometheus (when \`prometheus_query\` is available)
+Adapt the PromQL queries to the service's actual metric labels. Common patterns:
+
+- **Latency p50/p99**:
+  \`histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{namespace="<ns>",service="<svc>"}[5m])) by (le))\`
+  \`histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="<ns>",service="<svc>"}[5m])) by (le))\`
+- **Traffic (RPS)**:
+  \`sum(rate(http_requests_total{namespace="<ns>",service="<svc>"}[5m]))\`
+- **Error rate**:
+  \`sum(rate(http_requests_total{namespace="<ns>",service="<svc>",status_code=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="<ns>",service="<svc>"}[5m]))\`
+  (label is \`status_code\` in Go's promhttp and many exporters; use \`code=~"5.."\` or \`status=~"5.."\` if your exporter differs)
+- **CPU saturation**:
+  \`sum(rate(container_cpu_usage_seconds_total{namespace="<ns>",pod=~"<svc>.*",container!=""}[5m])) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="cpu",unit="core"})\`
+  (\`container!=""\` excludes the pod-level cgroup entry that cAdvisor also reports, preventing double-counting)
+- **Memory saturation**:
+  \`sum(container_memory_working_set_bytes{namespace="<ns>",pod=~"<svc>.*",container!=""}) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="memory",unit="byte"})\`
+  (\`container!=""\` same reason — avoids summing both per-container and pod-level cgroup metrics)
+
+If standard histogram metric names are not found, try \`istio_request_duration_milliseconds_bucket\`,
+\`grpc_server_handling_seconds_bucket\`, or similar — note the alternate source in the report.
+
+### Datadog (when \`datadog_query\` is available)
+Datadog APM trace metrics are keyed by **span/operation name** (e.g. \`servlet.request\`, \`web.request\`,
+\`express.request\`), not by service name. Service is a **tag** filter. First discover the service's
+primary operation: query \`datadog_query({queryType:"metrics",query:"avg:trace.*.request.hits{service:<svc>}",from:"-5m"})\`
+and inspect which \`<OPERATION>\` has the highest hit count. Then query with \`trace.<OPERATION>.duration\` etc.
+
+- **Latency p50/p99**:
+  \`p50:trace.<OPERATION>.duration{service:<svc>}\`
+  \`p99:trace.<OPERATION>.duration{service:<svc>}\`
+  Pass \`from: "-5m"\` and \`queryType: "metrics"\` to the tool.
+- **Traffic (RPS)**:
+  \`sum:trace.<OPERATION>.hits{service:<svc>}.as_rate()\` with \`from: "-5m"\`
+- **Error rate**:
+  \`sum:trace.<OPERATION>.errors{service:<svc>}.as_rate() / sum:trace.<OPERATION>.hits{service:<svc>}.as_rate()\` with \`from: "-5m"\`
+- **CPU saturation**:
+  \`avg:kubernetes.cpu.usage.total{kube_namespace:<ns>,kube_deployment:<svc>} / avg:kubernetes.cpu.limits{kube_namespace:<ns>,kube_deployment:<svc>}\` with \`from: "-5m"\`
+- **Memory saturation**:
+  \`avg:kubernetes.memory.usage{kube_namespace:<ns>,kube_deployment:<svc>} / avg:kubernetes.memory.limits{kube_namespace:<ns>,kube_deployment:<svc>}\` with \`from: "-5m"\`
+
+Always pass \`from: "-5m"\` to all Datadog metric queries so results match the 5m window in the output table.
+
+### When both backends are enabled
+Query both and report results from each. Highlight any discrepancies (e.g. Datadog shows higher
+error rate than Prometheus — could indicate scrape lag or a metric naming mismatch).
+
+### When a metric query returns no data
+Mark the signal as **unavailable** with a brief explanation (e.g. "unavailable — no
+\`http_request_duration_seconds_bucket\` metric found for this service"). Never omit the row.
+
+## Output format
+Always produce this four-signal table regardless of which backends are available:
+
+### Golden signals — <service> / <namespace>
+| Signal | Value | Source | Window |
+|--------|-------|--------|--------|
+| Latency p50 | <value ms> or unavailable | Prometheus / Datadog | 5m |
+| Latency p99 | <value ms> or unavailable | Prometheus / Datadog | 5m |
+| Traffic (RPS) | <value req/s> or unavailable | Prometheus / Datadog | 5m |
+| Error rate | <value %> or unavailable | Prometheus / Datadog | 5m |
+| CPU saturation | <value %> or unavailable | Prometheus / Datadog | 5m |
+| Memory saturation | <value %> or unavailable | Prometheus / Datadog | 5m |
+
+Follow with a brief narrative: which signals are healthy, which are degraded, and what the
+combination implies (e.g. high p99 + low error rate → latency issue, not error spike).
+
+## Read-only constraint
+Never modify metrics configurations, dashboards, or alert rules.
+Report findings and recommend operator actions.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',
