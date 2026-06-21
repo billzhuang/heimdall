@@ -121,7 +121,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default createAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext),
+  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext, config.slos ?? []),
   tools: clusterTools,
   subagents,
 }));

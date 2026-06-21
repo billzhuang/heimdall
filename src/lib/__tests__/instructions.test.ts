@@ -99,6 +99,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'resilience-advisor',
       'resource-analyzer',
       'security-auditor',
+      'slo-evaluator',
       'triage',
     ]);
   });

@@ -20,6 +20,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
 import { resolveModel } from './lib/model.ts';
+import { loadConfig } from './lib/config.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -69,7 +70,9 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
 }
 
 export async function runTriageMode(opts: TriageOptions = {}, model?: string): Promise<void> {
-  const prompt = buildTriagePrompt(opts);
+  const config = loadConfig();
+  const slos = config.slos ?? [];
+  const prompt = buildTriagePrompt({ ...opts, slos });
 
   if (opts.contexts && opts.contexts.length > 0) {
     process.stderr.write(`[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}\n`);

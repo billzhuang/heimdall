@@ -5,6 +5,7 @@
  * tool: the tool is the hard boundary, while the instructions keep the model
  * focused, efficient, and honest about what it can and cannot do.
  */
+import type { SloDefinition } from './slo.ts';
 
 const READ_ONLY_POLICY = `## Read-only policy (enforced)
 You operate in READ-ONLY / advisory mode. Cluster access is only available through
@@ -51,8 +52,9 @@ export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'hel
  * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
  * @param runbookContext  - pre-loaded runbook text to inject as a context section (before Tools).
  * @param ragContext      - formatted past-incident context from the RAG layer (injected after runbooks).
+ * @param slos            - SLO definitions from config; when non-empty, a SLO context section is injected.
  */
-export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string): string {
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string, slos?: SloDefinition[]): string {
   const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
 
   const connectionLines = [
@@ -110,6 +112,15 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     sections.push(`## Past incident precedents\n${ragContext}`);
   }
 
+  if (slos && slos.length > 0) {
+    const sloTable = [
+      '| Name | Target | Budget | Window | Metric (PromQL) |',
+      '|------|--------|--------|--------|-----------------|',
+      ...slos.map((s) => `| ${s.name} | ${s.target} | ${s.budget} | ${s.window} | \`${s.metric}\` |`),
+    ].join('\n');
+    sections.push(`## Configured SLOs\nThe following Service Level Objectives are defined for this cluster.\nUse the \`slo-evaluator\` subagent to query each metric, compute burn rates, and report breaching SLOs.\n\n${sloTable}`);
+  }
+
   sections.push(
     `## Tools\n${toolLines.length > 0 ? toolLines.join('\n') : 'No cluster tools are enabled.'}`,
   );
@@ -155,7 +166,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
-- capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}`);
+- capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
+- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -178,7 +190,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'capi-investigator' | 'golden-signals-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -202,6 +214,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
   'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
   'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus and/or Datadog). Use this instead of datadog-investigator when the goal is a golden-signals snapshot.',
+  'slo-evaluator': 'SLO compliance check: query each configured SLO metric via prometheus_query, compute burn rate (currentValue / budget) and remaining budget, and report breaching SLOs (burn rate > 1) with severity HIGH. Lists healthy SLOs in a summary table.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -890,6 +903,55 @@ combination implies (e.g. high p99 + low error rate → latency issue, not error
 ## Read-only constraint
 Never modify metrics configurations, dashboards, or alert rules.
 Report findings and recommend operator actions.`,
+  ),
+  'slo-evaluator': subagentInstructions(
+    'You are an SLO compliance evaluation specialist.',
+    `## Focus
+Evaluate Service Level Objectives (SLOs) defined in the system context against live Prometheus
+data. For each SLO, query the metric, compute the burn rate and remaining budget, then report
+a compliance summary with breaching SLOs flagged at HIGH severity.
+
+## Investigation workflow
+1. **Read SLO definitions**: inspect the "Configured SLOs" table in your system instructions
+   for the list of SLOs, their metrics, budgets, and windows. If no SLOs are listed, report
+   "No SLOs are configured — add them to heimdall.config.yaml under the \`slos\` key."
+
+2. **Query each SLO metric** using \`prometheus_query\` (instant query):
+   prometheus_query({ queryType: "instant", query: "<metric PromQL>" })
+
+3. **Compute burn rate and remaining budget** for each SLO:
+   - Extract the scalar value from the Prometheus vector result.
+   - burn_rate = current_value / budget  (1.0 = consuming exactly at budget; > 1 = over budget)
+   - remaining_budget = max(0, 1 − burn_rate)  [as a fraction of budget, 0–1]
+   - breaching = burn_rate > 1.0
+
+4. **Report breaching SLOs** as HIGH severity findings with:
+   - SLO name, target, budget, window
+   - Current metric value
+   - Burn rate (formatted to 2 decimal places)
+   - Remaining budget (as a percentage: remaining_budget × 100%)
+
+5. **List healthy SLOs** in a summary table (burn_rate ≤ 1.0).
+
+## Output format
+
+### Breaching SLOs (HIGH severity)
+For each breaching SLO:
+- **<name>** — burn rate: <X.XX>x | remaining budget: <Y.Y>% | current error rate: <Z.ZZZZ>
+  Window: <window> | Target: <target> | Budget: <budget>
+  Remediation: Investigate with golden-signals-investigator or prometheus_query; alert on-call if burn rate > 2x.
+
+### Healthy SLOs
+| Name | Burn Rate | Remaining Budget | Current Value |
+|------|-----------|-----------------|---------------|
+| <name> | <X.XX>x | <Y.Y>% | <Z.ZZZZ> |
+
+### Summary
+"SLO evaluation complete: X SLOs checked, Y breaching (HIGH), Z healthy."
+
+## Read-only constraint
+Never modify alert rules, dashboards, or SLO configurations.
+Report findings and recommend operator actions only.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',

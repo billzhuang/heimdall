@@ -116,6 +116,26 @@ const RedactionSchema = v.nullish(
   { enabled: false, rules: [] },
 );
 
+// SLO definition — each entry configures one Service Level Objective and its
+// Prometheus metric query. The metric should return the current error rate / non-compliance
+// fraction (a value between 0 and 1) as an instant Prometheus vector result.
+const SloEntrySchema = v.object({
+  // Human-readable name for the SLO, e.g. "API availability".
+  name: v.string(),
+  // PromQL expression returning the current error rate/fraction (0–1).
+  // Example: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+  metric: v.string(),
+  // SLO target as a fraction, e.g. 0.999 for 99.9%.
+  target: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
+  // Measurement window, e.g. "30d", "7d". Used for display and reporting.
+  window: v.string(),
+  // Error budget as a fraction, e.g. 0.001. Typically equals (1 − target).
+  budget: v.pipe(v.number(), v.minValue(0), v.maxValue(1)),
+});
+
+// SLO list — empty by default. Populated via the `slos` key in heimdall.config.yaml.
+const SlosSchema = v.nullish(v.array(SloEntrySchema), []);
+
 // Event sink config — optional durable storage for watch-mode findings.
 const EventSinkSchema = v.nullish(
   v.object({
@@ -274,6 +294,8 @@ const HeimdallConfigSchema = v.object({
   alert: AlertSchema,
   // Scheduled periodic operations (disabled by default).
   schedule: ScheduleSchema,
+  // Service Level Objectives to evaluate against Prometheus (empty by default).
+  slos: SlosSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
