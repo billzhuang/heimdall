@@ -12,7 +12,7 @@
  */
 import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
-import { initTelemetry, recordToolCall } from '../lib/telemetry.ts';
+import { initTelemetry, isTelemetryEnabled, recordToolCall } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
 import { makeKubectl } from '../tools/kubectl.ts';
 import { listContexts, makeListNamespaces } from '../tools/kubeconfig.ts';
@@ -106,7 +106,7 @@ const enabledToolKeys = new Set(
   (Object.keys(ALL_TOOLS) as ToolConfigKey[]).filter((key) => config.tools[key]),
 );
 
-const telemetryEnabled = config.telemetry?.enabled || !!process.env.HEIMDALL_TELEMETRY_FILE;
+const telemetryEnabled = isTelemetryEnabled();
 
 function wrapWithTiming(tool: ToolDefinition): ToolDefinition {
   const t = tool as ToolDefinition & { execute: (input: Record<string, unknown>) => Promise<string> };

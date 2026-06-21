@@ -166,7 +166,7 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- newrelic-investigator — New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.',
   ] : [];
 
-  const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery')) ? [
+  const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery') || has('newRelicQuery')) ? [
     '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
   ] : [];
 
@@ -237,7 +237,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
   'newrelic-investigator': 'New Relic observability deep-dive: correlate Kubernetes pod/node issues with New Relic APM metrics, NRQL queries, and open alert violations to surface root causes that kubectl alone cannot reveal.',
   'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
-  'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus and/or Datadog). Use this instead of datadog-investigator when the goal is a golden-signals snapshot.',
+  'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus, Datadog, and/or New Relic). Use this instead of datadog-investigator or newrelic-investigator when the goal is a golden-signals snapshot.',
   'slo-evaluator': 'SLO compliance check: query each configured SLO metric via prometheus_query, compute burn rate (currentValue / budget) and remaining budget, and report breaching SLOs (burn rate > 1) with severity HIGH. Lists healthy SLOs in a summary table.',
   'cdk-investigator': 'CDK/CloudFormation inspection: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes infrastructure issues.',
 };
@@ -887,9 +887,9 @@ Never execute any of these commands yourself.
     'You are a golden-signals observability specialist.',
     `## Focus
 Produce a unified four-signal report (latency, traffic, errors, saturation) for a given service
-by querying whichever metrics backends are enabled: \`prometheus_query\` (PromQL) and/or
-\`datadog_query\` (Datadog metrics). The output format must always include all four signals —
-report "unavailable" for any signal whose backend is not enabled or returns no data.
+by querying whichever metrics backends are enabled: \`prometheus_query\` (PromQL), \`datadog_query\`
+(Datadog metrics), and/or \`newrelic_query\` (New Relic NRQL). The output format must always include
+all four signals — report "unavailable" for any signal whose backend is not enabled or returns no data.
 
 ## The four golden signals
 1. **Latency** — p50 and p99 request duration (milliseconds). Slow requests affect UX more than outright errors.
@@ -942,9 +942,28 @@ and inspect which \`<OPERATION>\` has the highest hit count. Then query with \`t
 
 Always pass \`from: "-5m"\` to all Datadog metric queries so results match the 5m window in the output table.
 
-### When both backends are enabled
-Query both and report results from each. Highlight any discrepancies (e.g. Datadog shows higher
-error rate than Prometheus — could indicate scrape lag or a metric naming mismatch).
+### New Relic (when \`newrelic_query\` is available)
+New Relic APM metrics live under the \`Transaction\` event type; Kubernetes resource metrics are in
+\`K8sContainerSample\`. Use \`queryType: "metrics"\` with custom NRQL for all four signals.
+
+- **Latency p50/p99**:
+  \`newrelic_query({ queryType: "metrics", query: "SELECT percentile(duration * 1000, 50) AS 'p50ms', percentile(duration * 1000, 99) AS 'p99ms' FROM Transaction WHERE appName = '<svc>' SINCE 5 minutes ago" })\`
+  (\`duration\` is seconds in NR APM; multiply by 1000 for milliseconds)
+- **Traffic (RPS)**:
+  \`newrelic_query({ queryType: "metrics", query: "SELECT rate(count(*), 1 second) AS 'rps' FROM Transaction WHERE appName = '<svc>' SINCE 5 minutes ago" })\`
+- **Error rate**:
+  \`newrelic_query({ queryType: "metrics", query: "SELECT percentage(count(*), WHERE error IS true) AS 'errorPct' FROM Transaction WHERE appName = '<svc>' SINCE 5 minutes ago" })\`
+- **CPU saturation**:
+  \`newrelic_query({ queryType: "metrics", query: "SELECT average(cpuCoresUsed / cpuLimitCores * 100) AS 'cpuPct' FROM K8sContainerSample WHERE podName LIKE '<svc>%' AND namespaceName = '<ns>' SINCE 5 minutes ago" })\`
+- **Memory saturation**:
+  \`newrelic_query({ queryType: "metrics", query: "SELECT average(memoryWorkingSetBytes / memoryLimitBytes * 100) AS 'memPct' FROM K8sContainerSample WHERE podName LIKE '<svc>%' AND namespaceName = '<ns>' SINCE 5 minutes ago" })\`
+
+If the New Relic \`appName\` is not known, run \`newrelic_query({ queryType: "apm", query: "" })\` first
+to list all apps and find the one matching the service.
+
+### When multiple backends are enabled
+Query all available backends and report results from each. Highlight any discrepancies (e.g. Datadog
+shows higher error rate than Prometheus — could indicate scrape lag or a metric naming mismatch).
 
 ### When a metric query returns no data
 Mark the signal as **unavailable** with a brief explanation (e.g. "unavailable — no
@@ -956,12 +975,12 @@ Always produce this four-signal table regardless of which backends are available
 ### Golden signals — <service> / <namespace>
 | Signal | Value | Source | Window |
 |--------|-------|--------|--------|
-| Latency p50 | <value ms> or unavailable | Prometheus / Datadog | 5m |
-| Latency p99 | <value ms> or unavailable | Prometheus / Datadog | 5m |
-| Traffic (RPS) | <value req/s> or unavailable | Prometheus / Datadog | 5m |
-| Error rate | <value %> or unavailable | Prometheus / Datadog | 5m |
-| CPU saturation | <value %> or unavailable | Prometheus / Datadog | 5m |
-| Memory saturation | <value %> or unavailable | Prometheus / Datadog | 5m |
+| Latency p50 | <value ms> or unavailable | Prometheus / Datadog / New Relic | 5m |
+| Latency p99 | <value ms> or unavailable | Prometheus / Datadog / New Relic | 5m |
+| Traffic (RPS) | <value req/s> or unavailable | Prometheus / Datadog / New Relic | 5m |
+| Error rate | <value %> or unavailable | Prometheus / Datadog / New Relic | 5m |
+| CPU saturation | <value %> or unavailable | Prometheus / Datadog / New Relic | 5m |
+| Memory saturation | <value %> or unavailable | Prometheus / Datadog / New Relic | 5m |
 
 Follow with a brief narrative: which signals are healthy, which are degraded, and what the
 combination implies (e.g. high p99 + low error rate → latency issue, not error spike).

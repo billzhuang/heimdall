@@ -66,20 +66,24 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   const trimmed = args.trim();
   if (!trimmed) return 'Error: no CDK CLI arguments provided.';
 
-  const argv = tokenizeCdkArgs(trimmed);
-  if (argv.length === 0) return 'Error: no CDK subcommand provided.';
-
-  const cmd = `cdk ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
-  const validation = validateCdkCommand(cmd);
+  // Ensure lowercase 'cdk' prefix so the validator can parse the subcommand.
+  // Use /i for case-insensitivity (CDK → cdk) and (\s|$) instead of \b so
+  // 'cdk-real synth' is not mistakenly treated as already having the prefix.
+  const cmdStr = /^cdk(\s|$)/i.test(trimmed) ? trimmed.replace(/^cdk/i, 'cdk') : `cdk ${trimmed}`;
+  const validation = validateCdkCommand(cmdStr);
 
   if (!validation) {
     return 'Error: could not parse CDK CLI command.';
   }
 
   if (!validation.allowed) {
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
+    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: false, outcome: 'blocked' }, audit);
     return `${BLOCKED_PREFIX}${validation.reason}`;
   }
+
+  // Tokenize after validation so we exec the same tokens the validator parsed.
+  const argv = tokenizeCdkArgs(trimmed);
+  if (argv.length === 0) return 'Error: no CDK subcommand provided.';
 
   try {
     const { stdout, stderr } = await execFileAsync('cdk', argv, {
@@ -91,13 +95,13 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
 
     const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
     const output = applyRedaction(rawOutput, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
+    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
     const err = error as { stderr?: string; stdout?: string; message?: string };
     const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
     const detail = applyRedaction(rawDetail, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
+    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`cdk exited with an error:\n${detail}`);
   }
 }
