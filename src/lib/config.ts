@@ -116,6 +116,18 @@ const RedactionSchema = v.nullish(
   { enabled: false, rules: [] },
 );
 
+// Event sink config — optional durable storage for watch-mode findings.
+const EventSinkSchema = v.nullish(
+  v.object({
+    // Append each event digest as a JSONL line to this file.
+    filePath: v.nullish(v.string()),
+    // POST each event digest as JSON to this URL.
+    webhookUrl: v.nullish(v.string()),
+    // S3 bucket for event digest uploads (reserved; requires AWS CLI on PATH).
+    s3Bucket: v.nullish(v.string()),
+  }),
+);
+
 // Watch mode config — controls the proactive K8s Warning event monitor.
 const WatchSchema = v.nullish(
   v.object({
@@ -133,6 +145,8 @@ const WatchSchema = v.nullish(
     // Maximum number of consecutive reconnect attempts before giving up.
     // Omit (or set to null) for unlimited retries.
     maxReconnectAttempts: v.nullish(v.number()),
+    // Optional durable storage for post-mortem analysis of watch-mode findings.
+    eventSink: EventSinkSchema,
   }),
 );
 
