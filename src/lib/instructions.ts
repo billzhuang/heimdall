@@ -1031,9 +1031,11 @@ Use \`cdk_query\` for CDK CLI operations and \`aws_cli\` for CloudFormation and 
 2. **Check stack status**: \`aws_cli({ args: "cloudformation describe-stacks" })\` for status, outputs, and last update time.
 3. **Inspect recent changes**: \`cdk_query({ args: "diff <StackName>" })\` to compare deployed vs. local state.
    Or use \`aws_cli({ args: "cloudformation describe-stack-events --stack-name <name> --max-items 20" })\` for the event history.
-4. **Detect drift**: \`cdk_query({ args: "drift <StackName>" })\` if supported, or
-   \`aws_cli({ args: "cloudformation detect-stack-drift --stack-name <name>" })\` followed by
-   \`aws_cli({ args: "cloudformation describe-stack-drift-detection-status --stack-drift-detection-id <id>" })\`.
+4. **Detect drift**: \`cdk_query({ args: "drift <StackName>" })\` — this is the preferred read-only approach.
+   If the CDK app is unavailable, inform the user that initiating a CloudFormation drift detection job
+   (\`detect-stack-drift\`) is a mutating operation outside Heimdall's read-only scope; suggest they run it
+   manually and then query results with
+   \`aws_cli({ args: "cloudformation describe-stack-resource-drifts --stack-name <name>" })\`.
 5. **Correlate with K8s**: cross-reference the stack's last update timestamp with Kubernetes events and pod restarts.
 
 ## Key signals to report
