@@ -137,7 +137,7 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
   ] : [];
 
   const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery')) ? [
-    '- golden-signals-investigator — unified latency/traffic/errors/saturation report across enabled Prometheus and Datadog backends for a given service.',
+    '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
   ] : [];
 
   sections.push(`## Specialist subagents
@@ -201,7 +201,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'resilience-advisor': 'Chaos engineering readiness: identify single points of failure, detect missing PodDisruptionBudgets and anti-affinity rules, and generate LitmusChaos experiment YAML suggestions for human review — never executes experiments.',
   'datadog-investigator': 'Datadog observability deep-dive: correlate Kubernetes pod/node issues with Datadog metrics, logs, events, and monitor state to surface root causes that kubectl alone cannot reveal.',
   'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
-  'golden-signals-investigator': 'Golden-signals unified view: query whichever metrics backends are enabled (Prometheus, Datadog) and synthesise latency (p50/p99), traffic (RPS), error rate, and saturation (CPU/memory) into a single four-signal report for a given service.',
+  'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus and/or Datadog). Use this instead of datadog-investigator when the goal is a golden-signals snapshot.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -830,11 +830,12 @@ Adapt the PromQL queries to the service's actual metric labels. Common patterns:
 - **Traffic (RPS)**:
   \`sum(rate(http_requests_total{namespace="<ns>",service="<svc>"}[5m]))\`
 - **Error rate**:
-  \`sum(rate(http_requests_total{namespace="<ns>",service="<svc>",status=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="<ns>",service="<svc>"}[5m]))\`
+  \`sum(rate(http_requests_total{namespace="<ns>",service="<svc>",status_code=~"5.."}[5m])) / sum(rate(http_requests_total{namespace="<ns>",service="<svc>"}[5m]))\`
+  (label is \`status_code\` in Go's promhttp and many exporters; use \`code=~"5.."\` or \`status=~"5.."\` if your exporter differs)
 - **CPU saturation**:
-  \`sum(rate(container_cpu_usage_seconds_total{namespace="<ns>",pod=~"<svc>.*"}[5m])) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="cpu"})\`
+  \`sum(rate(container_cpu_usage_seconds_total{namespace="<ns>",pod=~"<svc>.*"}[5m])) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="cpu",unit="core"})\`
 - **Memory saturation**:
-  \`sum(container_memory_working_set_bytes{namespace="<ns>",pod=~"<svc>.*"}) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="memory"})\`
+  \`sum(container_memory_working_set_bytes{namespace="<ns>",pod=~"<svc>.*"}) / sum(kube_pod_container_resource_limits{namespace="<ns>",pod=~"<svc>.*",resource="memory",unit="byte"})\`
 
 If standard histogram metric names are not found, try \`istio_request_duration_milliseconds_bucket\`,
 \`grpc_server_handling_seconds_bucket\`, or similar — note the alternate source in the report.
