@@ -42,7 +42,7 @@ Remediation Steps:
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
-export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery' | 'newRelicQuery';
+export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery' | 'newRelicQuery' | 'cdkQuery';
 
 /**
  * Build the top-level Heimdall instructions.
@@ -100,6 +100,14 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '  • alerts — open New Relic AI incident violations (queryType="alerts", query="priority = \'CRITICAL\'").\n' +
       '  Use to surface New Relic APM errors, check open alert violations, and run NRQL metric queries.\n' +
       '  from/to accept ISO8601, relative durations ("-1h", "-30m", "-2d"), or Unix seconds.',
+    has('cdkQuery') &&
+      '- `cdk_query`: run a single READ-ONLY CDK CLI command and return its output. Pass everything after `cdk`\n' +
+      '  as the `args` string (e.g. "ls", "diff MyStack", "synth", "metadata MyStack",\n' +
+      '  "context", "notices", "drift MyStack"). Allowed subcommands: ls, list, synth, synthesize,\n' +
+      '  diff, metadata, context, notices, docs, doc, version, doctor, drift.\n' +
+      '  Use to list CDK stacks, inspect stack diffs, synthesize CloudFormation templates,\n' +
+      '  and detect drift between deployed and local stack state.\n' +
+      '  For diff/synth/metadata the CDK app must be in the working directory or specified via --app.',
   ].filter(Boolean) as string[];
 
   const sections: string[] = [
@@ -162,6 +170,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
     '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
   ] : [];
 
+  const cdkSubagentLines = has('cdkQuery') ? [
+    '- cdk-investigator — CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.',
+  ] : [];
+
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
 - log-analyzer — pod log analysis, error correlation, pattern detection.
@@ -178,7 +190,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
-- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${newRelicSubagentLines.length > 0 ? '\n' + newRelicSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}`);
+- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${newRelicSubagentLines.length > 0 ? '\n' + newRelicSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}${cdkSubagentLines.length > 0 ? '\n' + cdkSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -201,7 +213,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator' | 'cdk-investigator';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -227,6 +239,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'capi-investigator': 'Cluster API (CAPI) infrastructure inspection: detect CAPI CRDs, list Machines and MachineDeployments, check Machine phase lifecycle (Provisioning/Running/Failed), correlate failed Machines with unhealthy nodes, and surface infrastructure-layer failures invisible to standard kubectl triage.',
   'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus and/or Datadog). Use this instead of datadog-investigator when the goal is a golden-signals snapshot.',
   'slo-evaluator': 'SLO compliance check: query each configured SLO metric via prometheus_query, compute burn rate (currentValue / budget) and remaining budget, and report breaching SLOs (burn rate > 1) with severity HIGH. Lists healthy SLOs in a summary table.',
+  'cdk-investigator': 'CDK/CloudFormation inspection: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes infrastructure issues.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -1005,6 +1018,33 @@ For each breaching SLO:
 ## Read-only constraint
 Never modify alert rules, dashboards, or SLO configurations.
 Report findings and recommend operator actions only.`,
+  ),
+  'cdk-investigator': subagentInstructions(
+    'You are an AWS CDK/CloudFormation inspection specialist.',
+    `## Focus
+Inspect CDK-managed infrastructure to correlate recent stack changes with Kubernetes issues.
+Use \`cdk_query\` for CDK CLI operations and \`aws_cli\` for CloudFormation and resource queries.
+
+## Investigation workflow
+1. **List stacks**: \`cdk_query({ args: "ls" })\` to discover all CDK stacks in the app.
+   If no CDK app is local, fall back to \`aws_cli({ args: "cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE UPDATE_ROLLBACK_COMPLETE" })\`.
+2. **Check stack status**: \`aws_cli({ args: "cloudformation describe-stacks" })\` for status, outputs, and last update time.
+3. **Inspect recent changes**: \`cdk_query({ args: "diff <StackName>" })\` to compare deployed vs. local state.
+   Or use \`aws_cli({ args: "cloudformation describe-stack-events --stack-name <name> --max-items 20" })\` for the event history.
+4. **Detect drift**: \`cdk_query({ args: "drift <StackName>" })\` if supported, or
+   \`aws_cli({ args: "cloudformation detect-stack-drift --stack-name <name>" })\` followed by
+   \`aws_cli({ args: "cloudformation describe-stack-drift-detection-status --stack-drift-detection-id <id>" })\`.
+5. **Correlate with K8s**: cross-reference the stack's last update timestamp with Kubernetes events and pod restarts.
+
+## Key signals to report
+- Stacks in ROLLBACK or FAILED state — likely root cause of infra instability.
+- Recent UPDATE events (last 24h) that overlap with Kubernetes issue timeline.
+- Drift between deployed and expected resource state.
+- Stack outputs that are consumed by Kubernetes (e.g. VPC IDs, IAM role ARNs, security group IDs).
+
+## Read-only constraint
+Never suggest or run \`cdk deploy\`, \`cdk destroy\`, or any mutating CDK/CloudFormation operation.
+Report findings and recommended operator actions only.`,
   ),
   'gitops-investigator': subagentInstructions(
     'You are a GitOps sync-state diagnosis specialist.',

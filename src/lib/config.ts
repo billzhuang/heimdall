@@ -33,8 +33,10 @@ const ToolsSchema = v.nullish(
     datadogQuery: v.nullish(v.boolean(), false),
     // Disabled by default: requires New Relic API key and account ID.
     newRelicQuery: v.nullish(v.boolean(), false),
+    // Disabled by default: requires CDK CLI on PATH and AWS credentials.
+    cdkQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false },
+  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false, cdkQuery: false },
 );
 
 // Prometheus HTTP API config — optional, disabled by default.
@@ -344,6 +346,7 @@ const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, tr
   jaegerQuery: true,
   datadogQuery: true,
   newRelicQuery: true,
+  cdkQuery: true,
 };
 
 const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
@@ -364,6 +367,7 @@ const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools
   jaeger_query: 'jaegerQuery',
   datadog_query: 'datadogQuery',
   new_relic_query: 'newRelicQuery',
+  cdk_query: 'cdkQuery',
 };
 
 /**

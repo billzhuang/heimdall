@@ -17,6 +17,7 @@ const EXPECTED_DEFAULT_TOOLS = {
   jaegerQuery: false,
   datadogQuery: false,
   newRelicQuery: false,
+  cdkQuery: false,
 } as const;
 
 describe('loadConfig', () => {
