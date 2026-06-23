@@ -38,6 +38,7 @@
   "dependencies": {
     "@flue/cli": "^1.0.0-beta.1",
     "@flue/runtime": "^1.0.0-beta.2",
+    "@valibot/to-json-schema": "^1.7.1",
     "js-yaml": "^4.2.0",
     "valibot": "^1.4.1"
   },

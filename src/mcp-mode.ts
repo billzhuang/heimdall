@@ -161,15 +161,29 @@ export function createMcpServer(): Server {
     }
 
     try {
-      // Validate args via the tool's valibot schema when possible, so required
-      // fields are checked and types are coerced before execute() is called.
+      // Validate args against the tool's valibot schema when possible.
+      // Raw JSON Schema tools (no `kind`) skip validation and pass args directly.
       let validatedArgs: Record<string, unknown>;
-      try {
-        validatedArgs = v.parse(
+      const isValibotParams =
+        typeof tool.parameters === 'object' &&
+        tool.parameters !== null &&
+        'kind' in tool.parameters &&
+        (tool.parameters as { kind: unknown }).kind === 'schema';
+
+      if (isValibotParams) {
+        const parseResult = v.safeParse(
           tool.parameters as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
           args ?? {},
-        ) as Record<string, unknown>;
-      } catch {
+        );
+        if (!parseResult.success) {
+          const messages = parseResult.issues.map((i) => i.message).join('; ');
+          return {
+            isError: true,
+            content: [{ type: 'text' as const, text: `Invalid arguments: ${messages}` }],
+          };
+        }
+        validatedArgs = parseResult.output as Record<string, unknown>;
+      } else {
         validatedArgs = (args ?? {}) as Record<string, unknown>;
       }
 
