@@ -33,6 +33,7 @@ show_help() {
   cat <<EOF
 Usage: heimdall -p <prompt> [--json]
        heimdall --watch
+       heimdall mcp
        heimdall triage [-n <namespace>] [-A]
        heimdall schedule [--once]
        heimdall eval [--scenario <name>]
@@ -60,6 +61,7 @@ Options:
   -h, --help            Show this help message
 
 Subcommands:
+  mcp                   Start the MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, etc.
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
@@ -117,6 +119,7 @@ EOF
 
 PROMPT=""
 WATCH=false
+MCP=false
 TRIAGE=false
 TRIAGE_ARGS=()
 SCHEDULE=false
@@ -135,6 +138,11 @@ HEIMDALL_MODEL_FLAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    mcp)
+      MCP=true
+      shift
+      break
+      ;;
     triage)
       TRIAGE=true
       shift
@@ -287,6 +295,23 @@ fi
 if [[ "$BACKEND" == "codex-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
   echo "Error: --backend codex-cli is not compatible with the self-improve subcommand" >&2
   exit 1
+fi
+
+# --- MCP mode -------------------------------------------------------------
+if [[ "$MCP" == "true" ]]; then
+  MCP_COMPILED="${ROOT_DIR}/dist/mcp-mode.mjs"
+  MCP_SOURCE="${ROOT_DIR}/src/mcp-mode.ts"
+
+  if [[ -f "$MCP_COMPILED" ]]; then
+    exec node "$MCP_COMPILED"
+  elif [[ -x "$TSX" ]] && [[ -f "$MCP_SOURCE" ]]; then
+    exec "$TSX" "$MCP_SOURCE"
+  else
+    echo "Error: MCP mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
 fi
 
 # --- Schedule mode --------------------------------------------------------
