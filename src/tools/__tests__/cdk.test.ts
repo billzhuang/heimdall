@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { runCdk } = vi.hoisted(() => ({ runCdk: vi.fn() }));
-vi.mock('../../lib/cdk.ts', () => ({
-  runCdk,
-  NO_OUTPUT_MESSAGE: '(command produced no output)',
-}));
+vi.mock('../../lib/cdk.ts', () => ({ runCdk }));
 
 import { makeCdkQuery, cdkQuery } from '../cdk.ts';
 
@@ -28,7 +25,7 @@ describe('makeCdkQuery — execute', () => {
     const tool = makeCdkQuery();
     const result = await tool.execute({ args: 'ls' });
     expect(result).toBe('MyStack\nOtherStack');
-    expect(runCdk).toHaveBeenCalledWith('ls', expect.objectContaining({}));
+    expect(runCdk).toHaveBeenCalledWith('ls', expect.objectContaining({ regexRedactionRules: undefined }));
   });
 
   it('passes a blocked result straight through', async () => {
