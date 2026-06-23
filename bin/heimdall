@@ -120,6 +120,7 @@ EOF
 PROMPT=""
 WATCH=false
 MCP=false
+MCP_ARGS=()
 TRIAGE=false
 TRIAGE_ARGS=()
 SCHEDULE=false
@@ -141,6 +142,7 @@ while [[ $# -gt 0 ]]; do
     mcp)
       MCP=true
       shift
+      MCP_ARGS=("$@")
       break
       ;;
     triage)
@@ -302,10 +304,23 @@ if [[ "$MCP" == "true" ]]; then
   MCP_COMPILED="${ROOT_DIR}/dist/mcp-mode.mjs"
   MCP_SOURCE="${ROOT_DIR}/src/mcp-mode.ts"
 
+  # Validate and export model here — the global validation block at the bottom
+  # is never reached because exec replaces the shell process.
+  RESOLVED_MODEL="${HEIMDALL_MODEL_FLAG:-${HEIMDALL_MODEL:-}}"
+  if [[ -n "$RESOLVED_MODEL" ]]; then
+    if [[ "$RESOLVED_MODEL" != */* ]]; then
+      echo "Error: model requires a 'provider/model' value (e.g. 'anthropic/claude-opus-4-8')" >&2
+      exit 1
+    fi
+    if [[ -n "$HEIMDALL_MODEL_FLAG" ]]; then
+      export HEIMDALL_MODEL="$HEIMDALL_MODEL_FLAG"
+    fi
+  fi
+
   if [[ -f "$MCP_COMPILED" ]]; then
-    exec node "$MCP_COMPILED"
+    exec node "$MCP_COMPILED" "${MCP_ARGS[@]}"
   elif [[ -x "$TSX" ]] && [[ -f "$MCP_SOURCE" ]]; then
-    exec "$TSX" "$MCP_SOURCE"
+    exec "$TSX" "$MCP_SOURCE" "${MCP_ARGS[@]}"
   else
     echo "Error: MCP mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
