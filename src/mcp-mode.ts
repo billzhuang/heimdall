@@ -14,8 +14,18 @@
  *   {
  *     "mcpServers": {
  *       "heimdall": {
+ *         "command": "/path/to/heimdall/bin/heimdall",
+ *         "args": ["mcp"]
+ *       }
+ *     }
+ *   }
+ *
+ * Or with the pre-built bundle (after `npm run build`):
+ *   {
+ *     "mcpServers": {
+ *       "heimdall": {
  *         "command": "node",
- *         "args": ["/path/to/heimdall/bin/heimdall", "mcp"]
+ *         "args": ["/path/to/heimdall/dist/mcp-mode.mjs"]
  *       }
  *     }
  *   }

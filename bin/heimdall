@@ -33,6 +33,7 @@ show_help() {
   cat <<EOF
 Usage: heimdall -p <prompt> [--json]
        heimdall --watch
+       heimdall mcp
        heimdall triage [-n <namespace>] [-A]
        heimdall schedule [--once]
        heimdall eval [--scenario <name>]
@@ -60,6 +61,7 @@ Options:
   -h, --help            Show this help message
 
 Subcommands:
+  mcp                   Start the MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, etc.
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
@@ -117,6 +119,8 @@ EOF
 
 PROMPT=""
 WATCH=false
+MCP=false
+MCP_ARGS=()
 TRIAGE=false
 TRIAGE_ARGS=()
 SCHEDULE=false
@@ -135,6 +139,12 @@ HEIMDALL_MODEL_FLAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    mcp)
+      MCP=true
+      shift
+      MCP_ARGS=("$@")
+      break
+      ;;
     triage)
       TRIAGE=true
       shift
@@ -287,6 +297,36 @@ fi
 if [[ "$BACKEND" == "codex-cli" ]] && [[ "$SELF_IMPROVE" == "true" ]]; then
   echo "Error: --backend codex-cli is not compatible with the self-improve subcommand" >&2
   exit 1
+fi
+
+# --- MCP mode -------------------------------------------------------------
+if [[ "$MCP" == "true" ]]; then
+  MCP_COMPILED="${ROOT_DIR}/dist/mcp-mode.mjs"
+  MCP_SOURCE="${ROOT_DIR}/src/mcp-mode.ts"
+
+  # Validate and export model here — the global validation block at the bottom
+  # is never reached because exec replaces the shell process.
+  RESOLVED_MODEL="${HEIMDALL_MODEL_FLAG:-${HEIMDALL_MODEL:-}}"
+  if [[ -n "$RESOLVED_MODEL" ]]; then
+    if [[ "$RESOLVED_MODEL" != */* ]]; then
+      echo "Error: model requires a 'provider/model' value (e.g. 'anthropic/claude-opus-4-8')" >&2
+      exit 1
+    fi
+    if [[ -n "$HEIMDALL_MODEL_FLAG" ]]; then
+      export HEIMDALL_MODEL="$HEIMDALL_MODEL_FLAG"
+    fi
+  fi
+
+  if [[ -f "$MCP_COMPILED" ]]; then
+    exec node "$MCP_COMPILED" "${MCP_ARGS[@]}"
+  elif [[ -x "$TSX" ]] && [[ -f "$MCP_SOURCE" ]]; then
+    exec "$TSX" "$MCP_SOURCE" "${MCP_ARGS[@]}"
+  else
+    echo "Error: MCP mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
 fi
 
 # --- Schedule mode --------------------------------------------------------
