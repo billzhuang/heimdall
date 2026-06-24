@@ -305,6 +305,9 @@ const ServerSchema = v.nullish(
     port: v.nullish(v.number(), 3000),
     // Bind address (default '127.0.0.1' — loopback only). Override with HEIMDALL_HOST env var.
     host: v.nullish(v.string(), '127.0.0.1'),
+    // Optional API key for Bearer token authentication. Override with HEIMDALL_API_KEY env var.
+    // When unset, the server is unauthenticated (safe for loopback-only deployments).
+    apiKey: v.nullish(v.string()),
   }),
   { port: 3000, host: '127.0.0.1' },
 );

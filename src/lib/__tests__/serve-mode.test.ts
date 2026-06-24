@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../config.ts', () => ({
   loadConfig: () => ({
     tools: { kubectl: true },
-    server: { port: 3000, host: '0.0.0.0' },
+    server: { port: 3000, host: '127.0.0.1' },
   }),
 }));
 
@@ -18,6 +18,13 @@ import { createServeApp } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
+}
+
+function makeAppWithAuth(
+  agentFn: (prompt: string, model: string) => Promise<string>,
+  apiKey: string,
+) {
+  return createServeApp(agentFn, undefined, apiKey);
 }
 
 const neverCalled = async (_prompt: string, _model: string): Promise<string> => {
@@ -178,6 +185,154 @@ describe('createServeApp', () => {
       expect(res.status).toBe(500);
       const body = await res.json() as Record<string, unknown>;
       expect(body['error']).toContain('agent timed out');
+    });
+  });
+});
+
+describe('createServeApp — API key authentication', () => {
+  const SECRET = 'test-secret-key-abc123';
+
+  describe('GET /api/health (always public)', () => {
+    it('returns 200 without auth header', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(new Request('http://localhost/api/health'));
+      expect(res.status).toBe(200);
+    });
+
+    it('returns 200 even with wrong auth header', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(
+        new Request('http://localhost/api/health', {
+          headers: { Authorization: 'Bearer wrong-key' },
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('GET /api/openapi.json (requires auth when key configured)', () => {
+    it('returns 401 without auth header', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(new Request('http://localhost/api/openapi.json'));
+      expect(res.status).toBe(401);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body['error']).toBe('Unauthorized');
+    });
+
+    it('returns 401 with wrong key', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(
+        new Request('http://localhost/api/openapi.json', {
+          headers: { Authorization: 'Bearer wrong-key' },
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it('returns 200 with correct key', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(
+        new Request('http://localhost/api/openapi.json', {
+          headers: { Authorization: `Bearer ${SECRET}` },
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe('POST /api/diagnose (requires auth when key configured)', () => {
+    it('returns 401 without auth header', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(
+        new Request('http://localhost/api/diagnose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'Why are pods failing?' }),
+        }),
+      );
+      expect(res.status).toBe(401);
+      const body = await res.json() as Record<string, unknown>;
+      expect(body['error']).toBe('Unauthorized');
+    });
+
+    it('returns 400 with malformed Authorization header (no Bearer prefix)', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(
+        new Request('http://localhost/api/diagnose', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: SECRET,
+          },
+          body: JSON.stringify({ prompt: 'Why are pods failing?' }),
+        }),
+      );
+      // RFC 6750: malformed Authorization header is a 400 Bad Request (invalid_request),
+      // not 401 Unauthorized. Hono's bearerAuth() follows this correctly.
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 401 with wrong key', async () => {
+      const app = makeAppWithAuth(neverCalled, SECRET);
+      const res = await app.fetch(
+        new Request('http://localhost/api/diagnose', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer wrong-key',
+          },
+          body: JSON.stringify({ prompt: 'Why are pods failing?' }),
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it('passes through to agent with correct key', async () => {
+      const mockFinding = {
+        summary: 'Pod is healthy',
+        answer: 'No issues found.',
+        severity: 'info',
+        suggestedCommands: [],
+        model: 'anthropic/claude-sonnet-4-6',
+      };
+      const agentFn = vi.fn().mockResolvedValueOnce(JSON.stringify(mockFinding));
+      const app = makeAppWithAuth(agentFn, SECRET);
+
+      const res = await app.fetch(
+        new Request('http://localhost/api/diagnose', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SECRET}`,
+          },
+          body: JSON.stringify({ prompt: 'Check pod health' }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      expect(agentFn).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('no apiKey — backwards compatible (no auth enforcement)', () => {
+    it('/api/diagnose is accessible without Authorization header', async () => {
+      const mockFinding = {
+        summary: 'All good',
+        answer: 'Healthy.',
+        severity: 'info',
+        suggestedCommands: [],
+        model: 'anthropic/claude-sonnet-4-6',
+      };
+      const agentFn = vi.fn().mockResolvedValueOnce(JSON.stringify(mockFinding));
+      const app = makeApp(agentFn);
+
+      const res = await app.fetch(
+        new Request('http://localhost/api/diagnose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: 'Check cluster health' }),
+        }),
+      );
+      expect(res.status).toBe(200);
     });
   });
 });
