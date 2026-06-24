@@ -55,11 +55,15 @@ function parseSessionRecord(raw: string, context: string): SessionRecord {
   } catch (err) {
     throw new Error(`Failed to parse session ${context}: ${(err as Error).message}`);
   }
+  const rec = parsed as Record<string, unknown>;
   if (
     !parsed ||
     typeof parsed !== 'object' ||
-    typeof (parsed as Record<string, unknown>)['id'] !== 'string' ||
-    typeof (parsed as Record<string, unknown>)['createdAt'] !== 'string'
+    typeof rec['id'] !== 'string' ||
+    typeof rec['createdAt'] !== 'string' ||
+    typeof rec['serverUrl'] !== 'string' ||
+    !(rec['lastPromptAt'] === null || typeof rec['lastPromptAt'] === 'string') ||
+    (rec['name'] !== undefined && typeof rec['name'] !== 'string')
   ) {
     throw new Error(`Invalid session record structure for ${context}`);
   }

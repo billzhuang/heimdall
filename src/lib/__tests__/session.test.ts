@@ -112,15 +112,13 @@ describe('listSessions', () => {
     expect(listSessions()).toEqual([]);
   });
 
-  it('returns all created sessions sorted by createdAt', () => {
+  it('returns all created sessions sorted by createdAt ascending', () => {
     const a = createSession({ name: 'first' });
     const b = createSession({ name: 'second' });
     const list = listSessions();
     expect(list).toHaveLength(2);
-    // Must be sorted by createdAt ascending.
-    const ids = list.map((s) => s.id);
-    expect(ids).toContain(a.id);
-    expect(ids).toContain(b.id);
+    // Must be sorted by createdAt ascending — a before b.
+    expect(list.map((s) => s.id)).toEqual([a.id, b.id]);
   });
 
   it('excludes deleted sessions', () => {

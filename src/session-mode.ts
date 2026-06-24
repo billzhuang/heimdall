@@ -164,10 +164,16 @@ async function cmdPrompt(args: string[]): Promise<void> {
     );
   }
 
-  session.lastPromptAt = new Date().toISOString();
-  updateSession(session);
-
   process.stdout.write(`\n${result.result.text}\n`);
+
+  // Best-effort metadata update — don't hide a successful response on FS error.
+  try {
+    session.lastPromptAt = new Date().toISOString();
+    updateSession(session);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[heimdall-session] Warning: failed to persist session metadata: ${msg}\n`);
+  }
 }
 
 function cmdList(): void {
