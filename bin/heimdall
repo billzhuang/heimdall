@@ -35,6 +35,7 @@ Usage: heimdall -p <prompt> [--json]
        heimdall --watch
        heimdall mcp
        heimdall serve [--port <n>] [--host <addr>]
+       heimdall session <start|prompt|list|info|end> [options]
        heimdall triage [-n <namespace>] [-A]
        heimdall schedule [--once]
        heimdall eval [--scenario <name>]
@@ -66,6 +67,15 @@ Subcommands:
   serve                 Start the HTTP REST API server (POST /api/diagnose, GET /api/health, GET /api/openapi.json)
     --port <n>            TCP port to listen on (default: 3000; env: HEIMDALL_PORT)
     --host <addr>         Bind address (default: 0.0.0.0; env: HEIMDALL_HOST)
+  session               Manage durable multi-turn debugging sessions (requires a running Flue server)
+    start                 Create a new session; prints the session ID
+      --name <label>        Human-readable label for the session
+      --server <url>        Flue server URL (default: http://localhost:3000; env: HEIMDALL_SERVER)
+    prompt "<text>"       Send a follow-up message to an existing session
+      --session <id>        Session ID (required)
+    list                  List all local session handles
+    info <id>             Show details about one session
+    end <id>              Tear down a session (removes local handle; server GCs state)
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
@@ -99,6 +109,11 @@ Examples:
   heimdall self-loop                          # run automated self-improvement loop
   heimdall self-loop --max-iterations 5       # run up to 5 iterations
   heimdall self-loop --dry-run                # show proposals only, do not apply
+  heimdall session start --name prod-incident # start a new debugging session
+  heimdall session prompt "Why is api crash-looping?" --session <id>
+  heimdall session prompt "What about memory limits?"  --session <id>
+  heimdall session list                       # list active sessions
+  heimdall session end <id>                   # close a session
 
 JSON output schema (--json):
   { "summary": "…", "answer": "…", "severity": "warning",
@@ -137,6 +152,8 @@ SELF_IMPROVE=false
 SELF_IMPROVE_ARGS=()
 SELF_LOOP=false
 SELF_LOOP_ARGS=()
+SESSION=false
+SESSION_ARGS=()
 JSON_OUTPUT=false
 NO_LEARN=false
 # Backend: 'flue' (default, full agent with tool use) or 'claude-cli' (external LLM via claude -p).
@@ -155,6 +172,12 @@ while [[ $# -gt 0 ]]; do
       SERVE=true
       shift
       SERVE_ARGS=("$@")
+      break
+      ;;
+    session)
+      SESSION=true
+      shift
+      SESSION_ARGS=("$@")
       break
       ;;
     triage)
@@ -250,7 +273,7 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, 'schedule' for the cron scheduler, 'eval' for synthetic RCA evaluation, 'self-improve' for the self-improvement loop, or 'self-loop' for the automated closed-loop" >&2
+      echo "Error: unexpected argument '$1' — use -p to pass a prompt, 'triage' for a health sweep, 'schedule' for the cron scheduler, 'eval' for synthetic RCA evaluation, 'self-improve' for the self-improvement loop, 'self-loop' for the automated closed-loop, or 'session' for durable multi-turn sessions" >&2
       show_help >&2
       exit 1
       ;;
@@ -352,6 +375,23 @@ if [[ "$SERVE" == "true" ]]; then
     exec "$TSX" "$SERVE_SOURCE" ${SERVE_ARGS[@]+"${SERVE_ARGS[@]}"}
   else
     echo "Error: serve mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
+fi
+
+# --- Session mode ---------------------------------------------------------
+if [[ "$SESSION" == "true" ]]; then
+  SESSION_COMPILED="${ROOT_DIR}/dist/session-mode.mjs"
+  SESSION_SOURCE="${ROOT_DIR}/src/session-mode.ts"
+
+  if [[ -f "$SESSION_COMPILED" ]]; then
+    exec node "$SESSION_COMPILED" ${SESSION_ARGS[@]+"${SESSION_ARGS[@]}"}
+  elif [[ -x "$TSX" ]] && [[ -f "$SESSION_SOURCE" ]]; then
+    exec "$TSX" "$SESSION_SOURCE" ${SESSION_ARGS[@]+"${SESSION_ARGS[@]}"}
+  else
+    echo "Error: session mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1

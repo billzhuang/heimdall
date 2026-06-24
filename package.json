@@ -20,6 +20,7 @@
     "schedule": "tsx src/schedule-mode.ts",
     "mcp": "tsx src/mcp-mode.ts",
     "serve": "tsx src/serve-mode.ts",
+    "session": "tsx src/session-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -39,6 +40,7 @@
   "dependencies": {
     "@flue/cli": "^1.0.0-beta.1",
     "@flue/runtime": "^1.0.0-beta.2",
+    "@flue/sdk": "^1.0.0-beta.1",
     "@valibot/to-json-schema": "^1.7.1",
     "js-yaml": "^4.2.0",
     "valibot": "^1.4.1"
