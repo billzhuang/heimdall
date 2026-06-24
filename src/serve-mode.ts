@@ -48,7 +48,8 @@ export async function runAgentDiagnose(prompt: string, model: string): Promise<s
 
     const env = { ...process.env, HEIMDALL_MODEL: model };
     const child = spawn(binPath, ['-p', prompt, '--json'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      // stderr is inherited so the parent never blocks on an unread pipe buffer.
+      stdio: ['ignore', 'pipe', 'inherit'],
       env,
     });
 
@@ -62,14 +63,16 @@ export async function runAgentDiagnose(prompt: string, model: string): Promise<s
 
     child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
 
-    child.on('close', (code: number | null) => {
+    child.on('close', (code: number | null, signal: string | null) => {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
-      if (code !== 0) {
-        rejectP(new Error(`heimdall agent exited with code ${code}`));
-      } else {
+      if (code === 0) {
         resolveP(stdout);
+      } else if (signal !== null) {
+        rejectP(new Error(`heimdall agent killed by signal ${signal}`));
+      } else {
+        rejectP(new Error(`heimdall agent exited with code ${code}`));
       }
     });
 
@@ -260,7 +263,11 @@ export function createServeApp(
 
     try {
       const raw = await agentFn(fullPrompt, model);
-      const finding = JSON.parse(raw.trim()) as OneShotFinding;
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        return c.json({ error: 'Agent produced no output' }, 500);
+      }
+      const finding = JSON.parse(trimmed) as OneShotFinding;
       return c.json(finding);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -281,9 +288,20 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
   for (let i = 0; i < cliArgs.length; i++) {
     const arg = cliArgs[i];
     if (arg === '--port') {
-      portArg = parseInt(cliArgs[++i] ?? '', 10);
+      const raw = cliArgs[++i];
+      if (!raw) { process.stderr.write('Error: --port requires a value\n'); process.exit(1); }
+      portArg = parseInt(raw, 10);
+      if (isNaN(portArg) || portArg < 1 || portArg > 65535) {
+        process.stderr.write(`Error: --port must be an integer between 1 and 65535, got "${raw}"\n`);
+        process.exit(1);
+      }
     } else if (arg.startsWith('--port=')) {
-      portArg = parseInt(arg.slice('--port='.length), 10);
+      const raw = arg.slice('--port='.length);
+      portArg = parseInt(raw, 10);
+      if (isNaN(portArg) || portArg < 1 || portArg > 65535) {
+        process.stderr.write(`Error: --port must be an integer between 1 and 65535, got "${raw}"\n`);
+        process.exit(1);
+      }
     } else if (arg === '--host') {
       hostArg = cliArgs[++i];
     } else if (arg.startsWith('--host=')) {
@@ -323,13 +341,16 @@ Examples:
   if (modelArg) process.env['HEIMDALL_MODEL'] = modelArg;
 
   const config = loadConfig();
-  const port =
-    portArg ??
-    (process.env['HEIMDALL_PORT']
-      ? parseInt(process.env['HEIMDALL_PORT'], 10)
-      : undefined) ??
-    config.server?.port ??
-    3000;
+  const envPort = process.env['HEIMDALL_PORT']
+    ? parseInt(process.env['HEIMDALL_PORT'], 10)
+    : undefined;
+  if (envPort !== undefined && (isNaN(envPort) || envPort < 1 || envPort > 65535)) {
+    process.stderr.write(
+      `Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "${process.env['HEIMDALL_PORT']}"\n`,
+    );
+    process.exit(1);
+  }
+  const port = portArg ?? envPort ?? config.server?.port ?? 3000;
   const host =
     hostArg ??
     process.env['HEIMDALL_HOST'] ??
