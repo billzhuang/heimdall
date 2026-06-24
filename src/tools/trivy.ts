@@ -9,6 +9,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runTrivy, type RunTrivyOptions } from '../lib/trivy.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 export function makeTrivyScan(options?: RunTrivyOptions, regexRedactionRules?: CompiledRedactionRule[]) {
   return defineTool({
@@ -67,3 +68,8 @@ export function makeTrivyScan(options?: RunTrivyOptions, regexRedactionRules?: C
 }
 
 export const trivyScan = makeTrivyScan();
+
+export const trivyScanPlugin: ToolPlugin = {
+  key: 'trivyScan',
+  factory: (config, rules) => makeTrivyScan({ audit: config.audit }, rules),
+};

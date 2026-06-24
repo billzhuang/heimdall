@@ -14,6 +14,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runCdk, type RunCdkOptions } from '../lib/cdk.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 export function makeCdkQuery(options?: RunCdkOptions, regexRedactionRules?: CompiledRedactionRule[]) {
   return defineTool({
@@ -41,3 +42,8 @@ export function makeCdkQuery(options?: RunCdkOptions, regexRedactionRules?: Comp
 }
 
 export const cdkQuery = makeCdkQuery();
+
+export const cdkPlugin: ToolPlugin = {
+  key: 'cdkQuery',
+  factory: (config, rules) => makeCdkQuery({ audit: config.audit }, rules),
+};

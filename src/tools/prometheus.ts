@@ -6,6 +6,7 @@ import * as v from 'valibot';
 import { runPrometheusQuery } from '../lib/prometheus.ts';
 import type { PrometheusConfig } from '../lib/prometheus.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 const DEFAULT_PROMETHEUS_URL = 'http://prometheus-operated.monitoring:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -69,3 +70,9 @@ export function makePrometheusQuery(
       runPrometheusQuery(queryType, { query, time, start, end, step }, config),
   });
 }
+
+
+export const prometheusPlugin: ToolPlugin = {
+  key: 'prometheusQuery',
+  factory: (config, rules) => makePrometheusQuery(config.prometheus, rules),
+};

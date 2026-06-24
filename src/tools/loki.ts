@@ -5,6 +5,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runLokiQuery, type LokiConfig } from '../lib/loki.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 const DEFAULT_LOKI_URL = 'http://loki.monitoring:3100';
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -77,3 +78,8 @@ export function makeLokiQuery(
       runLokiQuery({ query, start, end, limit }, config),
   });
 }
+
+export const lokiPlugin: ToolPlugin = {
+  key: 'lokiQuery',
+  factory: (config, rules) => makeLokiQuery(config.loki, rules, config.namespace?.locked),
+};

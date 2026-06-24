@@ -9,6 +9,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runAwsCli, type RunAwsCliOptions } from '../lib/aws.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 export function makeAwsCli(options?: RunAwsCliOptions, regexRedactionRules?: CompiledRedactionRule[]) {
   return defineTool({
@@ -38,3 +39,8 @@ export function makeAwsCli(options?: RunAwsCliOptions, regexRedactionRules?: Com
 }
 
 export const awsCli = makeAwsCli();
+
+export const awsCliPlugin: ToolPlugin = {
+  key: 'awsCli',
+  factory: (config, rules) => makeAwsCli({ audit: config.audit }, rules),
+};
