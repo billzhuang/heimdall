@@ -1,8 +1,36 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+/**
+ * Tests for kubectl.ts — pure helpers, policy enforcement, audit logging,
+ * eval mock mode, and exec/cache paths (via mocked child_process).
+ *
+ * No real `kubectl` binary is ever spawned.
+ */
+
+// node:child_process must be mocked before kubectl.ts is imported so that
+// `execFileAsync = promisify(execFile)` captures the mock at module load time.
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(),
+}));
+
+import { execFile } from 'node:child_process';
+import { readFile, mkdtemp, rm, writeFile, mkdir, stat, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isJsonOutput, parseDurationMs, getWaitTimeoutMs, runKubectl, tokenizeArgs } from '../kubectl.ts';
+import {
+  isJsonOutput,
+  matchMock,
+  NO_OUTPUT_MESSAGE,
+  parseDurationMs,
+  getWaitTimeoutMs,
+  runKubectl,
+  tokenizeArgs,
+} from '../kubectl.ts';
+import { stubExec, resetExec, type ExecFileCb } from './execfile-helpers.ts';
+
+// ---------------------------------------------------------------------------
+// Pure helpers
+// ---------------------------------------------------------------------------
 
 describe('tokenizeArgs', () => {
   it('splits on whitespace', () => {
@@ -114,6 +142,10 @@ describe('getWaitTimeoutMs', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Policy enforcement (blocked paths return before execFileAsync is ever called)
+// ---------------------------------------------------------------------------
+
 describe('runKubectl (policy enforcement)', () => {
   it('blocks destructive commands without executing them', async () => {
     const result = await runKubectl('delete pod web -n prod');
@@ -160,6 +192,10 @@ describe('runKubectl (policy enforcement)', () => {
   // executing an allowed command here would depend on a live cluster and the
   // runner's kubectl, which is exactly what makes such tests flaky/slow.
 });
+
+// ---------------------------------------------------------------------------
+// Audit logging
+// ---------------------------------------------------------------------------
 
 describe('runKubectl audit logging', () => {
   afterEach(() => {
@@ -214,5 +250,342 @@ describe('runKubectl audit logging', () => {
     expect(typeof entry.cmd).toBe('string');
     expect(typeof entry.allowed).toBe('boolean');
     expect(entry.outcome).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Eval mock mode (HEIMDALL_KUBECTL_MOCK env var)
+// No child_process mock needed — the HEIMDALL_KUBECTL_MOCK path returns before exec.
+// ---------------------------------------------------------------------------
+
+describe('runKubectl (eval mock mode)', () => {
+  let tmpDir: string;
+  let mockFile: string;
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(async () => {
+    originalEnv = { ...process.env };
+    tmpDir = await mkdtemp(join(tmpdir(), 'heimdall-eval-mock-'));
+    mockFile = join(tmpDir, 'mocks.json');
+    delete process.env.HEIMDALL_KUBECTL_MOCK;
+  });
+
+  afterEach(async () => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns the fixture matching the command argv', async () => {
+    await writeFile(mockFile, JSON.stringify({ 'get pods': '{"items":[{"name":"web"}]}' }));
+    process.env.HEIMDALL_KUBECTL_MOCK = mockFile;
+
+    const result = await runKubectl('get pods -n default');
+    expect(result).toBe('{"items":[{"name":"web"}]}');
+  });
+
+  it('returns a "no mock fixture" message when no key matches', async () => {
+    await writeFile(mockFile, JSON.stringify({ 'get pods': 'some pods' }));
+    process.env.HEIMDALL_KUBECTL_MOCK = mockFile;
+
+    const result = await runKubectl('get nodes -o json');
+    expect(result).toMatch(/eval: no mock fixture for:/);
+    expect(result).toContain('get');
+  });
+
+  it('returns an eval mock error when the mock file does not exist', async () => {
+    process.env.HEIMDALL_KUBECTL_MOCK = join(tmpDir, 'nonexistent.json');
+
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/eval mock error:/i);
+  });
+
+  it('returns an eval mock error when the mock file contains invalid JSON', async () => {
+    await writeFile(mockFile, 'not json {{{');
+    process.env.HEIMDALL_KUBECTL_MOCK = mockFile;
+
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/eval mock error:/i);
+  });
+
+  it('caches the parsed mock file in memory (reads file only once for two calls)', async () => {
+    await writeFile(mockFile, JSON.stringify({ 'get pods': 'pod list' }));
+    process.env.HEIMDALL_KUBECTL_MOCK = mockFile;
+
+    await runKubectl('get pods');
+    // Overwrite file — second call should still use in-memory cache
+    await writeFile(mockFile, JSON.stringify({ 'get pods': 'DIFFERENT' }));
+    const result = await runKubectl('get pods');
+    expect(result).toBe('pod list');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchMock
+// ---------------------------------------------------------------------------
+
+describe('matchMock', () => {
+  it('returns the response for an exact key match', () => {
+    expect(matchMock({ 'get pods': 'pod list' }, ['get', 'pods'])).toBe('pod list');
+  });
+
+  it('returns the most specific (most tokens) match', () => {
+    const mocks = { get: 'generic', 'get pods': 'pod list', 'get pods kube-system': 'system pods' };
+    expect(matchMock(mocks, ['get', 'pods', '-n', 'kube-system'])).toBe('system pods');
+  });
+
+  it('is case-insensitive', () => {
+    expect(matchMock({ 'GET PODS': 'pod list' }, ['get', 'pods'])).toBe('pod list');
+  });
+
+  it('returns null when no key matches', () => {
+    expect(matchMock({ 'get pods': 'x' }, ['get', 'nodes'])).toBeNull();
+  });
+
+  it('returns null for an empty mocks object', () => {
+    expect(matchMock({}, ['get', 'pods'])).toBeNull();
+  });
+
+  it('returns null when mocks is not an object', () => {
+    expect(matchMock(null as unknown as Record<string, string>, ['get'])).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exec paths: success, context injection, error, wait-timeout, caching
+// These tests use the mocked node:child_process (stubExec / resetExec).
+// ---------------------------------------------------------------------------
+
+describe('runKubectl (exec paths)', () => {
+  let cacheDir: string;
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(async () => {
+    originalEnv = { ...process.env };
+    resetExec();
+    cacheDir = await mkdtemp(join(tmpdir(), 'heimdall-kube-cache-'));
+    process.env.HEIMDALL_KUBECTL_CACHE_DIR = cacheDir;
+    process.env.HEIMDALL_KUBECTL_CACHE = '1';
+    delete process.env.HEIMDALL_KUBECTL_MOCK;
+    delete process.env.KUBERNETES_SERVICE_HOST;
+  });
+
+  afterEach(async () => {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+    vi.restoreAllMocks();
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  // --- Success path ---
+
+  it('returns stdout from a successful exec', async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: 'NAME\nweb-abc', stderr: '' });
+    });
+    const result = await runKubectl('get pods');
+    expect(result).toBe('NAME\nweb-abc');
+  });
+
+  it('returns stderr when stdout is empty', async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: '', stderr: 'Warning: resource not found' });
+    });
+    const result = await runKubectl('get pods');
+    expect(result).toBe('Warning: resource not found');
+  });
+
+  it(`returns "${NO_OUTPUT_MESSAGE}" when both stdout and stderr are empty`, async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: '', stderr: '' });
+    });
+    const result = await runKubectl('get pods');
+    expect(result).toBe(NO_OUTPUT_MESSAGE);
+  });
+
+  // --- Error path ---
+
+  it('returns an error message when execFile throws', async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      const err = Object.assign(new Error('exit code 1'), { stderr: 'Error from server: not found' });
+      cb(err as Error, { stdout: '', stderr: '' });
+    });
+    const result = await runKubectl('get pod/nonexistent');
+    expect(result).toMatch(/kubectl exited with an error:/);
+    expect(result).toContain('Error from server: not found');
+  });
+
+  it('falls back to the error message when execFile error has no stderr/stdout', async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(new Error('command timed out'), { stdout: '', stderr: '' });
+    });
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/kubectl exited with an error:/);
+    expect(result).toContain('command timed out');
+  });
+
+  // --- Context injection ---
+
+  it('prepends --context= when the context option is provided', async () => {
+    let capturedArgs: string[] | undefined;
+    stubExec((_cmd, args, _opts, cb) => {
+      capturedArgs = args as string[];
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runKubectl('get pods', { context: 'staging' });
+    expect(capturedArgs?.[0]).toBe('--context=staging');
+  });
+
+  it('does not prepend --context= when the argv already contains --context', async () => {
+    let capturedArgs: string[] | undefined;
+    stubExec((_cmd, args, _opts, cb) => {
+      capturedArgs = args as string[];
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runKubectl('get pods --context=prod', { context: 'staging' });
+    // Only one --context flag; the option is ignored
+    const contextFlags = (capturedArgs ?? []).filter((a) => a.startsWith('--context'));
+    expect(contextFlags).toHaveLength(1);
+    expect(contextFlags[0]).toBe('--context=prod');
+  });
+
+  // --- Kubeconfig injection ---
+
+  it('sets KUBECONFIG env var when the kubeconfig option is provided', async () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedEnv = (opts as { env?: NodeJS.ProcessEnv }).env;
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runKubectl('get pods', { kubeconfig: '/home/user/.kube/staging' });
+    expect(capturedEnv?.KUBECONFIG).toBe('/home/user/.kube/staging');
+  });
+
+  // --- redactSecrets=false ---
+
+  it('returns raw output when redactSecrets is false', async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: 'plain output without any secret data', stderr: '' });
+    });
+    const result = await runKubectl('get pods', { redactSecrets: false });
+    expect(result).toBe('plain output without any secret data');
+  });
+
+  // --- Audit logging on success ---
+
+  it('writes an allowed=true audit entry on success', async () => {
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: 'pod list', stderr: '' });
+    });
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+    await runKubectl('get pods', { audit: { enabled: true } });
+    expect(lines).toHaveLength(1);
+    const entry = JSON.parse(lines[0]);
+    expect(entry.allowed).toBe(true);
+    expect(entry.outcome).toBe('ok');
+    expect(entry.cached).toBe(false);
+  });
+
+  // --- Cache: miss → write ---
+
+  it('writes output to a cache file after a successful cacheable get -o json call', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE = '1';
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: '{"items":[]}', stderr: '' });
+    });
+    await runKubectl('get pods -o json');
+    // At least one cache file should exist in cacheDir
+    const subdirs = await readdir(cacheDir).catch(() => []);
+    let cacheFiles: string[] = [];
+    for (const sub of subdirs) {
+      const files = await readdir(join(cacheDir, sub)).catch(() => []);
+      cacheFiles = cacheFiles.concat(files);
+    }
+    // One cache file written
+    expect(cacheFiles.length).toBeGreaterThan(0);
+  });
+
+  // --- Cache: hit → exec not called again ---
+
+  it('serves the second identical get -o json from cache (exec called only once)', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE = '1';
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '60';
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: '{"items":[]}', stderr: '' });
+    });
+    await runKubectl('get pods -o json');
+    await runKubectl('get pods -o json');
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+  });
+
+  // --- Cache disabled ---
+
+  it('does not cache when HEIMDALL_KUBECTL_CACHE=0', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE = '0';
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: '{"items":[]}', stderr: '' });
+    });
+    await runKubectl('get pods -o json');
+    await runKubectl('get pods -o json');
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
+  });
+
+  // --- Non-cacheable commands ---
+
+  it('does not cache describe commands (not a `get -o json`)', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE = '1';
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: 'Name: web', stderr: '' });
+    });
+    await runKubectl('describe pod web');
+    await runKubectl('describe pod web');
+    // Two exec calls since describe is not cacheable
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
+  });
+
+  // --- Wait timeout extension ---
+
+  it('extends exec timeout for kubectl wait with a long --timeout', async () => {
+    let capturedTimeout: number | undefined;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedTimeout = (opts as { timeout?: number }).timeout;
+      cb(null, { stdout: 'condition met', stderr: '' });
+    });
+    // --timeout=120s → waitMs=120_000; expected execTimeoutMs = 120_000 + 5_000 = 125_000
+    await runKubectl('wait --for=condition=Ready pod/web --timeout=120s');
+    expect(capturedTimeout).toBe(125_000);
+  });
+
+  it('uses the default timeout for non-wait commands', async () => {
+    let capturedTimeout: number | undefined;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedTimeout = (opts as { timeout?: number }).timeout;
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runKubectl('get pods');
+    // Default EXEC_TIMEOUT_MS = 30_000
+    expect(capturedTimeout).toBe(30_000);
+  });
+
+  // --- In-cluster: KUBECONFIG deleted from env ---
+
+  it('removes KUBECONFIG from env when running in-cluster', async () => {
+    process.env.KUBERNETES_SERVICE_HOST = '10.0.0.1';
+    process.env.KUBECONFIG = '/some/kubeconfig';
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedEnv = (opts as { env?: NodeJS.ProcessEnv }).env;
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runKubectl('get pods');
+    expect(capturedEnv?.KUBECONFIG).toBeUndefined();
   });
 });
