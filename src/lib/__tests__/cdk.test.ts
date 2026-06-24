@@ -15,7 +15,6 @@ vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
-import { execFile } from 'node:child_process';
 import { tokenizeCdkArgs, runCdk, NO_OUTPUT_MESSAGE } from '../cdk.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
 import { stubExec, resetExec } from './execfile-helpers.ts';
@@ -236,7 +235,15 @@ describe('runCdk — exec error paths (mocked execFile)', () => {
     expect(result).not.toContain('SENSITIVE');
     expect(result).toContain('[REDACTED:secret]');
   });
-});
 
-// Suppress unused import warning — execFile is used implicitly through vi.mocked
-void execFile;
+  it('forwards the cwd option to execFile', async () => {
+    let capturedOpts: unknown = null;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedOpts = opts;
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runCdk('ls', { cwd: '/tmp/custom-cwd' });
+    expect(capturedOpts).toBeDefined();
+    expect((capturedOpts as Record<string, unknown>)?.cwd).toBe('/tmp/custom-cwd');
+  });
+});
