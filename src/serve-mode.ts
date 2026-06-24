@@ -25,6 +25,7 @@
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { bearerAuth } from 'hono/bearer-auth';
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -234,17 +235,17 @@ export function createServeApp(
 
   // Auth middleware — active only when an API key is configured.
   // GET /api/health is always public so Kubernetes liveness probes work without credentials.
+  // bearerAuth() provides timing-safe comparison and RFC 6750 WWW-Authenticate headers.
   if (apiKey) {
-    app.use('*', async (c, next) => {
-      if (c.req.path === '/api/health') {
-        return next();
-      }
-      const auth = c.req.header('Authorization');
-      if (!auth || auth !== `Bearer ${apiKey}`) {
-        return c.json({ error: 'Unauthorized' }, 401);
-      }
-      return next();
+    const unauthorizedJson = { error: 'Unauthorized' };
+    const auth = bearerAuth({
+      token: apiKey,
+      noAuthenticationHeaderMessage: unauthorizedJson,
+      invalidAuthenticationHeaderMessage: unauthorizedJson,
+      invalidTokenMessage: unauthorizedJson,
     });
+    app.use('/api/openapi.json', auth);
+    app.use('/api/diagnose', auth);
   }
 
   app.get('/api/health', (c) =>
@@ -390,8 +391,10 @@ Examples:
     config.server?.host ??
     '127.0.0.1';
   // HEIMDALL_API_KEY env var takes precedence over config file value.
-  const apiKey =
-    process.env['HEIMDALL_API_KEY'] ?? config.server?.apiKey ?? undefined;
+  // Trim and treat empty/whitespace strings as absent so HEIMDALL_API_KEY=""
+  // doesn't silently disable auth when the config file has a valid key.
+  const rawApiKey = process.env['HEIMDALL_API_KEY'] ?? config.server?.apiKey;
+  const apiKey = rawApiKey && rawApiKey.trim() ? rawApiKey.trim() : undefined;
 
   const app = createServeApp(runAgentDiagnose, modelArg, apiKey);
 

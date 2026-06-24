@@ -255,7 +255,7 @@ describe('createServeApp — API key authentication', () => {
       expect(body['error']).toBe('Unauthorized');
     });
 
-    it('returns 401 with malformed Authorization header (no Bearer prefix)', async () => {
+    it('returns 400 with malformed Authorization header (no Bearer prefix)', async () => {
       const app = makeAppWithAuth(neverCalled, SECRET);
       const res = await app.fetch(
         new Request('http://localhost/api/diagnose', {
@@ -267,7 +267,9 @@ describe('createServeApp — API key authentication', () => {
           body: JSON.stringify({ prompt: 'Why are pods failing?' }),
         }),
       );
-      expect(res.status).toBe(401);
+      // RFC 6750: malformed Authorization header is a 400 Bad Request (invalid_request),
+      // not 401 Unauthorized. Hono's bearerAuth() follows this correctly.
+      expect(res.status).toBe(400);
     });
 
     it('returns 401 with wrong key', async () => {
