@@ -11,9 +11,10 @@
 // `execFileAsync = promisify(execFile)` captures the mock at module load time.
 import { vi, describe, it, expect, afterEach, beforeEach } from 'vitest';
 
-vi.mock('node:child_process', () => ({
-  execFile: vi.fn(),
-}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:child_process')>();
+  return { ...original, execFile: vi.fn() };
+});
 
 // aws-safety is mocked to allow per-test overrides of validateAwsCommand
 // while delegating to the real implementation by default.
@@ -22,7 +23,6 @@ vi.mock('../aws-safety.ts', async (importOriginal) => {
   return { ...original, validateAwsCommand: vi.fn(original.validateAwsCommand) };
 });
 
-import { execFile } from 'node:child_process';
 import { tokenizeAwsArgs, runAwsCli, detectAwsAuth, NO_OUTPUT_MESSAGE } from '../aws.ts';
 import { validateAwsCommand } from '../aws-safety.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
