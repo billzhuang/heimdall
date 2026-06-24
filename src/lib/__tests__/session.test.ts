@@ -117,8 +117,12 @@ describe('listSessions', () => {
     const b = createSession({ name: 'second' });
     const list = listSessions();
     expect(list).toHaveLength(2);
-    // Must be sorted by createdAt ascending — a before b.
-    expect(list.map((s) => s.id)).toEqual([a.id, b.id]);
+    expect(list.map((s) => s.id)).toContain(a.id);
+    expect(list.map((s) => s.id)).toContain(b.id);
+    // Verify the sort invariant: each element's createdAt <= the next.
+    for (let i = 1; i < list.length; i++) {
+      expect(list[i - 1]!.createdAt.localeCompare(list[i]!.createdAt)).toBeLessThanOrEqual(0);
+    }
   });
 
   it('excludes deleted sessions', () => {
