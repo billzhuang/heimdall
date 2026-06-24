@@ -34,6 +34,7 @@ show_help() {
 Usage: heimdall -p <prompt> [--json]
        heimdall --watch
        heimdall mcp
+       heimdall serve [--port <n>] [--host <addr>]
        heimdall triage [-n <namespace>] [-A]
        heimdall schedule [--once]
        heimdall eval [--scenario <name>]
@@ -62,6 +63,9 @@ Options:
 
 Subcommands:
   mcp                   Start the MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, etc.
+  serve                 Start the HTTP REST API server (POST /api/diagnose, GET /api/health, GET /api/openapi.json)
+    --port <n>            TCP port to listen on (default: 3000; env: HEIMDALL_PORT)
+    --host <addr>         Bind address (default: 0.0.0.0; env: HEIMDALL_HOST)
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
@@ -121,6 +125,8 @@ PROMPT=""
 WATCH=false
 MCP=false
 MCP_ARGS=()
+SERVE=false
+SERVE_ARGS=()
 TRIAGE=false
 TRIAGE_ARGS=()
 SCHEDULE=false
@@ -143,6 +149,12 @@ while [[ $# -gt 0 ]]; do
       MCP=true
       shift
       MCP_ARGS=("$@")
+      break
+      ;;
+    serve)
+      SERVE=true
+      shift
+      SERVE_ARGS=("$@")
       break
       ;;
     triage)
@@ -318,11 +330,28 @@ if [[ "$MCP" == "true" ]]; then
   fi
 
   if [[ -f "$MCP_COMPILED" ]]; then
-    exec node "$MCP_COMPILED" "${MCP_ARGS[@]}"
+    exec node "$MCP_COMPILED" ${MCP_ARGS[@]+"${MCP_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$MCP_SOURCE" ]]; then
-    exec "$TSX" "$MCP_SOURCE" "${MCP_ARGS[@]}"
+    exec "$TSX" "$MCP_SOURCE" ${MCP_ARGS[@]+"${MCP_ARGS[@]}"}
   else
     echo "Error: MCP mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
+fi
+
+# --- Serve mode -----------------------------------------------------------
+if [[ "$SERVE" == "true" ]]; then
+  SERVE_COMPILED="${ROOT_DIR}/dist/serve-mode.mjs"
+  SERVE_SOURCE="${ROOT_DIR}/src/serve-mode.ts"
+
+  if [[ -f "$SERVE_COMPILED" ]]; then
+    exec node "$SERVE_COMPILED" ${SERVE_ARGS[@]+"${SERVE_ARGS[@]}"}
+  elif [[ -x "$TSX" ]] && [[ -f "$SERVE_SOURCE" ]]; then
+    exec "$TSX" "$SERVE_SOURCE" ${SERVE_ARGS[@]+"${SERVE_ARGS[@]}"}
+  else
+    echo "Error: serve mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1
@@ -335,9 +364,9 @@ if [[ "$SCHEDULE" == "true" ]]; then
   SCHEDULE_SOURCE="${ROOT_DIR}/src/schedule-mode.ts"
 
   if [[ -f "$SCHEDULE_COMPILED" ]]; then
-    exec node "$SCHEDULE_COMPILED" "${SCHEDULE_ARGS[@]}"
+    exec node "$SCHEDULE_COMPILED" ${SCHEDULE_ARGS[@]+"${SCHEDULE_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$SCHEDULE_SOURCE" ]]; then
-    exec "$TSX" "$SCHEDULE_SOURCE" "${SCHEDULE_ARGS[@]}"
+    exec "$TSX" "$SCHEDULE_SOURCE" ${SCHEDULE_ARGS[@]+"${SCHEDULE_ARGS[@]}"}
   else
     echo "Error: schedule mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
@@ -352,9 +381,9 @@ if [[ "$TRIAGE" == "true" ]]; then
   TRIAGE_SOURCE="${ROOT_DIR}/src/triage-mode.ts"
 
   if [[ -f "$TRIAGE_COMPILED" ]]; then
-    exec node "$TRIAGE_COMPILED" "${TRIAGE_ARGS[@]}"
+    exec node "$TRIAGE_COMPILED" ${TRIAGE_ARGS[@]+"${TRIAGE_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$TRIAGE_SOURCE" ]]; then
-    exec "$TSX" "$TRIAGE_SOURCE" "${TRIAGE_ARGS[@]}"
+    exec "$TSX" "$TRIAGE_SOURCE" ${TRIAGE_ARGS[@]+"${TRIAGE_ARGS[@]}"}
   else
     echo "Error: triage mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
@@ -369,9 +398,9 @@ if [[ "$SELF_IMPROVE" == "true" ]]; then
   SELF_IMPROVE_SOURCE="${ROOT_DIR}/src/self-improve-mode.ts"
 
   if [[ -f "$SELF_IMPROVE_COMPILED" ]]; then
-    exec node "$SELF_IMPROVE_COMPILED" "${SELF_IMPROVE_ARGS[@]}"
+    exec node "$SELF_IMPROVE_COMPILED" ${SELF_IMPROVE_ARGS[@]+"${SELF_IMPROVE_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$SELF_IMPROVE_SOURCE" ]]; then
-    exec "$TSX" "$SELF_IMPROVE_SOURCE" "${SELF_IMPROVE_ARGS[@]}"
+    exec "$TSX" "$SELF_IMPROVE_SOURCE" ${SELF_IMPROVE_ARGS[@]+"${SELF_IMPROVE_ARGS[@]}"}
   else
     echo "Error: self-improve mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
@@ -386,9 +415,9 @@ if [[ "$SELF_LOOP" == "true" ]]; then
   SELF_LOOP_SOURCE="${ROOT_DIR}/src/self-loop-mode.ts"
 
   if [[ -f "$SELF_LOOP_COMPILED" ]]; then
-    exec node "$SELF_LOOP_COMPILED" "${SELF_LOOP_ARGS[@]}"
+    exec node "$SELF_LOOP_COMPILED" ${SELF_LOOP_ARGS[@]+"${SELF_LOOP_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$SELF_LOOP_SOURCE" ]]; then
-    exec "$TSX" "$SELF_LOOP_SOURCE" "${SELF_LOOP_ARGS[@]}"
+    exec "$TSX" "$SELF_LOOP_SOURCE" ${SELF_LOOP_ARGS[@]+"${SELF_LOOP_ARGS[@]}"}
   else
     echo "Error: self-loop mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
@@ -403,9 +432,9 @@ if [[ "$EVAL" == "true" ]]; then
   EVAL_SOURCE="${ROOT_DIR}/src/eval-mode.ts"
 
   if [[ -f "$EVAL_COMPILED" ]]; then
-    exec node "$EVAL_COMPILED" "${EVAL_ARGS[@]}"
+    exec node "$EVAL_COMPILED" ${EVAL_ARGS[@]+"${EVAL_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$EVAL_SOURCE" ]]; then
-    exec "$TSX" "$EVAL_SOURCE" "${EVAL_ARGS[@]}"
+    exec "$TSX" "$EVAL_SOURCE" ${EVAL_ARGS[@]+"${EVAL_ARGS[@]}"}
   else
     echo "Error: eval mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
@@ -435,10 +464,10 @@ if [[ "$WATCH" == "true" ]]; then
 
   if [[ -f "$WATCH_COMPILED" ]]; then
     # Production path: use the pre-built JS bundle (npm run build).
-    exec node "$WATCH_COMPILED" "${WATCH_MODEL_ARGS[@]}"
+    exec node "$WATCH_COMPILED" ${WATCH_MODEL_ARGS[@]+"${WATCH_MODEL_ARGS[@]}"}
   elif [[ -x "$TSX" ]] && [[ -f "$WATCH_SOURCE" ]]; then
     # Development path: run the TypeScript source directly via tsx.
-    exec "$TSX" "$WATCH_SOURCE" "${WATCH_MODEL_ARGS[@]}"
+    exec "$TSX" "$WATCH_SOURCE" ${WATCH_MODEL_ARGS[@]+"${WATCH_MODEL_ARGS[@]}"}
   else
     echo "Error: watch mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
@@ -472,10 +501,10 @@ if [[ "$BACKEND" == "claude-cli" ]]; then
 
     if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
       claude -p "$PROMPT" | \
-        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
+        env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV_ARGS[@]+"${_LEARN_ENV_ARGS[@]}"} node "$FORMAT_JSON_COMPILED"
     elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
       claude -p "$PROMPT" | \
-        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
+        env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV_ARGS[@]+"${_LEARN_ENV_ARGS[@]}"} "$TSX" "$FORMAT_JSON_SOURCE"
     else
       echo "Error: JSON formatter not available." >&2
       echo "  Production: run 'npm run build' first." >&2
@@ -505,10 +534,10 @@ if [[ "$BACKEND" == "codex-cli" ]]; then
 
     if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
       codex -q "$PROMPT" | \
-        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
+        env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV_ARGS[@]+"${_LEARN_ENV_ARGS[@]}"} node "$FORMAT_JSON_COMPILED"
     elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
       codex -q "$PROMPT" | \
-        env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
+        env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV_ARGS[@]+"${_LEARN_ENV_ARGS[@]}"} "$TSX" "$FORMAT_JSON_SOURCE"
     else
       echo "Error: JSON formatter not available." >&2
       echo "  Production: run 'npm run build' first." >&2
@@ -533,10 +562,10 @@ if [[ "$JSON_OUTPUT" == "true" ]]; then
 
   if [[ -f "$FORMAT_JSON_COMPILED" ]]; then
     printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | \
-      env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" node "$FORMAT_JSON_COMPILED"
+      env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV_ARGS[@]+"${_LEARN_ENV_ARGS[@]}"} node "$FORMAT_JSON_COMPILED"
   elif [[ -x "$TSX" ]] && [[ -f "$FORMAT_JSON_SOURCE" ]]; then
     printf '%s\n' "$PROMPT" | "$FLUE" connect heimdall local --target node | \
-      env HEIMDALL_PROMPT="$PROMPT" "${_LEARN_ENV_ARGS[@]}" "$TSX" "$FORMAT_JSON_SOURCE"
+      env HEIMDALL_PROMPT="$PROMPT" ${_LEARN_ENV_ARGS[@]+"${_LEARN_ENV_ARGS[@]}"} "$TSX" "$FORMAT_JSON_SOURCE"
   else
     echo "Error: JSON formatter not available." >&2
     echo "  Production: run 'npm run build' first." >&2
