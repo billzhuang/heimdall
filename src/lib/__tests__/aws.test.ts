@@ -1,13 +1,33 @@
 /**
- * Tests for aws.ts — tokenization and policy decisions only.
+ * Tests for aws.ts — tokenization, policy decisions, and exec paths.
  *
  * Real `aws` CLI is NOT invoked. We assert:
  *  1. tokenizeAwsArgs handles quoting, escaping, and strips the leading "aws" token.
  *  2. runAwsCli returns before exec for blocked commands and empty inputs.
+ *  3. runAwsCli exec paths (success, error, redaction) via mocked child_process.
  */
-import { describe, it, expect, afterEach } from 'vitest';
-import { tokenizeAwsArgs, runAwsCli, detectAwsAuth } from '../aws.ts';
+
+// node:child_process must be mocked before aws.ts is imported so that
+// `execFileAsync = promisify(execFile)` captures the mock at module load time.
+import { vi, describe, it, expect, afterEach, beforeEach } from 'vitest';
+
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(),
+}));
+
+// aws-safety is mocked to allow per-test overrides of validateAwsCommand
+// while delegating to the real implementation by default.
+vi.mock('../aws-safety.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../aws-safety.ts')>();
+  return { ...original, validateAwsCommand: vi.fn(original.validateAwsCommand) };
+});
+
+import { execFile } from 'node:child_process';
+import { tokenizeAwsArgs, runAwsCli, detectAwsAuth, NO_OUTPUT_MESSAGE } from '../aws.ts';
+import { validateAwsCommand } from '../aws-safety.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
+import { stubExec, resetExec } from './execfile-helpers.ts';
+import { compileRules } from '../regex-redact.ts';
 
 describe('tokenizeAwsArgs', () => {
   it('strips a leading aws token (lowercase)', () => {
@@ -192,5 +212,78 @@ describe('detectAwsAuth', () => {
     clearAwsVars();
     process.env.AWS_WEB_IDENTITY_TOKEN_FILE = '/token';
     expect(detectAwsAuth()).toBe('unknown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runAwsCli — exec paths (mocked child_process)
+// ---------------------------------------------------------------------------
+
+describe('runAwsCli — exec paths (mocked child_process)', () => {
+  beforeEach(() => {
+    resetExec();
+  });
+
+  afterEach(() => {
+    resetExec();
+  });
+
+  it('returns "could not parse" when validateAwsCommand returns null', async () => {
+    vi.mocked(validateAwsCommand).mockReturnValueOnce(null);
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toMatch(/could not parse AWS CLI command/i);
+  });
+
+  it('returns stdout when exec succeeds', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: 'i-abc123\ni-def456', stderr: '' }));
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toBe('i-abc123\ni-def456');
+  });
+
+  it('returns stderr when stdout is empty but stderr has content', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: 'CredentialsNotFound' }));
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toBe('CredentialsNotFound');
+  });
+
+  it('returns NO_OUTPUT_MESSAGE when both stdout and stderr are empty', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: '' }));
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toBe(NO_OUTPUT_MESSAGE);
+  });
+
+  it('returns error prefix with err.stderr on exec failure', async () => {
+    const err = Object.assign(new Error('exit 1'), { stderr: 'AccessDeniedException', stdout: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toMatch(/aws exited with an error/i);
+    expect(result).toContain('AccessDeniedException');
+  });
+
+  it('falls back to err.message when err.stderr is absent on exec failure', async () => {
+    const err = Object.assign(new Error('command not found: aws'), { stderr: '', stdout: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toMatch(/aws exited with an error/i);
+    expect(result).toContain('command not found: aws');
+  });
+
+  it('applies regex redaction rules to successful exec output', async () => {
+    stubExec((_cmd, _args, _opts, cb) =>
+      cb(null, { stdout: 'AccessKeyId: AKIAIOSFODNN7EXAMPLE', stderr: '' }),
+    );
+    const rules = compileRules([{ name: 'aws-key', pattern: 'AKIA[0-9A-Z]{16}' }]);
+    const result = await runAwsCli('ec2 describe-instances', { regexRedactionRules: rules });
+    expect(result).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(result).toContain('[REDACTED:aws-key]');
+  });
+
+  it('applies regex redaction rules to error output', async () => {
+    const err = Object.assign(new Error('fail'), { stderr: 'token=AKIAIOSFODNN7EXAMPLE', stdout: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const rules = compileRules([{ name: 'aws-key', pattern: 'AKIA[0-9A-Z]{16}' }]);
+    const result = await runAwsCli('ec2 describe-instances', { regexRedactionRules: rules });
+    expect(result).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(result).toContain('[REDACTED:aws-key]');
   });
 });
