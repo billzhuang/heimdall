@@ -31,3 +31,6 @@ coverage/
 
 # Azure CLI
 .azure/
+
+# Generated task history (created by test runs and serve-mode)
+scenarios/task-history.jsonl
