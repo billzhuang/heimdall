@@ -106,8 +106,7 @@ const TOOL_PLUGINS: ToolPlugin[] = [
   cdkPlugin,
 ];
 
-const { allTools: ALL_TOOLS, enabledKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexRedactionRules);
-const enabledToolKeys = new Set(Array.from(enabledKeys) as ToolConfigKey[]);
+const { allTools: ALL_TOOLS, enabledKeys: enabledToolKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexRedactionRules);
 
 const telemetryEnabled = isTelemetryEnabled();
 
@@ -126,8 +125,8 @@ function wrapWithTiming(tool: ToolDefinition): ToolDefinition {
   }) as ToolDefinition;
 }
 
-const clusterTools = Object.keys(ALL_TOOLS)
-  .filter((key) => enabledToolKeys.has(key as ToolConfigKey))
+const clusterTools = (Object.keys(ALL_TOOLS) as ToolConfigKey[])
+  .filter((key) => enabledToolKeys.has(key))
   .map((key) => (telemetryEnabled ? wrapWithTiming(ALL_TOOLS[key]) : ALL_TOOLS[key]));
 
 if (clusterTools.length === 0) {

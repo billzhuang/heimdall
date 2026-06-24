@@ -15,9 +15,12 @@ import type { ToolDefinition } from '@flue/runtime';
 import type { HeimdallConfig } from './config.ts';
 import type { CompiledRedactionRule } from './regex-redact.ts';
 
+/** Valid keys in `HeimdallConfig['tools']` — re-exported so callers don't need to import config directly. */
+export type ToolKey = keyof NonNullable<HeimdallConfig['tools']>;
+
 export interface ToolPlugin {
   /** The key under `HeimdallConfig['tools']` that enables this tool. */
-  key: string;
+  key: ToolKey;
   /**
    * Factory that receives the full loaded config and compiled redaction rules
    * and returns a ready-to-use ToolDefinition. Credentials, URLs, and
@@ -35,13 +38,13 @@ export function buildToolRegistry(
   plugins: ToolPlugin[],
   config: HeimdallConfig,
   rules: CompiledRedactionRule[],
-): { allTools: Record<string, ToolDefinition>; enabledKeys: Set<string> } {
-  const allTools: Record<string, ToolDefinition> = {};
-  const enabledKeys = new Set<string>();
+): { allTools: Record<ToolKey, ToolDefinition>; enabledKeys: Set<ToolKey> } {
+  const allTools = {} as Record<ToolKey, ToolDefinition>;
+  const enabledKeys = new Set<ToolKey>();
 
   for (const plugin of plugins) {
     allTools[plugin.key] = plugin.factory(config, rules);
-    if (config.tools[plugin.key as keyof typeof config.tools]) {
+    if (config.tools[plugin.key]) {
       enabledKeys.add(plugin.key);
     }
   }

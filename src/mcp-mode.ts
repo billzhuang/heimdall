@@ -42,47 +42,44 @@ import { toJsonSchema } from '@valibot/to-json-schema';
 import type { ToolDefinition } from '@flue/runtime';
 import { loadConfig } from './lib/config.ts';
 import { compileRules } from './lib/regex-redact.ts';
-import { makeKubectl } from './tools/kubectl.ts';
-import { listContexts, makeListNamespaces } from './tools/kubeconfig.ts';
-import { makeHelmRelease } from './tools/helm.ts';
-import { makePrometheusQuery } from './tools/prometheus.ts';
-import { makeAwsCli } from './tools/aws.ts';
-import { makeTrivyScan } from './tools/trivy.ts';
-import { makeKubecostQuery } from './tools/kubecost.ts';
-import { makeLokiQuery } from './tools/loki.ts';
-import { makeJaegerQuery } from './tools/jaeger.ts';
-import { makeDatadogQuery } from './tools/datadog.ts';
-import { makeNewRelicQuery } from './tools/newrelic.ts';
-import { makeCdkQuery } from './tools/cdk.ts';
-import type { HeimdallConfig } from './lib/config.ts';
+import { kubectlPlugin } from './tools/kubectl.ts';
+import { listContextsPlugin, listNamespacesPlugin } from './tools/kubeconfig.ts';
+import { helmReleasePlugin } from './tools/helm.ts';
+import { prometheusPlugin } from './tools/prometheus.ts';
+import { awsCliPlugin } from './tools/aws.ts';
+import { trivyScanPlugin } from './tools/trivy.ts';
+import { kubecostPlugin } from './tools/kubecost.ts';
+import { lokiPlugin } from './tools/loki.ts';
+import { jaegerPlugin } from './tools/jaeger.ts';
+import { datadogPlugin } from './tools/datadog.ts';
+import { newRelicPlugin } from './tools/newrelic.ts';
+import { cdkPlugin } from './tools/cdk.ts';
+import { buildToolRegistry, type ToolPlugin } from './lib/plugin.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled
   ? compileRules(config.redaction.rules ?? [])
   : [];
-const lockedNs = config.namespace?.locked;
 
-const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules, lockedNs),
-  listContexts,
-  listNamespaces: makeListNamespaces(lockedNs),
-  helmRelease: makeHelmRelease(lockedNs),
-  prometheusQuery: makePrometheusQuery(config.prometheus, regexRedactionRules),
-  awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
-  trivyScan: makeTrivyScan({ audit: config.audit }, regexRedactionRules),
-  kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules, lockedNs),
-  lokiQuery: makeLokiQuery(config.loki, regexRedactionRules, lockedNs),
-  jaegerQuery: makeJaegerQuery(config.jaeger, regexRedactionRules),
-  datadogQuery: makeDatadogQuery(config.datadog, regexRedactionRules),
-  newRelicQuery: makeNewRelicQuery(config.newRelic, regexRedactionRules),
-  cdkQuery: makeCdkQuery({ audit: config.audit }, regexRedactionRules),
-};
+const TOOL_PLUGINS: ToolPlugin[] = [
+  kubectlPlugin,
+  listContextsPlugin,
+  listNamespacesPlugin,
+  helmReleasePlugin,
+  prometheusPlugin,
+  awsCliPlugin,
+  trivyScanPlugin,
+  kubecostPlugin,
+  lokiPlugin,
+  jaegerPlugin,
+  datadogPlugin,
+  newRelicPlugin,
+  cdkPlugin,
+];
 
-export const enabledTools: ToolDefinition[] = (
-  Object.keys(ALL_TOOLS) as (keyof HeimdallConfig['tools'])[]
-)
-  .filter((key) => config.tools[key])
-  .map((key) => ALL_TOOLS[key]);
+const { allTools, enabledKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexRedactionRules);
+
+export const enabledTools: ToolDefinition[] = Array.from(enabledKeys).map((key) => allTools[key]);
 
 /**
  * Convert a Flue ToolDefinition's parameters to an MCP-compatible JSON Schema
