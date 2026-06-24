@@ -303,10 +303,10 @@ const ServerSchema = v.nullish(
   v.object({
     // TCP port to listen on (default 3000). Override with HEIMDALL_PORT env var.
     port: v.nullish(v.number(), 3000),
-    // Bind address (default '0.0.0.0' — all interfaces). Override with HEIMDALL_HOST env var.
-    host: v.nullish(v.string(), '0.0.0.0'),
+    // Bind address (default '127.0.0.1' — loopback only). Override with HEIMDALL_HOST env var.
+    host: v.nullish(v.string(), '127.0.0.1'),
   }),
-  { port: 3000, host: '0.0.0.0' },
+  { port: 3000, host: '127.0.0.1' },
 );
 
 const HeimdallConfigSchema = v.object({

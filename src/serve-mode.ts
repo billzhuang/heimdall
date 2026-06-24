@@ -48,20 +48,29 @@ export async function runAgentDiagnose(prompt: string, model: string): Promise<s
 
     const env = { ...process.env, HEIMDALL_MODEL: model };
     const child = spawn(binPath, ['-p', prompt, '--json'], {
-      // stderr is inherited so the parent never blocks on an unread pipe buffer.
-      stdio: ['ignore', 'pipe', 'inherit'],
+      // detached=true makes the child a process group leader so SIGTERM on timeout
+      // reaches all grandchildren (Flue agent, kubectl, etc.), not just the shell wrapper.
+      // stderr is piped so diagnostic output is captured for error messages.
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
       env,
     });
 
+    let stderr = '';
     const timer = setTimeout(() => {
       if (!settled) {
         settled = true;
-        child.kill('SIGTERM');
+        try {
+          process.kill(-child.pid!, 'SIGTERM');
+        } catch {
+          child.kill('SIGTERM');
+        }
         rejectP(new Error('agent timed out after 5 minutes'));
       }
     }, DIAGNOSE_TIMEOUT_MS);
 
     child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
+    child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf-8'); });
 
     child.on('close', (code: number | null, signal: string | null) => {
       clearTimeout(timer);
@@ -72,7 +81,7 @@ export async function runAgentDiagnose(prompt: string, model: string): Promise<s
       } else if (signal !== null) {
         rejectP(new Error(`heimdall agent killed by signal ${signal}`));
       } else {
-        rejectP(new Error(`heimdall agent exited with code ${code}`));
+        rejectP(new Error(`heimdall agent exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
       }
     });
 
@@ -210,9 +219,13 @@ const OPENAPI_SPEC = {
 } as const;
 
 /** Create and return the configured Hono app (exported for testing).
- * @param agentFn - Injectable agent runner; defaults to runAgentDiagnose. */
+ * @param agentFn - Injectable agent runner; defaults to runAgentDiagnose.
+ * @param serveDefaultModel - Model to use when the request omits "model".
+ *   Must be provided when --model is passed at CLI startup since DEFAULT_MODEL
+ *   is captured at module-load time and process.env mutations have no effect. */
 export function createServeApp(
   agentFn: (prompt: string, model: string) => Promise<string> = runAgentDiagnose,
+  serveDefaultModel?: string,
 ): Hono {
   const app = new Hono();
 
@@ -225,7 +238,11 @@ export function createServeApp(
   app.post('/api/diagnose', async (c) => {
     let body: Record<string, unknown>;
     try {
-      body = await c.req.json<Record<string, unknown>>();
+      const parsed = await c.req.json<unknown>();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return c.json({ error: 'Invalid JSON body: expected an object' }, 400);
+      }
+      body = parsed as Record<string, unknown>;
     } catch {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
@@ -245,7 +262,7 @@ export function createServeApp(
 
     let model: string;
     try {
-      model = resolveModel(modelOverride);
+      model = resolveModel(modelOverride ?? serveDefaultModel);
     } catch {
       return c.json(
         {
@@ -317,7 +334,7 @@ Start an HTTP server exposing Heimdall's AI diagnostic capability as a REST API.
 
 Options:
   --port <n>               TCP port to listen on (default: 3000; env: HEIMDALL_PORT)
-  --host <addr>            Bind address (default: 0.0.0.0; env: HEIMDALL_HOST)
+  --host <addr>            Bind address (default: 127.0.0.1; env: HEIMDALL_HOST)
   --model <provider/model> Override LLM model (env: HEIMDALL_MODEL)
   -h, --help               Show this help message
 
@@ -338,8 +355,6 @@ Examples:
     }
   }
 
-  if (modelArg) process.env['HEIMDALL_MODEL'] = modelArg;
-
   const config = loadConfig();
   const envPort = process.env['HEIMDALL_PORT']
     ? parseInt(process.env['HEIMDALL_PORT'], 10)
@@ -355,9 +370,9 @@ Examples:
     hostArg ??
     process.env['HEIMDALL_HOST'] ??
     config.server?.host ??
-    '0.0.0.0';
+    '127.0.0.1';
 
-  const app = createServeApp();
+  const app = createServeApp(runAgentDiagnose, modelArg);
 
   serve({ fetch: app.fetch, port, hostname: host }, (info) => {
     process.stderr.write(
