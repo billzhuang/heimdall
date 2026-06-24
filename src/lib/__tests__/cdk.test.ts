@@ -1,13 +1,24 @@
 /**
- * Tests for cdk.ts — tokenization and policy decisions only.
+ * Tests for cdk.ts — tokenization, policy decisions, and exec paths.
  *
  * Real `cdk` CLI is NOT invoked. We assert:
  *  1. tokenizeCdkArgs handles quoting, escaping, and strips the leading "cdk" token.
  *  2. runCdk returns before exec for blocked commands and empty inputs.
+ *  3. runCdk correctly handles exec success, empty output, and error paths (mocked execFile).
  */
-import { describe, it, expect } from 'vitest';
-import { tokenizeCdkArgs, runCdk } from '../cdk.ts';
+
+// node:child_process must be mocked before cdk.ts is imported so that
+// `execFileAsync = promisify(execFile)` captures the mock at module load time.
+import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+vi.mock('node:child_process', () => ({
+  execFile: vi.fn(),
+}));
+
+import { tokenizeCdkArgs, runCdk, NO_OUTPUT_MESSAGE } from '../cdk.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
+import { stubExec, resetExec } from './execfile-helpers.ts';
+import { compileRules } from '../regex-redact.ts';
 
 describe('tokenizeCdkArgs', () => {
   it('strips a leading cdk token (lowercase)', () => {
@@ -131,5 +142,108 @@ describe('runCdk — input validation (no exec)', () => {
   it('blocks destructive command even when preceded by global flags', async () => {
     const result = await runCdk('--profile prod deploy MyStack');
     expect(result).toMatch(BLOCKED_RE);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runCdk — argv.length === 0 guard (no exec)
+// `cdk` with no subcommand passes validation (bare `cdk` is harmless) but
+// tokenizeCdkArgs strips the leading "cdk" token leaving an empty argv.
+// ---------------------------------------------------------------------------
+
+describe('runCdk — argv.length === 0 guard (no exec)', () => {
+  it('returns an error when "cdk" is passed with no subcommand', async () => {
+    const result = await runCdk('cdk');
+    expect(result).toMatch(/no CDK subcommand provided/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runCdk — exec success paths (mocked child_process)
+// ---------------------------------------------------------------------------
+
+describe('runCdk — exec success paths (mocked execFile)', () => {
+  beforeEach(() => resetExec());
+  afterEach(() => resetExec());
+
+  it('returns trimmed stdout when the command succeeds', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: 'stack-a\nstack-b\n', stderr: '' }));
+    const result = await runCdk('ls');
+    expect(result).toBe('stack-a\nstack-b');
+  });
+
+  it('falls back to stderr when stdout is empty', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: 'Warning: no stacks found\n' }));
+    const result = await runCdk('ls');
+    expect(result).toBe('Warning: no stacks found');
+  });
+
+  it('returns NO_OUTPUT_MESSAGE when both stdout and stderr are empty', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '', stderr: '' }));
+    const result = await runCdk('ls');
+    expect(result).toBe(NO_OUTPUT_MESSAGE);
+  });
+
+  it('applies regex redaction rules to stdout output', async () => {
+    const rules = compileRules([{ name: 'api-key', pattern: 'MY-SECRET' }]);
+    stubExec((_cmd, _args, _opts, cb) =>
+      cb(null, { stdout: 'synth output: MY-SECRET token\n', stderr: '' }),
+    );
+    const result = await runCdk('synth', { regexRedactionRules: rules });
+    expect(result).not.toContain('MY-SECRET');
+    expect(result).toContain('[REDACTED:api-key]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runCdk — exec error paths (mocked child_process)
+// ---------------------------------------------------------------------------
+
+describe('runCdk — exec error paths (mocked execFile)', () => {
+  beforeEach(() => resetExec());
+  afterEach(() => resetExec());
+
+  it('returns an error message with stderr detail on exec failure', async () => {
+    const err = Object.assign(new Error('exit 1'), { stderr: 'CDK error: stack not found' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err, { stdout: '', stderr: '' }));
+    const result = await runCdk('synth');
+    expect(result).toMatch(/cdk exited with an error/i);
+    expect(result).toContain('CDK error: stack not found');
+  });
+
+  it('falls back to err.stdout when stderr is empty on failure', async () => {
+    const err = Object.assign(new Error('exit 1'), { stderr: '', stdout: 'partial stdout output' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err, { stdout: '', stderr: '' }));
+    const result = await runCdk('synth');
+    expect(result).toMatch(/cdk exited with an error/i);
+    expect(result).toContain('partial stdout output');
+  });
+
+  it('falls back to err.message when stderr and stdout are empty on failure', async () => {
+    const err = new Error('cdk: command not found');
+    stubExec((_cmd, _args, _opts, cb) => cb(err, { stdout: '', stderr: '' }));
+    const result = await runCdk('synth');
+    expect(result).toMatch(/cdk exited with an error/i);
+    expect(result).toContain('cdk: command not found');
+  });
+
+  it('applies regex redaction rules to error output', async () => {
+    const rules = compileRules([{ name: 'secret', pattern: 'SENSITIVE' }]);
+    const err = Object.assign(new Error('exit 1'), { stderr: 'Error: SENSITIVE token exposed' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err, { stdout: '', stderr: '' }));
+    const result = await runCdk('synth', { regexRedactionRules: rules });
+    expect(result).not.toContain('SENSITIVE');
+    expect(result).toContain('[REDACTED:secret]');
+  });
+
+  it('forwards the cwd option to execFile', async () => {
+    let capturedOpts: unknown = null;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedOpts = opts;
+      cb(null, { stdout: 'ok', stderr: '' });
+    });
+    await runCdk('ls', { cwd: '/tmp/custom-cwd' });
+    expect(capturedOpts).toBeDefined();
+    expect((capturedOpts as Record<string, unknown>)?.cwd).toBe('/tmp/custom-cwd');
   });
 });
