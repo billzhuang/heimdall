@@ -14,7 +14,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { execFile } from 'node:child_process';
-import { readFile, mkdtemp, rm, writeFile, mkdir, stat } from 'node:fs/promises';
+import { readFile, mkdtemp, rm, writeFile, mkdir, stat, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -261,15 +261,20 @@ describe('runKubectl audit logging', () => {
 describe('runKubectl (eval mock mode)', () => {
   let tmpDir: string;
   let mockFile: string;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(async () => {
+    originalEnv = { ...process.env };
     tmpDir = await mkdtemp(join(tmpdir(), 'heimdall-eval-mock-'));
     mockFile = join(tmpDir, 'mocks.json');
     delete process.env.HEIMDALL_KUBECTL_MOCK;
   });
 
   afterEach(async () => {
-    delete process.env.HEIMDALL_KUBECTL_MOCK;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -355,21 +360,23 @@ describe('matchMock', () => {
 
 describe('runKubectl (exec paths)', () => {
   let cacheDir: string;
+  let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(async () => {
+    originalEnv = { ...process.env };
     resetExec();
     cacheDir = await mkdtemp(join(tmpdir(), 'heimdall-kube-cache-'));
     process.env.HEIMDALL_KUBECTL_CACHE_DIR = cacheDir;
     process.env.HEIMDALL_KUBECTL_CACHE = '1';
     delete process.env.HEIMDALL_KUBECTL_MOCK;
-    delete process.env.KUBERNETES_SERVICE_HOST; // ensure not in-cluster
+    delete process.env.KUBERNETES_SERVICE_HOST;
   });
 
   afterEach(async () => {
-    delete process.env.HEIMDALL_KUBECTL_CACHE_DIR;
-    delete process.env.HEIMDALL_KUBECTL_CACHE;
-    delete process.env.HEIMDALL_KUBECTL_MOCK;
-    delete process.env.KUBERNETES_SERVICE_HOST;
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
     vi.restoreAllMocks();
     await rm(cacheDir, { recursive: true, force: true });
   });
@@ -496,7 +503,6 @@ describe('runKubectl (exec paths)', () => {
     });
     await runKubectl('get pods -o json');
     // At least one cache file should exist in cacheDir
-    const { readdir } = await import('node:fs/promises');
     const subdirs = await readdir(cacheDir).catch(() => []);
     let cacheFiles: string[] = [];
     for (const sub of subdirs) {
@@ -581,6 +587,5 @@ describe('runKubectl (exec paths)', () => {
     });
     await runKubectl('get pods');
     expect(capturedEnv?.KUBECONFIG).toBeUndefined();
-    delete process.env.KUBECONFIG;
   });
 });
