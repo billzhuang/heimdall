@@ -77,8 +77,9 @@ Examples:
 
 function cmdStart(args: string[]): void {
   let name: string | undefined;
-  let serverUrl: string | undefined =
-    process.env['HEIMDALL_SERVER'] ?? 'http://localhost:3000';
+  // Use || so an empty-string env var falls back to the default.
+  let serverUrl: string =
+    process.env['HEIMDALL_SERVER'] || 'http://localhost:3000';
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
@@ -97,6 +98,12 @@ function cmdStart(args: string[]): void {
     } else {
       die(`unknown option for session start: ${a}`);
     }
+  }
+
+  try {
+    new URL(serverUrl);
+  } catch (err) {
+    die(`Invalid server URL "${serverUrl}": ${(err as Error).message}`);
   }
 
   const session = createSession({ name, serverUrl });
@@ -131,6 +138,12 @@ async function cmdPrompt(args: string[]): Promise<void> {
     session = loadSession(sessionId);
   } catch (err) {
     die((err as Error).message);
+  }
+
+  try {
+    new URL(session.serverUrl);
+  } catch (err) {
+    die(`Invalid server URL "${session.serverUrl}" configured for session ${session.id}: ${(err as Error).message}`);
   }
 
   const client = createFlueClient({ baseUrl: session.serverUrl });

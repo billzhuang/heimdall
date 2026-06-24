@@ -31,8 +31,9 @@ export interface SessionRecord {
 
 /** Returns the directory where session handle files are stored. */
 export function sessionDir(): string {
+  // Use || so an empty-string env var falls back to the default.
   return (
-    process.env['HEIMDALL_SESSION_DIR'] ??
+    process.env['HEIMDALL_SESSION_DIR'] ||
     join(homedir(), '.heimdall', 'sessions')
   );
 }
@@ -47,6 +48,24 @@ function sessionPath(dir: string, id: string): string {
   return join(dir, `${safe}.json`);
 }
 
+function parseSessionRecord(raw: string, context: string): SessionRecord {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Failed to parse session ${context}: ${(err as Error).message}`);
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    typeof (parsed as Record<string, unknown>)['id'] !== 'string' ||
+    typeof (parsed as Record<string, unknown>)['createdAt'] !== 'string'
+  ) {
+    throw new Error(`Invalid session record structure for ${context}`);
+  }
+  return parsed as SessionRecord;
+}
+
 export function createSession(opts: {
   name?: string;
   serverUrl?: string;
@@ -56,7 +75,8 @@ export function createSession(opts: {
   const record: SessionRecord = {
     id: randomUUID(),
     name: opts.name,
-    serverUrl: opts.serverUrl ?? 'http://localhost:3000',
+    // Use || so an empty-string serverUrl falls back to the default.
+    serverUrl: opts.serverUrl || 'http://localhost:3000',
     createdAt: new Date().toISOString(),
     lastPromptAt: null,
   };
@@ -71,12 +91,13 @@ export function loadSession(id: string): SessionRecord {
     throw new Error(`Session not found: ${id}`);
   }
   const raw = readFileSync(file, 'utf-8');
-  return JSON.parse(raw) as SessionRecord;
+  return parseSessionRecord(raw, id);
 }
 
 export function updateSession(record: SessionRecord): void {
   const dir = sessionDir();
-  ensureDir(dir);
+  // The session directory must already exist if the record was loaded from it.
+  // Write directly; no need for ensureDir on every update.
   writeFileSync(sessionPath(dir, record.id), JSON.stringify(record, null, 2), 'utf-8');
 }
 
@@ -96,7 +117,7 @@ export function listSessions(): SessionRecord[] {
     .filter((f) => f.endsWith('.json'))
     .flatMap((f) => {
       try {
-        return [JSON.parse(readFileSync(join(dir, f), 'utf-8')) as SessionRecord];
+        return [parseSessionRecord(readFileSync(join(dir, f), 'utf-8'), f)];
       } catch {
         return [];
       }
