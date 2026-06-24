@@ -3,6 +3,7 @@
  */
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
+import type { ToolPlugin } from '../lib/plugin.ts';
 import {
   IN_CLUSTER_CONTEXT,
   getContextNames,
@@ -78,3 +79,13 @@ export function makeListNamespaces(lockedNamespace?: string | null) {
 }
 
 export const listNamespaces = makeListNamespaces();
+
+export const listContextsPlugin: ToolPlugin = {
+  key: 'listContexts',
+  factory: () => listContexts,
+};
+
+export const listNamespacesPlugin: ToolPlugin = {
+  key: 'listNamespaces',
+  factory: (config) => makeListNamespaces(config.namespace?.locked),
+};

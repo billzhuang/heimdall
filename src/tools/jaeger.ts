@@ -8,6 +8,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runJaegerQuery, type JaegerConfig } from '../lib/jaeger.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 const DEFAULT_JAEGER_URL = 'http://jaeger-query.tracing:16686';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -96,3 +97,8 @@ export function makeJaegerQuery(
       runJaegerQuery({ service, operation, start, end, limit, minDuration, tags }, config),
   });
 }
+
+export const jaegerPlugin: ToolPlugin = {
+  key: 'jaegerQuery',
+  factory: (config, rules) => makeJaegerQuery(config.jaeger, rules),
+};

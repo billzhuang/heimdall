@@ -5,6 +5,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runHelm } from '../lib/helm.ts';
 import { BLOCKED_PREFIX } from '../lib/harness.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 export function makeHelmRelease(lockedNamespace?: string | null) {
   const lockdownNote = lockedNamespace
@@ -61,3 +62,8 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
 }
 
 export const helmRelease = makeHelmRelease();
+
+export const helmReleasePlugin: ToolPlugin = {
+  key: 'helmRelease',
+  factory: (config) => makeHelmRelease(config.namespace?.locked),
+};

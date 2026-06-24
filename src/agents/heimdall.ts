@@ -6,31 +6,32 @@
  * delegated to read-only specialist subagents.
  *
  * Which tools are enabled is controlled by `heimdall.config.yaml` (or the path
- * in `HEIMDALL_CONFIG`).  To add a new tool: add it to ALL_TOOLS here and add
- * a matching key to the config schema in src/lib/config.ts — TypeScript will
- * error at this call site if the two get out of sync.
+ * in `HEIMDALL_CONFIG`). Each tool is a self-contained ToolPlugin — to add a
+ * new tool, export a ToolPlugin from its src/tools/<name>.ts file, add it to
+ * TOOL_PLUGINS below, and add a matching key to the config schema in
+ * src/lib/config.ts.
  */
 import { createAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { initTelemetry, isTelemetryEnabled, recordToolCall } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
-import { makeKubectl } from '../tools/kubectl.ts';
-import { listContexts, makeListNamespaces } from '../tools/kubeconfig.ts';
-import { makeHelmRelease } from '../tools/helm.ts';
-import { makePrometheusQuery } from '../tools/prometheus.ts';
-import { makeAwsCli } from '../tools/aws.ts';
-import { makeTrivyScan } from '../tools/trivy.ts';
-import { makeKubecostQuery } from '../tools/kubecost.ts';
-import { makeLokiQuery } from '../tools/loki.ts';
-import { makeJaegerQuery } from '../tools/jaeger.ts';
-import { makeDatadogQuery } from '../tools/datadog.ts';
-import { makeNewRelicQuery } from '../tools/newrelic.ts';
-import { makeCdkQuery } from '../tools/cdk.ts';
+import { kubectlPlugin } from '../tools/kubectl.ts';
+import { listContextsPlugin, listNamespacesPlugin } from '../tools/kubeconfig.ts';
+import { helmReleasePlugin } from '../tools/helm.ts';
+import { prometheusPlugin } from '../tools/prometheus.ts';
+import { awsCliPlugin } from '../tools/aws.ts';
+import { trivyScanPlugin } from '../tools/trivy.ts';
+import { kubecostPlugin } from '../tools/kubecost.ts';
+import { lokiPlugin } from '../tools/loki.ts';
+import { jaegerPlugin } from '../tools/jaeger.ts';
+import { datadogPlugin } from '../tools/datadog.ts';
+import { newRelicPlugin } from '../tools/newrelic.ts';
+import { cdkPlugin } from '../tools/cdk.ts';
+import { buildToolRegistry, type ToolPlugin } from '../lib/plugin.ts';
 import { readFileSync } from 'node:fs';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
-import type { HeimdallConfig } from '../lib/config.ts';
 import { compileRules } from '../lib/regex-redact.ts';
 import { loadRunbooks } from '../lib/runbooks.ts';
 import { selectDiverseEntries, buildRagContext } from '../lib/rag.ts';
@@ -81,30 +82,32 @@ const ragContext = (() => {
   return buildRagContext(diverse);
 })();
 
-// Typed against the config schema keys so TypeScript enforces that every key in
-// HeimdallConfig['tools'] has a corresponding tool here — adding a config key
-// without adding the tool (or vice versa) is a compile-time error.
 const lockedNs = config.namespace?.locked;
 
-const ALL_TOOLS: Record<keyof HeimdallConfig['tools'], ToolDefinition> = {
-  kubectl: makeKubectl(config.audit, config.redactSecrets, regexRedactionRules, lockedNs),
-  listContexts,
-  listNamespaces: makeListNamespaces(lockedNs),
-  helmRelease: makeHelmRelease(lockedNs),
-  prometheusQuery: makePrometheusQuery(config.prometheus, regexRedactionRules),
-  awsCli: makeAwsCli({ audit: config.audit }, regexRedactionRules),
-  trivyScan: makeTrivyScan({ audit: config.audit }, regexRedactionRules),
-  kubecostQuery: makeKubecostQuery(config.kubecost, regexRedactionRules, lockedNs),
-  lokiQuery: makeLokiQuery(config.loki, regexRedactionRules, lockedNs),
-  jaegerQuery: makeJaegerQuery(config.jaeger, regexRedactionRules),
-  datadogQuery: makeDatadogQuery(config.datadog, regexRedactionRules),
-  newRelicQuery: makeNewRelicQuery(config.newRelic, regexRedactionRules),
-  cdkQuery: makeCdkQuery({ audit: config.audit }, regexRedactionRules),
-};
+/**
+ * Ordered list of all tool plugins. Each plugin is self-contained: it declares
+ * its config key and provides a factory that builds the ToolDefinition.
+ * Adding a new tool only requires exporting a ToolPlugin from its module and
+ * appending it here (plus a matching key in src/lib/config.ts).
+ */
+const TOOL_PLUGINS: ToolPlugin[] = [
+  kubectlPlugin,
+  listContextsPlugin,
+  listNamespacesPlugin,
+  helmReleasePlugin,
+  prometheusPlugin,
+  awsCliPlugin,
+  trivyScanPlugin,
+  kubecostPlugin,
+  lokiPlugin,
+  jaegerPlugin,
+  datadogPlugin,
+  newRelicPlugin,
+  cdkPlugin,
+];
 
-const enabledToolKeys = new Set(
-  (Object.keys(ALL_TOOLS) as ToolConfigKey[]).filter((key) => config.tools[key]),
-);
+const { allTools: ALL_TOOLS, enabledKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexRedactionRules);
+const enabledToolKeys = new Set(Array.from(enabledKeys) as ToolConfigKey[]);
 
 const telemetryEnabled = isTelemetryEnabled();
 
@@ -123,8 +126,8 @@ function wrapWithTiming(tool: ToolDefinition): ToolDefinition {
   }) as ToolDefinition;
 }
 
-const clusterTools = (Object.keys(ALL_TOOLS) as ToolConfigKey[])
-  .filter((key) => enabledToolKeys.has(key))
+const clusterTools = Object.keys(ALL_TOOLS)
+  .filter((key) => enabledToolKeys.has(key as ToolConfigKey))
   .map((key) => (telemetryEnabled ? wrapWithTiming(ALL_TOOLS[key]) : ALL_TOOLS[key]));
 
 if (clusterTools.length === 0) {

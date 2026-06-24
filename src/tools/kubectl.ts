@@ -5,6 +5,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runKubectl, type AuditConfig } from '../lib/kubectl.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean, regexRedactionRules?: CompiledRedactionRule[], lockedNamespace?: string | null) {
   const lockdownNote = lockedNamespace
@@ -39,3 +40,9 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean,
 }
 
 export const kubectl = makeKubectl();
+
+export const kubectlPlugin: ToolPlugin = {
+  key: 'kubectl',
+  factory: (config, rules) =>
+    makeKubectl(config.audit, config.redactSecrets, rules, config.namespace?.locked),
+};

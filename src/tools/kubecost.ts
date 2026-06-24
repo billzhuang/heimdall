@@ -5,6 +5,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runKubecostQuery, type KubecostConfig } from '../lib/kubecost.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 const DEFAULT_KUBECOST_URL = 'http://kubecost-cost-analyzer.kubecost:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -82,3 +83,8 @@ export function makeKubecostQuery(
       runKubecostQuery(endpoint, { window, aggregate, namespace, accumulate }, config),
   });
 }
+
+export const kubecostPlugin: ToolPlugin = {
+  key: 'kubecostQuery',
+  factory: (config, rules) => makeKubecostQuery(config.kubecost, rules, config.namespace?.locked),
+};

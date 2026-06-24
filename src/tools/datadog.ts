@@ -14,6 +14,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runDatadogQuery, type DatadogConfig } from '../lib/datadog.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 const DEFAULT_SITE = 'datadoghq.com';
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -123,3 +124,8 @@ export function makeDatadogQuery(
       runDatadogQuery({ queryType, query, from, to, limit, indexes, tags, monitorStatus }, config),
   });
 }
+
+export const datadogPlugin: ToolPlugin = {
+  key: 'datadogQuery',
+  factory: (config, rules) => makeDatadogQuery(config.datadog, rules),
+};

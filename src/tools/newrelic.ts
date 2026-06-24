@@ -13,6 +13,7 @@ import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { runNewRelicQuery, type NewRelicConfig } from '../lib/newrelic.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
+import type { ToolPlugin } from '../lib/plugin.ts';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -95,3 +96,8 @@ export function makeNewRelicQuery(
       runNewRelicQuery({ queryType, query, from, to, limit }, config),
   });
 }
+
+export const newRelicPlugin: ToolPlugin = {
+  key: 'newRelicQuery',
+  factory: (config, rules) => makeNewRelicQuery(config.newRelic, rules),
+};
