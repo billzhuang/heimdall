@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const original = await importOriginal<typeof import('node:fs/promises')>();
@@ -6,6 +6,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 });
 
 import { readFile, writeFile } from 'node:fs/promises';
+
+beforeEach(() => {
+  vi.resetAllMocks();
+});
+
 import {
   scoreResults,
   parseProposals,
@@ -202,16 +207,6 @@ describe('extractInstructionsSnippet', () => {
 describe('applyProposals', () => {
   const PATH = '/fake/instructions.ts';
 
-  beforeEach(() => {
-    vi.mocked(readFile).mockReset();
-    vi.mocked(writeFile).mockReset();
-  });
-
-  afterEach(() => {
-    vi.mocked(readFile).mockReset();
-    vi.mocked(writeFile).mockReset();
-  });
-
   it('applies a single matching patch and returns 1', async () => {
     vi.mocked(readFile).mockResolvedValueOnce('hello world' as never);
     vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
@@ -277,6 +272,7 @@ describe('applyProposals', () => {
     );
 
     expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(PATH, 'X Y Z', 'utf8');
   });
 });
 
@@ -286,10 +282,6 @@ describe('applyProposals', () => {
 
 describe('revertToSnapshot', () => {
   const PATH = '/fake/instructions.ts';
-
-  beforeEach(() => {
-    vi.mocked(writeFile).mockReset();
-  });
 
   it('writes the snapshot content to the given path', async () => {
     vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
@@ -306,10 +298,6 @@ describe('revertToSnapshot', () => {
 
 describe('snapshotInstructions', () => {
   const PATH = '/fake/instructions.ts';
-
-  beforeEach(() => {
-    vi.mocked(readFile).mockReset();
-  });
 
   it('returns the file content as a string', async () => {
     vi.mocked(readFile).mockResolvedValueOnce('snapshot content' as never);
