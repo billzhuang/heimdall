@@ -229,7 +229,7 @@ const OPENAPI_SPEC = {
 export function createServeApp(
   agentFn: (prompt: string, model: string) => Promise<string> = runAgentDiagnose,
   serveDefaultModel?: string,
-  apiKey?: string,
+  apiKey?: string | null,
 ): Hono {
   const app = new Hono();
 
