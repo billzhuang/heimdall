@@ -19,6 +19,7 @@
     "alert": "tsx src/alert-mode.ts",
     "schedule": "tsx src/schedule-mode.ts",
     "mcp": "tsx src/mcp-mode.ts",
+    "serve": "tsx src/serve-mode.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

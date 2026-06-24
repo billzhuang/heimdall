@@ -34,6 +34,7 @@ show_help() {
 Usage: heimdall -p <prompt> [--json]
        heimdall --watch
        heimdall mcp
+       heimdall serve [--port <n>] [--host <addr>]
        heimdall triage [-n <namespace>] [-A]
        heimdall schedule [--once]
        heimdall eval [--scenario <name>]
@@ -62,6 +63,9 @@ Options:
 
 Subcommands:
   mcp                   Start the MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, etc.
+  serve                 Start the HTTP REST API server (POST /api/diagnose, GET /api/health, GET /api/openapi.json)
+    --port <n>            TCP port to listen on (default: 3000; env: HEIMDALL_PORT)
+    --host <addr>         Bind address (default: 0.0.0.0; env: HEIMDALL_HOST)
   triage                Run a structured whole-cluster health sweep with severity-ranked findings
     -n, --namespace <ns>  Scope the sweep to a single namespace
     -A, --all-namespaces  Sweep all namespaces
@@ -121,6 +125,8 @@ PROMPT=""
 WATCH=false
 MCP=false
 MCP_ARGS=()
+SERVE=false
+SERVE_ARGS=()
 TRIAGE=false
 TRIAGE_ARGS=()
 SCHEDULE=false
@@ -143,6 +149,12 @@ while [[ $# -gt 0 ]]; do
       MCP=true
       shift
       MCP_ARGS=("$@")
+      break
+      ;;
+    serve)
+      SERVE=true
+      shift
+      SERVE_ARGS=("$@")
       break
       ;;
     triage)
@@ -323,6 +335,23 @@ if [[ "$MCP" == "true" ]]; then
     exec "$TSX" "$MCP_SOURCE" "${MCP_ARGS[@]}"
   else
     echo "Error: MCP mode not available." >&2
+    echo "  Production: run 'npm run build' first." >&2
+    echo "  Development: run 'npm install' to get tsx." >&2
+    exit 1
+  fi
+fi
+
+# --- Serve mode -----------------------------------------------------------
+if [[ "$SERVE" == "true" ]]; then
+  SERVE_COMPILED="${ROOT_DIR}/dist/serve-mode.mjs"
+  SERVE_SOURCE="${ROOT_DIR}/src/serve-mode.ts"
+
+  if [[ -f "$SERVE_COMPILED" ]]; then
+    exec node "$SERVE_COMPILED" "${SERVE_ARGS[@]}"
+  elif [[ -x "$TSX" ]] && [[ -f "$SERVE_SOURCE" ]]; then
+    exec "$TSX" "$SERVE_SOURCE" "${SERVE_ARGS[@]}"
+  else
+    echo "Error: serve mode not available." >&2
     echo "  Production: run 'npm run build' first." >&2
     echo "  Development: run 'npm install' to get tsx." >&2
     exit 1

@@ -298,6 +298,17 @@ const TelemetrySchema = v.nullish(
   { enabled: false },
 );
 
+// HTTP server config — used by `heimdall serve` mode.
+const ServerSchema = v.nullish(
+  v.object({
+    // TCP port to listen on (default 3000). Override with HEIMDALL_PORT env var.
+    port: v.nullish(v.number(), 3000),
+    // Bind address (default '0.0.0.0' — all interfaces). Override with HEIMDALL_HOST env var.
+    host: v.nullish(v.string(), '0.0.0.0'),
+  }),
+  { port: 3000, host: '0.0.0.0' },
+);
+
 const HeimdallConfigSchema = v.object({
   tools: ToolsSchema,
   audit: AuditSchema,
@@ -327,6 +338,8 @@ const HeimdallConfigSchema = v.object({
   slos: SlosSchema,
   // Performance telemetry: token usage, cache hit rate, tool-call latency (disabled by default).
   telemetry: TelemetrySchema,
+  // HTTP server settings for `heimdall serve` mode (disabled by default; port 3000).
+  server: ServerSchema,
 });
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
