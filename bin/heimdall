@@ -70,7 +70,8 @@ Subcommands:
   session               Manage durable multi-turn debugging sessions (requires a running Flue server)
     start                 Create a new session; prints the session ID
       --name <label>        Human-readable label for the session
-      --server <url>        Flue server URL (default: http://localhost:3000; env: HEIMDALL_SERVER)
+      --server <url>        Flue server URL (default: http://localhost:3583; env: HEIMDALL_SERVER)
+                              Start the server with: flue dev --target node (port 3583)
     prompt "<text>"       Send a follow-up message to an existing session
       --session <id>        Session ID (required)
     list                  List all local session handles

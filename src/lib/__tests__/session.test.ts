@@ -38,7 +38,7 @@ describe('createSession', () => {
   it('returns a record with a unique id and default server URL', () => {
     const s = createSession({});
     expect(s.id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(s.serverUrl).toBe('http://localhost:3000');
+    expect(s.serverUrl).toBe('http://localhost:3583');
     expect(s.lastPromptAt).toBeNull();
     expect(s.createdAt).toBeTruthy();
   });

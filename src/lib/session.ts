@@ -76,7 +76,7 @@ export function createSession(opts: {
     id: randomUUID(),
     name: opts.name,
     // Use || so an empty-string serverUrl falls back to the default.
-    serverUrl: opts.serverUrl || 'http://localhost:3000',
+    serverUrl: opts.serverUrl || 'http://localhost:3583',
     createdAt: new Date().toISOString(),
     lastPromptAt: null,
   };

@@ -60,7 +60,8 @@ Subcommands:
 
 Options:
   --name <label>   Human-readable label for the session (start only).
-  --server <url>   Flue server base URL (default: http://localhost:3000 or HEIMDALL_SERVER).
+  --server <url>   Flue server base URL (default: http://localhost:3583 or HEIMDALL_SERVER).
+                   Run: flue dev --target node (or npm run dev) to start the local server.
   --session <id>   Session ID (prompt/info/end; can also be the first positional after subcommand).
   -h, --help       Show this help message.
 
@@ -79,7 +80,7 @@ function cmdStart(args: string[]): void {
   let name: string | undefined;
   // Use || so an empty-string env var falls back to the default.
   let serverUrl: string =
-    process.env['HEIMDALL_SERVER'] || 'http://localhost:3000';
+    process.env['HEIMDALL_SERVER'] || 'http://localhost:3583';
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
