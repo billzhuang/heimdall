@@ -83,6 +83,7 @@ describe('SUBAGENT_INSTRUCTIONS', () => {
       'aws-resource-analyzer',
       'capi-investigator',
       'cdk-investigator',
+      'certificate-inspector',
       'cost-analyzer',
       'crashloop-analyzer',
       'datadog-investigator',
