@@ -12,12 +12,14 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { makeTruncate } from './output-truncation.ts';
 
 const execFileAsync = promisify(execFile);
 
 const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
 const MAX_RESULT_CHARS = 100_000;
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with -n <namespace> or a specific release name');
 
 export const ALLOWED_HELM_ACTIONS = ['list', 'status', 'get'] as const;
 export type HelmAction = (typeof ALLOWED_HELM_ACTIONS)[number];
@@ -30,15 +32,6 @@ export interface RunHelmOptions {
   namespace?: string;
   getType?: HelmGetType;
   allNamespaces?: boolean;
-}
-
-/** Cap very large output so a single read cannot blow past the model's context. */
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    '\n\n[output truncated — narrow the query with -n <namespace> or a specific release name]'
-  );
 }
 
 /**

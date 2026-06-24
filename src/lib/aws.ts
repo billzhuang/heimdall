@@ -10,6 +10,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateAwsCommand } from './aws-safety.ts';
+import { tokenizeShellArgs } from './tokenizer.ts';
+import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -43,17 +45,9 @@ export function detectAwsAuth(): AwsAuthMethod {
 }
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 20_000;
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with --query or --filters');
 
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
-
-/** Cap large output so a single read can't blow past the model's context. */
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    `\n\n[output truncated at ${MAX_RESULT_CHARS} characters — narrow the query with --query or --filters]`
-  );
-}
 
 export interface RunAwsCliOptions {
   /** Audit logging config. When enabled, a JSON line is written for every call. */
@@ -63,58 +57,11 @@ export interface RunAwsCliOptions {
 }
 
 /**
- * Tokenize AWS CLI args similarly to how kubectl args are tokenized.
- * The leading `aws` token is stripped (if present) — callers pass only args.
+ * Tokenize AWS CLI args. The leading `aws` token is stripped (if present) —
+ * callers can pass either `"aws ec2 describe-instances"` or `"ec2 describe-instances"`.
  */
 export function tokenizeAwsArgs(input: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-  let hasToken = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-
-    if (inSingle) {
-      if (ch === "'") inSingle = false;
-      else current += ch;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"') inDouble = false;
-      else if (ch === '\\' && i + 1 < input.length && (input[i + 1] === '"' || input[i + 1] === '\\')) {
-        current += input[++i];
-      } else current += ch;
-      continue;
-    }
-
-    if (ch === "'") {
-      inSingle = true;
-      hasToken = true;
-    } else if (ch === '"') {
-      inDouble = true;
-      hasToken = true;
-    } else if (ch === '\\' && i + 1 < input.length) {
-      current += input[++i];
-      hasToken = true;
-    } else if (/\s/.test(ch)) {
-      if (hasToken) {
-        tokens.push(current);
-        current = '';
-        hasToken = false;
-      }
-    } else {
-      current += ch;
-      hasToken = true;
-    }
-  }
-  if (hasToken) tokens.push(current);
-
-  if (tokens.length > 0 && tokens[0].toLowerCase() === 'aws') {
-    tokens.shift();
-  }
-  return tokens;
+  return tokenizeShellArgs(input, 'aws');
 }
 
 /**

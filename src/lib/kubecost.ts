@@ -7,6 +7,7 @@
  * model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import { makeTruncate } from './output-truncation.ts';
 
 export interface KubecostConfig {
   url: string;
@@ -17,14 +18,7 @@ export interface KubecostConfig {
 }
 
 const MAX_RESULT_CHARS = 20_000;
-
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    '\n\n[Output truncated — use a shorter window, fewer namespaces, or a coarser aggregate]'
-  );
-}
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a shorter window, fewer namespaces, or a coarser aggregate');
 
 export type KubecostEndpoint = 'allocation' | 'assets';
 

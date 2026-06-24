@@ -290,6 +290,6 @@ describe('runNewRelicQuery — truncation', () => {
       BASE_CONFIG,
     );
     expect(result.length).toBeLessThan(25_000);
-    expect(result).toContain('[Output truncated');
+    expect(result).toContain('[output truncated');
   });
 });

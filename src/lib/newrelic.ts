@@ -11,6 +11,7 @@
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { resolveTimeISO } from './datadog.ts';
+import { makeTruncate } from './output-truncation.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -47,14 +48,7 @@ const NERDGRAPH_URL = 'https://api.newrelic.com/graphql';
 const MAX_RESULT_CHARS = 20_000;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 2_000;
-
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    '\n\n[Output truncated — use a narrower time range, smaller limit, or more specific query]'
-  );
-}
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific query');
 
 /** Resolve a Heimdall-style time expression to ISO8601 for NRQL SINCE/UNTIL clauses. */
 export const resolveNrqlTime = resolveTimeISO;
