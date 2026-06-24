@@ -66,7 +66,7 @@ Subcommands:
   mcp                   Start the MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, etc.
   serve                 Start the HTTP REST API server (POST /api/diagnose, GET /api/health, GET /api/openapi.json)
     --port <n>            TCP port to listen on (default: 3000; env: HEIMDALL_PORT)
-    --host <addr>         Bind address (default: 0.0.0.0; env: HEIMDALL_HOST)
+    --host <addr>         Bind address (default: 127.0.0.1; env: HEIMDALL_HOST)
   session               Manage durable multi-turn debugging sessions (requires a running Flue server)
     start                 Create a new session; prints the session ID
       --name <label>        Human-readable label for the session

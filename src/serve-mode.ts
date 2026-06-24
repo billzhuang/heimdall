@@ -222,12 +222,30 @@ const OPENAPI_SPEC = {
  * @param agentFn - Injectable agent runner; defaults to runAgentDiagnose.
  * @param serveDefaultModel - Model to use when the request omits "model".
  *   Must be provided when --model is passed at CLI startup since DEFAULT_MODEL
- *   is captured at module-load time and process.env mutations have no effect. */
+ *   is captured at module-load time and process.env mutations have no effect.
+ * @param apiKey - Optional Bearer token. When provided all endpoints except
+ *   GET /api/health require an `Authorization: Bearer <apiKey>` header. */
 export function createServeApp(
   agentFn: (prompt: string, model: string) => Promise<string> = runAgentDiagnose,
   serveDefaultModel?: string,
+  apiKey?: string,
 ): Hono {
   const app = new Hono();
+
+  // Auth middleware — active only when an API key is configured.
+  // GET /api/health is always public so Kubernetes liveness probes work without credentials.
+  if (apiKey) {
+    app.use('*', async (c, next) => {
+      if (c.req.path === '/api/health') {
+        return next();
+      }
+      const auth = c.req.header('Authorization');
+      if (!auth || auth !== `Bearer ${apiKey}`) {
+        return c.json({ error: 'Unauthorized' }, 401);
+      }
+      return next();
+    });
+  }
 
   app.get('/api/health', (c) =>
     c.json({ status: 'ok', service: 'heimdall' }),
@@ -371,13 +389,21 @@ Examples:
     process.env['HEIMDALL_HOST'] ??
     config.server?.host ??
     '127.0.0.1';
+  // HEIMDALL_API_KEY env var takes precedence over config file value.
+  const apiKey =
+    process.env['HEIMDALL_API_KEY'] ?? config.server?.apiKey ?? undefined;
 
-  const app = createServeApp(runAgentDiagnose, modelArg);
+  const app = createServeApp(runAgentDiagnose, modelArg, apiKey);
 
   serve({ fetch: app.fetch, port, hostname: host }, (info) => {
     process.stderr.write(
       `[heimdall-serve] Listening on http://${info.address}:${info.port}\n`,
     );
+    if (apiKey) {
+      process.stderr.write('[heimdall-serve] Authentication: Bearer token required (HEIMDALL_API_KEY)\n');
+    } else {
+      process.stderr.write('[heimdall-serve] Authentication: none (set HEIMDALL_API_KEY to enable)\n');
+    }
     process.stderr.write('[heimdall-serve] Endpoints:\n');
     process.stderr.write(
       `  POST http://${info.address}:${info.port}/api/diagnose\n`,
