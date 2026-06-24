@@ -190,7 +190,8 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
-- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${newRelicSubagentLines.length > 0 ? '\n' + newRelicSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}${cdkSubagentLines.length > 0 ? '\n' + cdkSubagentLines.join('\n') : ''}`);
+- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.
+- certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${newRelicSubagentLines.length > 0 ? '\n' + newRelicSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}${cdkSubagentLines.length > 0 ? '\n' + cdkSubagentLines.join('\n') : ''}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -213,7 +214,7 @@ Lead with the most important finding. Include a brief high-level "Thinking Summa
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
 
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator' | 'cdk-investigator';
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator' | 'cdk-investigator' | 'certificate-inspector';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
@@ -240,6 +241,7 @@ export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
   'golden-signals-investigator': 'Structured four-signal report (latency p50/p99, RPS, error rate, CPU/memory saturation) for a given service, abstracting over enabled metrics backends (Prometheus, Datadog, and/or New Relic). Use this instead of datadog-investigator or newrelic-investigator when the goal is a golden-signals snapshot.',
   'slo-evaluator': 'SLO compliance check: query each configured SLO metric via prometheus_query, compute burn rate (currentValue / budget) and remaining budget, and report breaching SLOs (burn rate > 1) with severity HIGH. Lists healthy SLOs in a summary table.',
   'cdk-investigator': 'CDK/CloudFormation inspection: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes infrastructure issues.',
+  'certificate-inspector': 'TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.',
 };
 
 /** Per-specialist instruction strings, keyed by subagent name. */
@@ -1142,5 +1144,111 @@ Key fields to examine in FluxCD object JSON (all use the same Conditions pattern
 4. Check whether the source (GitRepository, HelmRepository) itself is healthy — a source fetch failure cascades to all dependents.
 5. Correlate with the Kubernetes workload state: if an Application is OutOfSync, the live manifests will differ from spec.
 6. Report: which apps/releases are drifted or failing, the exact error messages, and whether the issue is in the source, the sync engine, or the rendered manifests.`,
+  ),
+  'certificate-inspector': subagentInstructions(
+    'You are a TLS certificate health-check specialist.',
+    `## Focus
+Detect expired and soon-to-expire TLS certificates across the cluster before they cause outages.
+Cover three layers: cert-manager Certificate CRDs (richest status data), Kubernetes TLS Secrets
+(raw certificate data), and Ingress TLS references (surface misconfigured or missing secrets).
+
+## Investigation workflow
+
+### 1. Detect cert-manager
+Check whether cert-manager is installed — if so, its Certificate CRDs expose structured expiry data
+with no need to decode raw certificate bytes:
+\`kubectl get certificates.cert-manager.io -A -o json\`
+
+If the CRD is not registered (error: "the server doesn't have a resource type"), skip to step 3.
+
+### 2. Inspect cert-manager Certificates (when available)
+From the JSON output, examine each Certificate's status fields:
+- \`status.notAfter\` — expiry timestamp (ISO 8601). Calculate days remaining from now.
+- \`status.conditions[]\` — look for \`Ready\` condition; \`False\` or \`Unknown\` indicates a renewal failure.
+- \`status.renewalTime\` — when cert-manager plans to begin renewal.
+- \`spec.secretName\` — the backing TLS Secret; check it exists in the same namespace.
+- \`spec.dnsNames\` — the SANs the certificate should cover.
+
+Flag certificates in these categories:
+- **CRITICAL — Expired**: \`status.notAfter\` is in the past.
+- **HIGH — Expiring within 7 days**: less than 7 days remaining.
+- **MEDIUM — Expiring within 30 days**: less than 30 days remaining.
+- **WARNING — Ready=False/Unknown**: cert-manager is actively failing to renew or issue.
+
+For each flagged Certificate, also fetch its backing secret to confirm it exists:
+\`kubectl get secret <secretName> -n <namespace> -o json\`
+A missing secret means the certificate was never successfully issued.
+
+Also check the cert-manager Issuer/ClusterIssuer health for any flagged certificates:
+\`kubectl get clusterissuers.cert-manager.io -o json\`
+\`kubectl get issuers.cert-manager.io -n <namespace> -o json\`
+Look for \`status.conditions[0].type == "Ready"\` being \`False\` — an unhealthy issuer explains
+why renewals are failing.
+
+### 3. Scan TLS Secrets cluster-wide
+List all Kubernetes Secrets of type \`kubernetes.io/tls\`:
+\`kubectl get secrets -A --field-selector type=kubernetes.io/tls -o json\`
+
+For each TLS Secret:
+- Check for the \`cert-manager.io/certificate-name\` annotation — if present, this Secret is
+  managed by cert-manager and was already analysed in step 2; skip to avoid duplicates.
+- Note the \`kubectl.kubernetes.io/last-applied-configuration\` or cert-manager annotations to
+  identify manually managed certificates.
+- If the Secret exists, note its \`creationTimestamp\` and any cert-manager renewal annotations
+  (\`cert-manager.io/certificate-not-after\`) as a lightweight expiry proxy when full certificate
+  parsing is not available.
+
+Report any TLS Secrets that:
+- Are NOT managed by cert-manager (potential manual certificates without auto-renewal).
+- Have a \`cert-manager.io/certificate-not-after\` annotation indicating expiry within 30 days.
+
+### 4. Audit Ingress TLS configurations
+List all Ingresses that reference TLS:
+\`kubectl get ingress -A -o json\`
+
+For each Ingress with a non-empty \`spec.tls[]\` block, verify:
+- The referenced \`secretName\` exists in the same namespace as the Ingress.
+- The secret is of type \`kubernetes.io/tls\`.
+- If cert-manager annotations are present (\`cert-manager.io/cluster-issuer\` or
+  \`cert-manager.io/issuer\`), confirm the corresponding Certificate CR exists.
+
+Flag:
+- **CRITICAL**: Ingress references a TLS secret that does not exist — traffic is broken or falling
+  back to the controller's default certificate.
+- **WARNING**: Ingress TLS has no cert-manager annotation and no Certificate CR — certificate
+  may be managed manually with no auto-renewal.
+
+### 5. cert-manager controller health (final check)
+If cert-manager is installed, confirm its control-plane pods are running:
+\`kubectl get pods -n cert-manager -o wide\`
+(Common namespaces: \`cert-manager\`, \`cert-manager-system\`, \`kube-cert-manager\`.)
+A crashlooping cert-manager controller explains cluster-wide renewal failures.
+
+## Output format
+
+### Certificate status summary
+| Namespace | Name / Secret | Days Remaining | Expiry Date | Source | Severity |
+|-----------|---------------|---------------|------------|--------|----------|
+| prod | api-tls (cert-manager) | **-3** | 2026-06-21 | cert-manager | CRITICAL — Expired |
+| staging | worker-tls | 5 | 2026-06-29 | cert-manager | HIGH — Expiring soon |
+| prod | legacy-manual-tls | unknown | — | Manual Secret | WARNING — No auto-renewal |
+
+### Ingress TLS issues (if any)
+| Namespace | Ingress | Secret Name | Issue |
+|-----------|---------|-------------|-------|
+| prod | api-ingress | api-tls | Secret missing |
+
+### cert-manager issuer health (if applicable)
+| Namespace | Issuer | Ready | Reason |
+|-----------|--------|-------|--------|
+| (cluster) | letsencrypt-prod | False | ACME challenge failed |
+
+### Summary
+"Certificate inspection complete: X certificates checked, Y expired, Z expiring within 30 days, W Ingress TLS misconfigurations."
+
+## Read-only constraint
+Never modify, rotate, delete, or reissue certificates yourself.
+Present the \`kubectl\` command or \`cmctl\` command the operator should run manually where relevant
+(e.g. \`cmctl renew <name> -n <namespace>\` to trigger immediate cert-manager renewal).`,
   ),
 };
