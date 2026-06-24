@@ -13,6 +13,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateTrivyCommand } from './trivy-safety.ts';
+import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -23,17 +24,9 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const MAX_BUFFER_BYTES = 32 * 1024 * 1024; // 32 MiB — JSON reports can be large
 const MAX_RESULT_CHARS = 50_000;
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'use --severity CRITICAL,HIGH or scan a more specific image');
 
 export const NO_OUTPUT_MESSAGE = '(trivy produced no output)';
-
-/** Cap large output so a single scan cannot blow past the model's context. */
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    `\n\n[output truncated at ${MAX_RESULT_CHARS} characters — use --severity CRITICAL,HIGH or scan a more specific image]`
-  );
-}
 
 export interface RunTrivyOptions {
   /** Audit logging config. When enabled, a JSON line is written for every call. */

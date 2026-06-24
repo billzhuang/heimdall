@@ -10,6 +10,7 @@
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { parseDurationMs } from './duration.ts';
+import { makeTruncate } from './output-truncation.ts';
 
 export interface JaegerConfig {
   url: string;
@@ -20,14 +21,7 @@ export interface JaegerConfig {
 const MAX_RESULT_CHARS = 20_000;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
-
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    '\n\n[Output truncated — use a smaller limit, narrower time range, or more specific service/operation filter]'
-  );
-}
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a smaller limit, narrower time range, or more specific service/operation filter');
 
 /**
  * Resolve a time expression to Unix microseconds for the Jaeger /api/traces API.

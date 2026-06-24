@@ -369,7 +369,7 @@ describe('runLokiQuery — output truncation', () => {
 
     const result = await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
     expect(result.length).toBeLessThan(25_000);
-    expect(result).toContain('[Output truncated');
+    expect(result).toContain('[output truncated');
   });
 
   it('does not truncate responses under the limit', async () => {
@@ -378,6 +378,6 @@ describe('runLokiQuery — output truncation', () => {
 
     const result = await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
     expect(result).toBe(small);
-    expect(result).not.toContain('[Output truncated');
+    expect(result).not.toContain('[output truncated');
   });
 });

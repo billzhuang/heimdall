@@ -7,6 +7,7 @@
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { parseDurationMs } from './duration.ts';
+import { makeTruncate } from './output-truncation.ts';
 
 export interface LokiConfig {
   url: string;
@@ -19,15 +20,7 @@ export interface LokiConfig {
 
 const MAX_RESULT_CHARS = 20_000;
 const MAX_LIMIT = 5_000;
-
-/** Truncate output to avoid blowing the model's context window. */
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    '\n\n[Output truncated — use a narrower time range, smaller limit, or more specific LogQL selector]'
-  );
-}
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific LogQL selector');
 
 /**
  * Resolve a time expression to an ISO8601 string for the Loki API.

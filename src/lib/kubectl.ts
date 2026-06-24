@@ -19,6 +19,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
+import { tokenizeShellArgs } from './tokenizer.ts';
+import { makeTruncate } from './output-truncation.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { recordCacheHit, recordCacheMiss } from './telemetry.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
@@ -34,6 +36,7 @@ const CACHE_DIR_NAME = 'heimdall-kubectl-cache';
 const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 100_000;
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with a selector, field-selector, or jsonpath');
 
 /** In-process cache for parsed eval mock files — avoids redundant disk I/O. */
 const evalMockCache = new Map<string, Record<string, string>>();
@@ -87,54 +90,7 @@ function getCacheDir(): string {
  * dropped — callers pass only the arguments.
  */
 export function tokenizeArgs(input: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-  let hasToken = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-
-    if (inSingle) {
-      if (ch === "'") inSingle = false;
-      else current += ch;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"') inDouble = false;
-      else if (ch === '\\' && i + 1 < input.length && (input[i + 1] === '"' || input[i + 1] === '\\')) {
-        current += input[++i];
-      } else current += ch;
-      continue;
-    }
-
-    if (ch === "'") {
-      inSingle = true;
-      hasToken = true;
-    } else if (ch === '"') {
-      inDouble = true;
-      hasToken = true;
-    } else if (ch === '\\' && i + 1 < input.length) {
-      current += input[++i];
-      hasToken = true;
-    } else if (/\s/.test(ch)) {
-      if (hasToken) {
-        tokens.push(current);
-        current = '';
-        hasToken = false;
-      }
-    } else {
-      current += ch;
-      hasToken = true;
-    }
-  }
-  if (hasToken) tokens.push(current);
-
-  if (tokens.length > 0 && tokens[0].toLowerCase() === 'kubectl') {
-    tokens.shift();
-  }
-  return tokens;
+  return tokenizeShellArgs(input, 'kubectl');
 }
 
 /** True when the argv requests JSON output (`-o json` / `-ojson` / `--output=json`). */
@@ -209,15 +165,6 @@ export function matchMock(mocks: Record<string, string>, argv: string[]): string
     }
   }
   return bestKey !== null ? mocks[bestKey] : null;
-}
-
-/** Cap very large output so a single read can't blow past the model's context. */
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    `\n\n[output truncated at ${MAX_RESULT_CHARS} characters — narrow the query with a selector, field-selector, or jsonpath]`
-  );
 }
 
 /** Return the cached contents if the file exists and is younger than the TTL, else null. */

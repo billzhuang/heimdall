@@ -6,6 +6,7 @@
  * model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import { makeTruncate } from './output-truncation.ts';
 
 export interface PrometheusConfig {
   url: string;
@@ -15,14 +16,7 @@ export interface PrometheusConfig {
 }
 
 const MAX_RESULT_CHARS = 20_000;
-
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    '\n\n[Output truncated — use a shorter time range, coarser step, or more specific selector]'
-  );
-}
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a shorter time range, coarser step, or more specific selector');
 
 export interface PrometheusQueryParams {
   query: string;

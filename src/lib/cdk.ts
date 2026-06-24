@@ -10,6 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
+import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
@@ -19,16 +20,9 @@ const execFileAsync = promisify(execFile);
 const EXEC_TIMEOUT_MS = 60_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 20_000;
+const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with stack selectors or --filter');
 
 export const NO_OUTPUT_MESSAGE = '(command produced no output)';
-
-function truncate(text: string): string {
-  if (text.length <= MAX_RESULT_CHARS) return text;
-  return (
-    text.slice(0, MAX_RESULT_CHARS) +
-    `\n\n[output truncated at ${MAX_RESULT_CHARS} characters — narrow the query with stack selectors or --filter]`
-  );
-}
 
 export interface RunCdkOptions {
   audit?: AuditConfig | null;
