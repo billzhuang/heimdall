@@ -28,7 +28,7 @@ describe('callClaudeCli', () => {
   it('calls claude with -p and the prompt', async () => {
     stubExecFile((_cmd, _args, _opts, cb) => cb(null, { stdout: 'hello world', stderr: '' }));
 
-    const result = await callClaudeCli('test prompt');
+    await callClaudeCli('test prompt');
 
     const mock = execFile as unknown as ReturnType<typeof vi.fn>;
     expect(mock).toHaveBeenCalledOnce();

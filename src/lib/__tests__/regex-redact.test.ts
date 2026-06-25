@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { compileRules, applyRedaction, type RedactionRule } from '../regex-redact.ts';
+import { compileRules, applyRedaction } from '../regex-redact.ts';
 
 // ---------------------------------------------------------------------------
 // compileRules

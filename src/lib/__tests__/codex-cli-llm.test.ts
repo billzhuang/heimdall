@@ -28,7 +28,7 @@ describe('callCodexCli', () => {
   it('calls codex with -q and the prompt', async () => {
     stubExecFile((_cmd, _args, _opts, cb) => cb(null, { stdout: 'hello world', stderr: '' }));
 
-    const result = await callCodexCli('test prompt');
+    await callCodexCli('test prompt');
 
     const mock = execFile as unknown as ReturnType<typeof vi.fn>;
     expect(mock).toHaveBeenCalledOnce();
