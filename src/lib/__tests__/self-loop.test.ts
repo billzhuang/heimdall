@@ -1,9 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...original, readFile: vi.fn(), writeFile: vi.fn() };
+});
+
+import { readFile, writeFile } from 'node:fs/promises';
+
+beforeEach(() => {
+  vi.resetAllMocks();
+});
+
 import {
   scoreResults,
   parseProposals,
   buildAutoReflectionPrompt,
   extractInstructionsSnippet,
+  applyProposals,
+  revertToSnapshot,
+  snapshotInstructions,
 } from '../self-loop.ts';
 
 describe('scoreResults', () => {
@@ -182,5 +197,114 @@ describe('extractInstructionsSnippet', () => {
     const content = prefix + 'SUBAGENT_INSTRUCTIONS = `something important`' + 'b'.repeat(200);
     const snippet = extractInstructionsSnippet(content);
     expect(snippet).toContain('SUBAGENT_INSTRUCTIONS');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyProposals
+// ---------------------------------------------------------------------------
+
+describe('applyProposals', () => {
+  const PATH = '/fake/instructions.ts';
+
+  it('applies a single matching patch and returns 1', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('hello world' as never);
+    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+
+    const count = await applyProposals([{ find: 'hello', replace: 'goodbye' }], PATH);
+
+    expect(count).toBe(1);
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(PATH, 'goodbye world', 'utf8');
+  });
+
+  it('skips patch when find string is not present (0 occurrences)', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('hello world' as never);
+
+    const count = await applyProposals([{ find: 'missing', replace: 'x' }], PATH);
+
+    expect(count).toBe(0);
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+  });
+
+  it('skips patch when find string appears more than once (ambiguous)', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('foo foo bar' as never);
+
+    const count = await applyProposals([{ find: 'foo', replace: 'baz' }], PATH);
+
+    expect(count).toBe(0);
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+  });
+
+  it('applies multiple patches when each matches exactly once', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('alpha beta gamma' as never);
+    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+
+    const patches = [
+      { find: 'alpha', replace: 'A' },
+      { find: 'beta', replace: 'B' },
+    ];
+    const count = await applyProposals(patches, PATH);
+
+    expect(count).toBe(2);
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(PATH, 'A B gamma', 'utf8');
+  });
+
+  it('does not write the file when no patches are applied', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('unchanged content' as never);
+
+    const count = await applyProposals([], PATH);
+
+    expect(count).toBe(0);
+    expect(vi.mocked(writeFile)).not.toHaveBeenCalled();
+  });
+
+  it('writes the file exactly once even when multiple patches are applied', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('a b c' as never);
+    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+
+    await applyProposals(
+      [
+        { find: 'a', replace: 'X' },
+        { find: 'b', replace: 'Y' },
+        { find: 'c', replace: 'Z' },
+      ],
+      PATH,
+    );
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(PATH, 'X Y Z', 'utf8');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// revertToSnapshot
+// ---------------------------------------------------------------------------
+
+describe('revertToSnapshot', () => {
+  const PATH = '/fake/instructions.ts';
+
+  it('writes the snapshot content to the given path', async () => {
+    vi.mocked(writeFile).mockResolvedValueOnce(undefined as never);
+
+    await revertToSnapshot('original content', PATH);
+
+    expect(vi.mocked(writeFile)).toHaveBeenCalledWith(PATH, 'original content', 'utf8');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// snapshotInstructions
+// ---------------------------------------------------------------------------
+
+describe('snapshotInstructions', () => {
+  const PATH = '/fake/instructions.ts';
+
+  it('returns the file content as a string', async () => {
+    vi.mocked(readFile).mockResolvedValueOnce('snapshot content' as never);
+
+    const result = await snapshotInstructions(PATH);
+
+    expect(result).toBe('snapshot content');
+    expect(vi.mocked(readFile)).toHaveBeenCalledWith(PATH, 'utf8');
   });
 });
