@@ -394,6 +394,18 @@ describe('runDatadogQuery — monitors', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDatadogQuery — HTTP errors', () => {
+  const mockFetchTextRejection = () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        text: () => Promise.reject(new Error('read failed')),
+      }),
+    );
+  };
+
   it('returns a descriptive message on non-2xx metrics response', async () => {
     mockFetch('{"errors":["Invalid query"]}', 400);
 
@@ -419,6 +431,54 @@ describe('runDatadogQuery — HTTP errors', () => {
 
     const result = await runDatadogQuery({ queryType: 'logs', query: 'error' }, BASE_CONFIG);
     expect(result).toMatch(/403/);
+  });
+
+  it('returns a descriptive message on non-2xx events response', async () => {
+    mockFetch('Unauthorized', 401);
+
+    const result = await runDatadogQuery({ queryType: 'events', from: '-1h' }, BASE_CONFIG);
+    expect(result).toMatch(/401/);
+    expect(result).toContain('Unauthorized');
+  });
+
+  it('returns a descriptive message on non-2xx monitors response', async () => {
+    mockFetch('Forbidden', 403);
+
+    const result = await runDatadogQuery({ queryType: 'monitors' }, BASE_CONFIG);
+    expect(result).toMatch(/403/);
+    expect(result).toContain('Forbidden');
+  });
+
+  it('handles response.text() rejection gracefully on metrics error path', async () => {
+    mockFetchTextRejection();
+
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/503/);
+    expect(result).not.toContain('read failed');
+  });
+
+  it('handles response.text() rejection gracefully on logs error path', async () => {
+    mockFetchTextRejection();
+
+    const result = await runDatadogQuery({ queryType: 'logs', query: 'error' }, BASE_CONFIG);
+    expect(result).toMatch(/503/);
+  });
+
+  it('handles response.text() rejection gracefully on events error path', async () => {
+    mockFetchTextRejection();
+
+    const result = await runDatadogQuery({ queryType: 'events', from: '-1h' }, BASE_CONFIG);
+    expect(result).toMatch(/503/);
+  });
+
+  it('handles response.text() rejection gracefully on monitors error path', async () => {
+    mockFetchTextRejection();
+
+    const result = await runDatadogQuery({ queryType: 'monitors' }, BASE_CONFIG);
+    expect(result).toMatch(/503/);
   });
 });
 
@@ -507,5 +567,117 @@ describe('runDatadogQuery — redaction', () => {
     );
     expect(result).not.toContain('supersecret-abc123');
     expect(result).toContain('[REDACTED:test-token]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Missing credentials
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — missing credentials', () => {
+  it('returns an error when apiKey is missing', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      { ...BASE_CONFIG, apiKey: '' },
+    );
+    expect(result).toMatch(/api key/i);
+    expect(result).toMatch(/not configured/i);
+  });
+
+  it('returns an error when appKey is missing', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      { ...BASE_CONFIG, appKey: '' },
+    );
+    expect(result).toMatch(/application key/i);
+    expect(result).toMatch(/not configured/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unparseable time expressions
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — unparseable time expressions', () => {
+  it('returns an error for unparseable "from" time in metrics query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}', from: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "from" time/i);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns an error for unparseable "to" time in metrics query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/i);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns an error for unparseable "from" time in logs query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'logs', query: 'error', from: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "from" time/i);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns an error for unparseable "to" time in logs query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'logs', query: 'error', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/i);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns an error for unparseable "from" time in events query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'events', from: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "from" time/i);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns an error for unparseable "to" time in events query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'events', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/i);
+    expect(result).toContain('-5y');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// monitors — monitorStatus edge cases
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — monitors monitorStatus edge cases', () => {
+  it('returns raw text when response body is not a JSON array', async () => {
+    const payload = '{"status":"ok"}';
+    mockFetch(payload);
+
+    const result = await runDatadogQuery(
+      { queryType: 'monitors', monitorStatus: 'Alert' },
+      BASE_CONFIG,
+    );
+    expect(result).toBe(payload);
+  });
+
+  it('returns raw text when response body is invalid JSON', async () => {
+    const payload = 'not json at all';
+    mockFetch(payload);
+
+    const result = await runDatadogQuery(
+      { queryType: 'monitors', monitorStatus: 'Alert' },
+      BASE_CONFIG,
+    );
+    expect(result).toBe(payload);
   });
 });
