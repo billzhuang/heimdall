@@ -187,3 +187,58 @@ describe('sendSlackNotification — no suggestedCommands', () => {
     expect(texts.some((t) => t.includes('Suggested commands'))).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// sendSlackNotification — buildBlockKitPayload edge cases
+// ---------------------------------------------------------------------------
+
+describe('sendSlackNotification — buildBlockKitPayload edge cases', () => {
+  it('omits "Key findings" block when summary has no bullet lines', async () => {
+    const fetch = mockFetch();
+    const finding: OneShotFinding = { ...CRITICAL_FINDING, summary: 'All systems operational' };
+    await sendSlackNotification(finding, BASE_CONFIG);
+    const body = JSON.parse(fetch.mock.calls[0][1].body as string) as Record<string, unknown>;
+    const blocks = body['blocks'] as Array<Record<string, unknown>>;
+    const texts = blocks.map((b) => JSON.stringify(b));
+    expect(texts.some((t) => t.includes('Key findings'))).toBe(false);
+  });
+
+  it('uses placeholder text when answer is empty', async () => {
+    const fetch = mockFetch();
+    await sendSlackNotification({ ...CRITICAL_FINDING, answer: '' }, BASE_CONFIG);
+    const bodyStr = fetch.mock.calls[0][1].body as string;
+    expect(bodyStr).toContain('_No answer provided._');
+  });
+
+  it('falls back to :mag: emoji for unknown severity', async () => {
+    const fetch = mockFetch();
+    await sendSlackNotification(
+      { ...CRITICAL_FINDING, severity: 'debug' } as unknown as OneShotFinding,
+      BASE_CONFIG,
+    );
+    const bodyStr = fetch.mock.calls[0][1].body as string;
+    expect(bodyStr).toContain(':mag:');
+  });
+
+  it('handles response.text() rejection on non-2xx gracefully', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        text: () => Promise.reject(new Error('read failed')),
+      }),
+    );
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await expect(sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG)).resolves.toBeUndefined();
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('HTTP 503'));
+  });
+
+  it('handles non-Error thrown by fetch via String(err)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('string error value'));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await expect(sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG)).resolves.toBeUndefined();
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('string error value'));
+  });
+});
