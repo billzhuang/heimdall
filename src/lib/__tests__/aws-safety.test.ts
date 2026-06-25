@@ -86,6 +86,13 @@ describe('parseAwsCommand', () => {
     expect(result.subcommand).toBe('describe-instances');
   });
 
+  it('parses subcommand correctly when --query option follows the service name', () => {
+    const result = parseAwsCommand('aws ec2 --query "Reservations[*]" describe-instances');
+    expect(result.isAws).toBe(true);
+    expect(result.service).toBe('ec2');
+    expect(result.subcommand).toBe('describe-instances');
+  });
+
   it('parses command with multiple options between service and subcommand', () => {
     const result = parseAwsCommand('aws s3api --output json --query "Buckets" list-buckets');
     expect(result.isAws).toBe(true);
@@ -206,6 +213,29 @@ describe('validateAwsCommand', () => {
     const result = validateAwsCommand('aws ec2 --output json terminate-instances --instance-ids i-123');
     expect(result?.allowed).toBe(false);
     expect(result?.reason).toMatch(/blocked/i);
+  });
+
+  it('allows a read-only subcommand when a value-taking option follows the service name', () => {
+    const result = validateAwsCommand('aws s3api --output json list-buckets');
+    expect(result?.allowed).toBe(true);
+  });
+
+  it('blocks a destructive subcommand even when a value-taking option follows the service name', () => {
+    const result = validateAwsCommand('aws s3api --output json delete-bucket --bucket my-bucket');
+    expect(result?.allowed).toBe(false);
+  });
+
+  it('blocks a destructive subcommand with --query option between service and subcommand', () => {
+    const result = validateAwsCommand('aws ec2 --query "Instances[*]" terminate-instances --instance-ids i-123');
+    expect(result?.allowed).toBe(false);
+  });
+
+  it('correctly skips a boolean flag (not in value-option set) between service and subcommand', () => {
+    // --no-sign-request is a genuine boolean flag (takes no value)
+    const parsed = parseAwsCommand('aws s3api --no-sign-request base64 list-buckets');
+    expect(parsed.subcommand).toBe('base64');
+    const result = validateAwsCommand('aws s3api --no-sign-request base64 list-buckets');
+    expect(result?.allowed).toBe(false);
   });
 });
 

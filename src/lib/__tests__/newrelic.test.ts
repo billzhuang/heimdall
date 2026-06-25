@@ -124,6 +124,48 @@ describe('runNewRelicQuery — metrics', () => {
     expect(result).toMatch(/HTTP 400/);
   });
 
+  it('returns plain HTTP error (no detail) when response body is empty', async () => {
+    mockFetch('', 502);
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/HTTP 502/);
+    expect(result).not.toMatch(/:\s+/);
+  });
+
+  it('returns error when "from" time cannot be parsed', async () => {
+    mockFetch('{}');
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', from: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "from" time/);
+    expect(result).toContain('-5y');
+  });
+
+  it('appends UNTIL when to is specified and query lacks UNTIL', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago', to: '-30m' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toMatch(/UNTIL '\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('does not double-append LIMIT when query already contains LIMIT', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago LIMIT 500' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect((body.query as string).match(/\bLIMIT\b/g) ?? []).toHaveLength(1);
+  });
+
   it('appends SINCE when from is provided and query lacks SINCE', async () => {
     const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
     await runNewRelicQuery(
@@ -176,6 +218,27 @@ describe('runNewRelicQuery — metrics', () => {
     const body = JSON.parse(opts.body as string) as { query: string };
     expect(body.query).toContain('LIMIT 42');
   });
+
+  it('returns error when "to" time cannot be parsed', async () => {
+    mockFetch('{}');
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/);
+    expect(result).toContain('-5y');
+  });
+
+  it('does not double-append UNTIL when query already contains it', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction UNTIL now()', to: '-1h' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect((body.query as string).match(/\bUNTIL\b/g) ?? []).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -205,6 +268,23 @@ describe('runNewRelicQuery — apm', () => {
       BASE_CONFIG,
     );
     expect(result).toMatch(/could not parse "from" time/);
+  });
+
+  it('includes UNTIL clause when to is specified', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery({ queryType: 'apm', to: '-30m' }, BASE_CONFIG);
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toMatch(/UNTIL '\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('returns error when to time cannot be parsed for apm queries', async () => {
+    mockFetch('{}');
+    const result = await runNewRelicQuery(
+      { queryType: 'apm', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/);
   });
 
   it('works without a query filter (returns all apps)', async () => {
@@ -415,5 +495,31 @@ describe('runNewRelicQuery — truncation', () => {
     );
     expect(result.length).toBeLessThan(25_000);
     expect(result).toContain('[output truncated');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// non-Error exception handling
+// ---------------------------------------------------------------------------
+
+describe('runNewRelicQuery — network errors', () => {
+  it('returns a descriptive error message on generic fetch failure (Error instance)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/New Relic query failed/i);
+    expect(result).toContain('ECONNREFUSED');
+  });
+
+  it('handles a thrown non-Error value gracefully', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('upstream network failure'));
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/New Relic query failed/i);
+    expect(result).toContain('upstream network failure');
   });
 });
