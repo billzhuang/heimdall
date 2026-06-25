@@ -14,7 +14,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { execFile } from 'node:child_process';
-import { readFile, mkdtemp, rm, writeFile, mkdir, stat, readdir } from 'node:fs/promises';
+import { readFile, mkdtemp, rm, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -26,7 +26,7 @@ import {
   runKubectl,
   tokenizeArgs,
 } from '../kubectl.ts';
-import { stubExec, resetExec, type ExecFileCb } from './execfile-helpers.ts';
+import { stubExec, resetExec } from './execfile-helpers.ts';
 
 // ---------------------------------------------------------------------------
 // Pure helpers

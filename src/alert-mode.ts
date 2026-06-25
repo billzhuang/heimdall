@@ -60,7 +60,7 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
   return new Promise((res, rej) => {
     let settled = false;
-    const settle = (err?: Error) => { if (!settled) { settled = true; err ? rej(err) : res(); } };
+    const settle = (err?: Error) => { if (!settled) { settled = true; if (err) rej(err); else res(); } };
 
     const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
     const child = spawn(binPath, ['-p', prompt], { stdio: ['ignore', 'inherit', 'inherit'], env });
