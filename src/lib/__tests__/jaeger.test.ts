@@ -183,6 +183,26 @@ describe('runJaegerQuery — success', () => {
     expect(url).not.toContain('//api/traces');
     expect(url).toContain('http://jaeger:16686/api/traces');
   });
+
+  it('omits start param when start resolves to null (unrecognised expression)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runJaegerQuery({ service: 'api', start: 'yesterday' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('start=');
+  });
+
+  it('omits end param when end resolves to null (unrecognised expression)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runJaegerQuery({ service: 'api', end: 'tomorrow' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('end=');
+  });
 });
 
 // ---------------------------------------------------------------------------
