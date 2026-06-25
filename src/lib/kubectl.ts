@@ -156,7 +156,7 @@ export function matchMock(mocks: Record<string, string>, argv: string[]): string
   const cmdSet = new Set(argv.map(t => t.toLowerCase()));
   let bestKey: string | null = null;
   let bestScore = -1;
-  for (const [key] of Object.entries(mocks)) {
+  for (const key of Object.keys(mocks)) {
     const keyTokens = key.toLowerCase().split(/\s+/).filter(Boolean);
     if (keyTokens.length === 0) continue;
     if (keyTokens.every(kt => cmdSet.has(kt)) && keyTokens.length > bestScore) {
