@@ -99,7 +99,7 @@ describe('heimdall --model flag validation', () => {
   });
 
   it('exits 1 when --model has no argument', () => {
-    const { status, stderr } = heimdall('--model');
+    const { status, stderr } = heimdall('-p', 'test', '--model');
     expect(status).toBe(1);
     expect(stderr).toMatch(/Error:/);
   });
@@ -117,7 +117,7 @@ describe('heimdall --backend flag validation', () => {
   });
 
   it('exits 1 when --backend has no argument', () => {
-    const { status, stderr } = heimdall('--backend');
+    const { status, stderr } = heimdall('-p', 'test', '--backend');
     expect(status).toBe(1);
     expect(stderr).toMatch(/Error:/);
   });
@@ -183,7 +183,7 @@ describe('heimdall --json incompatibility checks', () => {
 
 describe('heimdall --format flag edge cases', () => {
   it('exits 1 when --format has no argument', () => {
-    const { status, stderr } = heimdall('--format');
+    const { status, stderr } = heimdall('-p', 'test', '--format');
     expect(status).toBe(1);
     expect(stderr).toMatch(/Error:/);
   });
