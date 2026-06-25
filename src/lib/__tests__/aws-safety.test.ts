@@ -77,6 +77,28 @@ describe('parseAwsCommand', () => {
     expect(result.service).toBe('ec2');
     expect(result.subcommand).toBe('describe-instances');
   });
+
+  it('parses command with option-with-value between service and subcommand (no equals sign)', () => {
+    // --output after service "ec2", before subcommand — exercises the skipNext path
+    const result = parseAwsCommand('aws ec2 --output json describe-instances');
+    expect(result.isAws).toBe(true);
+    expect(result.service).toBe('ec2');
+    expect(result.subcommand).toBe('describe-instances');
+  });
+
+  it('parses command with multiple options between service and subcommand', () => {
+    const result = parseAwsCommand('aws s3api --output json --query "Buckets" list-buckets');
+    expect(result.isAws).toBe(true);
+    expect(result.service).toBe('s3api');
+    expect(result.subcommand).toBe('list-buckets');
+  });
+
+  it('parses command with option-with-value equals form between service and subcommand', () => {
+    const result = parseAwsCommand('aws ec2 --output=json describe-instances');
+    expect(result.isAws).toBe(true);
+    expect(result.service).toBe('ec2');
+    expect(result.subcommand).toBe('describe-instances');
+  });
 });
 
 describe('validateAwsCommand', () => {
@@ -173,6 +195,17 @@ describe('validateAwsCommand', () => {
   it('correctly parses commands following --no-paginate', () => {
     const result = validateAwsCommand('aws --no-paginate ec2 describe-instances');
     expect(result?.allowed).toBe(true);
+  });
+
+  it('allows read-only subcommand when option-with-value appears after service name', () => {
+    const result = validateAwsCommand('aws ec2 --output json describe-instances');
+    expect(result?.allowed).toBe(true);
+  });
+
+  it('blocks destructive subcommand even when option-with-value appears after service name', () => {
+    const result = validateAwsCommand('aws ec2 --output json terminate-instances --instance-ids i-123');
+    expect(result?.allowed).toBe(false);
+    expect(result?.reason).toMatch(/blocked/i);
   });
 });
 

@@ -140,6 +140,26 @@ describe('runJaegerQuery — success', () => {
     expect(url).not.toContain('end=-30m');
   });
 
+  it('omits start param when resolveJaegerTimeUs returns null (unrecognised format)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runJaegerQuery({ service: 'api', start: '-5y' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('start=');
+  });
+
+  it('omits end param when resolveJaegerTimeUs returns null (unrecognised format)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await runJaegerQuery({ service: 'api', end: 'yesterday' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('end=');
+  });
+
   it('passes ISO8601 start/end as microseconds', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
     vi.stubGlobal('fetch', fetchMock);
@@ -255,6 +275,31 @@ describe('runJaegerQuery — HTTP errors', () => {
     const result = await runJaegerQuery({ service: 'xyz' }, BASE_CONFIG);
     expect(result).toContain('service "xyz" not found');
   });
+
+  it('returns error without body snippet when response body is empty', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: () => Promise.resolve(''),
+    }));
+
+    const result = await runJaegerQuery({ service: 'api' }, BASE_CONFIG);
+    expect(result).toBe('Jaeger HTTP 503 Service Unavailable');
+  });
+
+  it('handles response body read failure gracefully (text() rejects)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Error',
+      text: () => Promise.reject(new Error('read error')),
+    }));
+
+    const result = await runJaegerQuery({ service: 'api' }, BASE_CONFIG);
+    expect(result).toMatch(/503/);
+    expect(result).not.toContain('read error');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -284,6 +329,37 @@ describe('runJaegerQuery — network errors', () => {
       { url: 'not-a-valid-url', timeoutMs: 5_000 },
     );
     expect(result).toMatch(/Jaeger query failed/i);
+  });
+
+  it('handles non-Error exception in the catch block (String(err) path)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('plain string thrown'));
+
+    const result = await runJaegerQuery({ service: 'api' }, BASE_CONFIG);
+    expect(result).toMatch(/Jaeger query failed/i);
+    expect(result).toContain('plain string thrown');
+  });
+
+  it('fires the abort timer and returns timeout when request hangs', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => {
+            const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+            reject(err);
+          });
+        }),
+      ));
+
+      const queryPromise = runJaegerQuery({ service: 'api' }, { ...BASE_CONFIG, timeoutMs: 5_000 });
+
+      await vi.runAllTimersAsync();
+      const result = await queryPromise;
+      expect(result).toMatch(/timed out/i);
+      expect(result).toContain('5000ms');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
