@@ -341,23 +341,25 @@ describe('runJaegerQuery — network errors', () => {
 
   it('fires the abort timer and returns timeout when request hangs', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-      new Promise((_resolve, reject) => {
-        opts.signal?.addEventListener('abort', () => {
-          const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-          reject(err);
-        });
-      }),
-    ));
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => {
+            const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+            reject(err);
+          });
+        }),
+      ));
 
-    const queryPromise = runJaegerQuery({ service: 'api' }, { ...BASE_CONFIG, timeoutMs: 5_000 });
+      const queryPromise = runJaegerQuery({ service: 'api' }, { ...BASE_CONFIG, timeoutMs: 5_000 });
 
-    await vi.runAllTimersAsync();
-    const result = await queryPromise;
-    expect(result).toMatch(/timed out/i);
-    expect(result).toContain('5000ms');
-
-    vi.useRealTimers();
+      await vi.runAllTimersAsync();
+      const result = await queryPromise;
+      expect(result).toMatch(/timed out/i);
+      expect(result).toContain('5000ms');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

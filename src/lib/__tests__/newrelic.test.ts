@@ -376,26 +376,28 @@ describe('runNewRelicQuery — timeout', () => {
 
   it('fires the abort timer and returns timeout when request hangs', async () => {
     vi.useFakeTimers();
-    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-      new Promise((_resolve, reject) => {
-        opts.signal?.addEventListener('abort', () => {
-          const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-          reject(err);
-        });
-      }),
-    ));
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () => {
+            const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+            reject(err);
+          });
+        }),
+      ));
 
-    const queryPromise = runNewRelicQuery(
-      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
-      { ...BASE_CONFIG, timeoutMs: 5_000 },
-    );
+      const queryPromise = runNewRelicQuery(
+        { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+        { ...BASE_CONFIG, timeoutMs: 5_000 },
+      );
 
-    await vi.runAllTimersAsync();
-    const result = await queryPromise;
-    expect(result).toMatch(/timed out/);
-    expect(result).toContain('5000ms');
-
-    vi.useRealTimers();
+      await vi.runAllTimersAsync();
+      const result = await queryPromise;
+      expect(result).toMatch(/timed out/);
+      expect(result).toContain('5000ms');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
