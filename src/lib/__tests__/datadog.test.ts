@@ -394,6 +394,18 @@ describe('runDatadogQuery — monitors', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDatadogQuery — HTTP errors', () => {
+  const mockFetchTextRejection = () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: 'Service Unavailable',
+        text: () => Promise.reject(new Error('read failed')),
+      }),
+    );
+  };
+
   it('returns a descriptive message on non-2xx metrics response', async () => {
     mockFetch('{"errors":["Invalid query"]}', 400);
 
@@ -438,15 +450,7 @@ describe('runDatadogQuery — HTTP errors', () => {
   });
 
   it('handles response.text() rejection gracefully on metrics error path', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        text: () => Promise.reject(new Error('read failed')),
-      }),
-    );
+    mockFetchTextRejection();
 
     const result = await runDatadogQuery(
       { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
@@ -457,45 +461,21 @@ describe('runDatadogQuery — HTTP errors', () => {
   });
 
   it('handles response.text() rejection gracefully on logs error path', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        text: () => Promise.reject(new Error('read failed')),
-      }),
-    );
+    mockFetchTextRejection();
 
     const result = await runDatadogQuery({ queryType: 'logs', query: 'error' }, BASE_CONFIG);
     expect(result).toMatch(/503/);
   });
 
   it('handles response.text() rejection gracefully on events error path', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        text: () => Promise.reject(new Error('read failed')),
-      }),
-    );
+    mockFetchTextRejection();
 
     const result = await runDatadogQuery({ queryType: 'events', from: '-1h' }, BASE_CONFIG);
     expect(result).toMatch(/503/);
   });
 
   it('handles response.text() rejection gracefully on monitors error path', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 503,
-        statusText: 'Service Unavailable',
-        text: () => Promise.reject(new Error('read failed')),
-      }),
-    );
+    mockFetchTextRejection();
 
     const result = await runDatadogQuery({ queryType: 'monitors' }, BASE_CONFIG);
     expect(result).toMatch(/503/);
@@ -619,6 +599,24 @@ describe('runDatadogQuery — missing credentials', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDatadogQuery — unparseable time expressions', () => {
+  it('returns an error for unparseable "from" time in metrics query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}', from: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "from" time/i);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns an error for unparseable "to" time in metrics query', async () => {
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/i);
+    expect(result).toContain('-5y');
+  });
+
   it('returns an error for unparseable "from" time in logs query', async () => {
     const result = await runDatadogQuery(
       { queryType: 'logs', query: 'error', from: '-5y' },
