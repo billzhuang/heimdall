@@ -74,3 +74,117 @@ describe('heimdall binary smoke tests', () => {
     expect(stderr).toContain('unknown format');
   });
 });
+
+// ---------------------------------------------------------------------------
+// --model flag validation
+// ---------------------------------------------------------------------------
+
+describe('heimdall --model flag validation', () => {
+  it('exits 1 when --model value has no provider/ prefix', () => {
+    const { status, stderr } = heimdall('--model', 'claude-opus-4-8', '-p', 'test');
+    expect(status).toBe(1);
+    expect(stderr).toContain('provider/model');
+  });
+
+  it('exits 1 for --model= with no provider/ prefix', () => {
+    const { status, stderr } = heimdall('--model=claude-opus-4-8', '-p', 'test');
+    expect(status).toBe(1);
+    expect(stderr).toContain('provider/model');
+  });
+
+  it('exits 1 for --model= with an empty value', () => {
+    const { status, stderr } = heimdall('--model=', '-p', 'test');
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/Error:/);
+  });
+
+  it('exits 1 when --model has no argument', () => {
+    const { status, stderr } = heimdall('--model');
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/Error:/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --backend flag validation
+// ---------------------------------------------------------------------------
+
+describe('heimdall --backend flag validation', () => {
+  it('exits 1 for an unknown backend', () => {
+    const { status, stderr } = heimdall('--backend', 'llama', '-p', 'test');
+    expect(status).toBe(1);
+    expect(stderr).toContain('unknown backend');
+  });
+
+  it('exits 1 when --backend has no argument', () => {
+    const { status, stderr } = heimdall('--backend');
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/Error:/);
+  });
+
+  it('exits 1 for --backend claude-cli combined with --watch', () => {
+    const { status, stderr } = heimdall('--backend', 'claude-cli', '--watch');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+
+  it('exits 1 for --backend codex-cli combined with --watch', () => {
+    const { status, stderr } = heimdall('--backend', 'codex-cli', '--watch');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+
+  it('exits 1 for --backend claude-cli combined with triage', () => {
+    const { status, stderr } = heimdall('--backend', 'claude-cli', 'triage');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+
+  it('exits 1 for --backend codex-cli combined with triage', () => {
+    const { status, stderr } = heimdall('--backend', 'codex-cli', 'triage');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --json incompatibility checks
+// ---------------------------------------------------------------------------
+
+describe('heimdall --json incompatibility checks', () => {
+  it('exits 1 when --json and triage are combined', () => {
+    const { status, stderr } = heimdall('--json', 'triage');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+
+  it('exits 1 when --json and schedule are combined', () => {
+    const { status, stderr } = heimdall('--json', 'schedule');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+
+  it('exits 1 when --json and self-improve are combined', () => {
+    const { status, stderr } = heimdall('--json', 'self-improve');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+
+  it('exits 1 when --json and self-loop are combined', () => {
+    const { status, stderr } = heimdall('--json', 'self-loop');
+    expect(status).toBe(1);
+    expect(stderr).toContain('not compatible');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --format flag edge cases
+// ---------------------------------------------------------------------------
+
+describe('heimdall --format flag edge cases', () => {
+  it('exits 1 when --format has no argument', () => {
+    const { status, stderr } = heimdall('--format');
+    expect(status).toBe(1);
+    expect(stderr).toMatch(/Error:/);
+  });
+});
