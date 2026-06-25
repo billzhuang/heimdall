@@ -146,6 +146,26 @@ describe('runNewRelicQuery — metrics', () => {
     expect((body.query as string).match(/\bSINCE\b/g) ?? []).toHaveLength(1);
   });
 
+  it('returns error when to time cannot be parsed in metrics query', async () => {
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/);
+    expect(result).toContain('-5y');
+  });
+
+  it('appends UNTIL clause when to is a valid time in metrics query', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', to: '2024-06-01T12:00:00Z' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toContain("UNTIL '2024-06-01T12:00:00Z'");
+  });
+
   it('appends LIMIT when limit is specified and query lacks LIMIT', async () => {
     const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
     await runNewRelicQuery(
@@ -260,6 +280,64 @@ describe('runNewRelicQuery — alerts', () => {
     const body = JSON.parse(opts.body as string) as { query: string };
     expect(body.query).toContain("UNTIL '2024-06-01T12:00:00Z'");
   });
+
+  it('returns error when from time cannot be parsed in alerts query', async () => {
+    const result = await runNewRelicQuery(
+      { queryType: 'alerts', from: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "from" time/);
+    expect(result).toContain('-5y');
+  });
+
+  it('returns error when to time cannot be parsed in alerts query', async () => {
+    const result = await runNewRelicQuery(
+      { queryType: 'alerts', to: '-5y' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/could not parse "to" time/);
+    expect(result).toContain('-5y');
+  });
+
+  it('uses provided from time as SINCE clause in alerts query', async () => {
+    const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
+    await runNewRelicQuery(
+      { queryType: 'alerts', from: '2024-06-01T11:00:00Z' },
+      BASE_CONFIG,
+    );
+    const [, opts] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(opts.body as string) as { query: string };
+    expect(body.query).toContain("SINCE '2024-06-01T11:00:00Z'");
+  });
+
+  it('returns error without body snippet when NerdGraph returns empty body on error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      text: () => Promise.resolve(''),
+    }));
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/HTTP 429/);
+  });
+
+  it('handles NerdGraph response body read failure gracefully', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Unavailable',
+      text: () => Promise.reject(new Error('body read failed')),
+    }));
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/503/);
+    expect(result).not.toContain('body read failed');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -274,6 +352,50 @@ describe('runNewRelicQuery — timeout', () => {
       { ...BASE_CONFIG, timeoutMs: 1 },
     );
     expect(result).toMatch(/timed out/);
+  });
+
+  it('handles non-Error thrown during query (String(err) path)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('some plain string error'));
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/New Relic query failed/);
+    expect(result).toContain('some plain string error');
+  });
+
+  it('handles regular Error thrown during query (err.message path)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    const result = await runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/New Relic query failed/);
+    expect(result).toContain('ECONNREFUSED');
+  });
+
+  it('fires the abort timer and returns timeout when request hangs', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => {
+          const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+          reject(err);
+        });
+      }),
+    ));
+
+    const queryPromise = runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      { ...BASE_CONFIG, timeoutMs: 5_000 },
+    );
+
+    await vi.runAllTimersAsync();
+    const result = await queryPromise;
+    expect(result).toMatch(/timed out/);
+    expect(result).toContain('5000ms');
+
+    vi.useRealTimers();
   });
 });
 
