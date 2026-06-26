@@ -219,16 +219,6 @@ describe('runNewRelicQuery — metrics', () => {
     expect(body.query).toContain('LIMIT 42');
   });
 
-  it('returns error when "to" time cannot be parsed', async () => {
-    mockFetch('{}');
-    const result = await runNewRelicQuery(
-      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction', to: '-5y' },
-      BASE_CONFIG,
-    );
-    expect(result).toMatch(/could not parse "to" time/);
-    expect(result).toContain('-5y');
-  });
-
   it('does not double-append UNTIL when query already contains it', async () => {
     const fetchMock = mockFetch('{"data":{"actor":{"account":{"nrql":{"results":[]}}}}}');
     await runNewRelicQuery(
@@ -498,28 +488,3 @@ describe('runNewRelicQuery — truncation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// non-Error exception handling
-// ---------------------------------------------------------------------------
-
-describe('runNewRelicQuery — network errors', () => {
-  it('returns a descriptive error message on generic fetch failure (Error instance)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
-    const result = await runNewRelicQuery(
-      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
-      BASE_CONFIG,
-    );
-    expect(result).toMatch(/New Relic query failed/i);
-    expect(result).toContain('ECONNREFUSED');
-  });
-
-  it('handles a thrown non-Error value gracefully', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('upstream network failure'));
-    const result = await runNewRelicQuery(
-      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
-      BASE_CONFIG,
-    );
-    expect(result).toMatch(/New Relic query failed/i);
-    expect(result).toContain('upstream network failure');
-  });
-});

@@ -17,7 +17,7 @@
  * Configuration (heimdall.config.yaml):
  *   server:
  *     port: 3000         # default
- *     host: '0.0.0.0'   # default
+ *     host: '127.0.0.1'  # default
  *
  * Environment overrides:
  *   HEIMDALL_PORT  — listen port
