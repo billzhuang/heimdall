@@ -53,8 +53,9 @@ export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'hel
  * @param runbookContext  - pre-loaded runbook text to inject as a context section (before Tools).
  * @param ragContext      - formatted past-incident context from the RAG layer (injected after runbooks).
  * @param slos            - SLO definitions from config; when non-empty, a SLO context section is injected.
+ * @param baselineContext - formatted recurring anomaly baselines (injected after past incidents).
  */
-export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string, slos?: SloDefinition[]): string {
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string, slos?: SloDefinition[], baselineContext?: string): string {
   const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
 
   const connectionLines = [
@@ -125,6 +126,10 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
 
   if (ragContext) {
     sections.push(`## Past incident precedents\n${ragContext}`);
+  }
+
+  if (baselineContext) {
+    sections.push(`## Recurring anomaly baselines\n${baselineContext}`);
   }
 
   if (slos && slos.length > 0) {

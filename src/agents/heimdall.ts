@@ -36,6 +36,7 @@ import { compileRules } from '../lib/regex-redact.ts';
 import { loadRunbooks } from '../lib/runbooks.ts';
 import { selectDiverseEntries, buildRagContext } from '../lib/rag.ts';
 import type { TaskHistoryEntry } from '../lib/task-history.ts';
+import { queryTopBaselines, buildBaselineContext, resolveBaselineFilePath, type BaselineEntry } from '../lib/baseline.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
@@ -80,6 +81,34 @@ const ragContext = (() => {
   const topK = config.learning.rag.topK ?? 5;
   const diverse = selectDiverseEntries(history, topK);
   return buildRagContext(diverse);
+})();
+
+/** Load baseline entries synchronously (same pattern as task history). */
+function loadBaselinesSync(filePath: string): BaselineEntry[] {
+  try {
+    const raw = readFileSync(filePath, 'utf8');
+    return raw.split('\n').filter((l) => l.trim()).flatMap((l) => {
+      try {
+        const parsed: unknown = JSON.parse(l);
+        if (parsed !== null && typeof parsed === 'object') return [parsed as BaselineEntry];
+        return [];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+const baselineContext = (() => {
+  if (config.learning?.enabled === false) return undefined;
+  const baselinePath = resolveBaselineFilePath(config.learning?.baselineFile, configDir);
+  const baselines = loadBaselinesSync(baselinePath);
+  if (baselines.length === 0) return undefined;
+  const top = queryTopBaselines(baselines, 10);
+  if (top.length === 0) return undefined;
+  return buildBaselineContext(top);
 })();
 
 const lockedNs = config.namespace?.locked;
@@ -146,7 +175,7 @@ export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster
 
 export default defineAgent(() => ({
   model: DEFAULT_MODEL,
-  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext, config.slos ?? []),
+  instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext, config.slos ?? [], baselineContext),
   tools: clusterTools,
   subagents,
 }));

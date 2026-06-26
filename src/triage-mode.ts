@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
 import { resolveModel } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
+import { parseTriageFindings, upsertBaseline, resolveBaselineFilePath } from './lib/baseline.ts';
 import {
   loadCheckpoint,
   saveCheckpoint,
@@ -37,23 +38,28 @@ const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-/** Invoke the Heimdall agent with a prompt, streaming output to stdout. */
-async function runAgent(prompt: string, model?: string): Promise<void> {
+/**
+ * Invoke the Heimdall agent with a prompt.
+ * Streams output to stdout (tee) and also returns the full captured text so
+ * callers can parse findings for baseline writing.
+ */
+async function runAgent(prompt: string, model?: string): Promise<string> {
   const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
 
   return new Promise((resolve, reject) => {
     let settled = false;
-    const settle = (err?: Error) => {
+    const settle = (err?: Error, output?: string) => {
       if (!settled) {
         settled = true;
         if (err) reject(err);
-        else resolve();
+        else resolve(output ?? '');
       }
     };
 
     const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
     const child = spawn(binPath, ['-p', prompt], {
-      stdio: ['ignore', 'inherit', 'inherit'],
+      // pipe stdout so we can tee it to terminal and capture it for baseline parsing
+      stdio: ['ignore', 'pipe', 'inherit'],
       env,
     });
 
@@ -62,6 +68,13 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
       settle(new Error('triage timed out after 5 minutes'));
     }, TRIAGE_TIMEOUT_MS);
 
+    let output = '';
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      process.stdout.write(text);
+      output += text;
+    });
+
     child.on('close', (code: number | null, signal: string | null) => {
       clearTimeout(timer);
       if (code !== null && code !== 0) {
@@ -69,7 +82,7 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
       } else if (code === null && signal !== null) {
         settle(new Error(`heimdall killed by signal ${signal}`));
       } else {
-        settle();
+        settle(undefined, output);
       }
     });
 
@@ -179,7 +192,23 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
     }
   }
 
-  await runAgent(prompt, model);
+  const output = await runAgent(prompt, model);
+
+  // Write baselines for critical and warning findings when learning is enabled.
+  if (config.learning?.enabled !== false && output) {
+    const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
+    const baselineFile = resolveBaselineFilePath(config.learning?.baselineFile, configDir);
+    const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
+    const findings = parseTriageFindings(output);
+    for (const finding of findings) {
+      upsertBaseline(clusterName, finding.namespace, finding.kind, finding.name, finding.summary, baselineFile).catch((err: unknown) => {
+        process.stderr.write(`[heimdall-triage] Warning: could not write baseline: ${err instanceof Error ? err.message : String(err)}\n`);
+      });
+    }
+    if (findings.length > 0) {
+      process.stderr.write(`[heimdall-triage] Recorded ${findings.length} baseline entr${findings.length === 1 ? 'y' : 'ies'} for recurring-pattern tracking.\n`);
+    }
+  }
 }
 
 // --- CLI arg parsing when run directly ---
