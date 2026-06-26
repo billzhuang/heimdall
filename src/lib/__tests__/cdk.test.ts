@@ -66,6 +66,11 @@ describe('tokenizeCdkArgs', () => {
     ]);
   });
 
+  it('handles escaped backslash inside double quotes', () => {
+    // "path\\dir" → path\dir  (backslash escaping a backslash inside double quotes)
+    expect(tokenizeCdkArgs('diff --app "path\\\\dir"')).toEqual(['diff', '--app', 'path\\dir']);
+  });
+
   it('returns empty array for empty input', () => {
     expect(tokenizeCdkArgs('')).toEqual([]);
   });
