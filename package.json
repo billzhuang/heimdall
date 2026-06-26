@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "flue dev --target node",
     "build": "flue build --target node",
+    "build:cloudflare": "flue build --target cloudflare",
+    "deploy:cloudflare": "npm run build:cloudflare && wrangler deploy",
     "connect": "flue connect heimdall local --target node",
     "prompt": "bin/heimdall",
     "watch": "tsx src/watch-mode.ts",

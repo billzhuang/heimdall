@@ -1,0 +1,62 @@
+# Cloudflare Workers configuration for Heimdall.
+#
+# Build:  npm run build:cloudflare
+# Deploy: npm run deploy:cloudflare
+#
+# Heimdall on Cloudflare runs as a Durable Object — the Flue runtime maps each
+# agent to one DO class, so conversations are stateful and persistent.
+#
+# IMPORTANT — supported tools on Cloudflare Workers:
+#   ✅  prometheusQuery, lokiQuery, jaegerQuery, datadogQuery, newRelicQuery, kubecostQuery
+#       (HTTP-based — use fetch internally)
+#   ❌  kubectl, listContexts, listNamespaces, helmRelease, awsCli, trivyScan, cdkQuery
+#       (subprocess tools — require execFile / child_process, not available in Workers)
+#
+# Use heimdall.config.cloudflare.yaml (see root of this repo) and point
+# HEIMDALL_CONFIG at it, or disable the subprocess tools in [vars] below.
+
+name = "heimdall"
+main = "dist/worker.mjs"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects — Flue generates one DO class per agent when targeting Cloudflare.
+[durable_objects]
+bindings = [{ name = "AGENT", class_name = "HeimdallAgent" }]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["HeimdallAgent"]
+
+# Workers AI binding — required when HEIMDALL_MODEL uses the "cloudflare/" provider prefix.
+# Remove this block if you use only the "anthropic/" provider (external API key required).
+[ai]
+binding = "AI"
+
+[vars]
+# Model selection.
+#
+# Option A — Cloudflare Workers AI (no external API key; billing via Workers AI plan):
+#   HEIMDALL_MODEL = "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+#
+# Option B — Anthropic via Workers AI Gateway (requires ANTHROPIC_API_KEY secret):
+#   HEIMDALL_MODEL = "anthropic/claude-sonnet-4-6"
+#   Add the key: wrangler secret put ANTHROPIC_API_KEY
+HEIMDALL_MODEL = "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+
+# Disable subprocess-based tools so the agent starts cleanly without trying to
+# exec kubectl/helm/aws/trivy in the Workers runtime.
+# HTTP-based tools (prometheus, loki, jaeger, datadog, newrelic, kubecost) are
+# enabled via your heimdall.config.cloudflare.yaml or individual env vars below.
+
+# Set these to non-empty strings to point Heimdall at your observability backends.
+# PROMETHEUS_URL = "https://prometheus.example.com"
+# LOKI_URL       = "https://loki.example.com"
+# JAEGER_URL     = "https://jaeger.example.com"
+
+# [secrets]
+# Secrets are set with `wrangler secret put <NAME>` — never put them in this file.
+# ANTHROPIC_API_KEY  — required when using "anthropic/" model provider
+# DD_API_KEY         — required when datadogQuery tool is enabled
+# DD_APP_KEY         — required when datadogQuery tool is enabled
+# NEW_RELIC_API_KEY  — required when newRelicQuery tool is enabled
