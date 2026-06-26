@@ -11,7 +11,8 @@ export const DEFAULT_MODEL = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-son
  */
 export function resolveModel(cliFlag?: string): string {
   const model = cliFlag || DEFAULT_MODEL;
-  if (!model.includes('/')) {
+  const slashIdx = model.indexOf('/');
+  if (slashIdx < 1 || slashIdx >= model.length - 1) {
     throw new Error(
       `Invalid model "${model}": expected "provider/model" format (e.g. "anthropic/claude-opus-4-8")`,
     );
