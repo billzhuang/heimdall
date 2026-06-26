@@ -9,7 +9,8 @@
  *
  * All functions that touch the filesystem are async; all diff / parse logic is pure.
  */
-import { appendFile, readFile } from 'node:fs/promises';
+import { appendFile, readFile, mkdir } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 export interface WorkloadRef {
   kind: 'Deployment' | 'StatefulSet' | 'DaemonSet';
@@ -52,9 +53,18 @@ export function buildEmptyCheckpoint(timestamp: string): ClusterCheckpoint {
   return { timestamp, namespaces: [], workloads: [], nodes: [] };
 }
 
-/** Append a checkpoint snapshot as a JSONL line (creates the file if absent). */
+/** Append a checkpoint snapshot as a JSONL line (creates the file and parent dirs if absent). */
 export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: string): Promise<void> {
-  await appendFile(filePath, JSON.stringify(checkpoint) + '\n', 'utf8');
+  try {
+    await appendFile(filePath, JSON.stringify(checkpoint) + '\n', 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      await mkdir(dirname(filePath), { recursive: true });
+      await appendFile(filePath, JSON.stringify(checkpoint) + '\n', 'utf8');
+    } else {
+      throw err;
+    }
+  }
 }
 
 /**
@@ -208,7 +218,7 @@ export function parseNamespacesFromJson(raw: string): string[] {
       items?: Array<{ metadata?: { name?: string } }>;
     };
     return (obj.items ?? [])
-      .map((item) => item.metadata?.name ?? '')
+      .map((item) => item?.metadata?.name ?? '')
       .filter(Boolean);
   } catch {
     return [];
@@ -229,10 +239,10 @@ export function parseWorkloadsFromJson(raw: string): WorkloadRef[] {
     };
     const results: WorkloadRef[] = [];
     for (const item of obj.items ?? []) {
-      const kind = item.kind as WorkloadRef['kind'];
+      const kind = item?.kind as WorkloadRef['kind'];
       if (!['Deployment', 'StatefulSet', 'DaemonSet'].includes(kind)) continue;
-      const name = item.metadata?.name;
-      const namespace = item.metadata?.namespace;
+      const name = item?.metadata?.name;
+      const namespace = item?.metadata?.namespace;
       if (name && namespace) results.push({ kind, namespace, name });
     }
     return results;
@@ -257,8 +267,8 @@ export function parseNodesFromJson(raw: string): NodeRef[] {
     };
     return (obj.items ?? [])
       .map((item) => {
-        const name = item.metadata?.name ?? '';
-        const readyCond = item.status?.conditions?.find((c) => c.type === 'Ready');
+        const name = item?.metadata?.name ?? '';
+        const readyCond = item?.status?.conditions?.find((c) => c?.type === 'Ready');
         const status = readyCond?.status === 'True' ? 'Ready' : 'NotReady';
         return { name, status };
       })
