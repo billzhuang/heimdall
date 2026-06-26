@@ -13,7 +13,7 @@ vi.mock('../../lib/kubectl.ts', () => ({
   NO_OUTPUT_MESSAGE: '(command produced no output)',
 }));
 
-import { kubectl, kubectlPlugin, makeKubectl } from '../kubectl.ts';
+import { kubectl, kubectlPlugin } from '../kubectl.ts';
 import { listContexts, listNamespaces, makeListNamespaces, listContextsPlugin, listNamespacesPlugin } from '../kubeconfig.ts';
 import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
 import type { HeimdallConfig } from '../../lib/config.ts';
