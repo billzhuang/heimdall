@@ -62,6 +62,18 @@ describe('tokenize', () => {
   it('returns empty array for empty string', () => {
     expect(tokenize('')).toEqual([]);
   });
+
+  it('returns empty array for whitespace-only input', () => {
+    expect(tokenize('   \t\n  ')).toEqual([]);
+  });
+
+  it('returns empty array when all tokens are stopwords', () => {
+    expect(tokenize('the and or but is are')).toEqual([]);
+  });
+
+  it('filters tokens of exactly 2 characters', () => {
+    expect(tokenize('go io k8')).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -273,6 +285,10 @@ describe('retrieveSimilarEntries', () => {
     expect(oomIdx).not.toBe(-1);
     expect(oomIdx).toBe(0);
   });
+
+  it('returns empty array when topK is 0', () => {
+    expect(retrieveSimilarEntries('pod crash', history, 0)).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -311,6 +327,21 @@ describe('selectDiverseEntries', () => {
   it('returns empty array when topK is 0', () => {
     const history = [makeEntry('pod crash', 'finding 1'), makeEntry('oom kill', 'finding 2')];
     expect(selectDiverseEntries(history, 0)).toEqual([]);
+  });
+
+  it('returns empty array for empty history', () => {
+    expect(selectDiverseEntries([], 5)).toEqual([]);
+  });
+
+  it('returns only the most recent entry when topK is 1', () => {
+    const history = [
+      makeEntry('pod crash', 'crash finding'),
+      makeEntry('oom kill', 'oom finding'),
+      makeEntry('dns resolution fail', 'dns finding'),
+    ];
+    const result = selectDiverseEntries(history, 1);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(history[history.length - 1].id);
   });
 
   it('returns diverse entries (not all on the same topic)', () => {
