@@ -141,6 +141,16 @@ describe('findingToOutputs', () => {
     const outputs = findingToOutputs(finding);
     expect(outputs['validity-score']).toBe('0');
   });
+
+  it('falls back to empty string when summary, answer, and suggestedCommands are absent at runtime', () => {
+    // These required fields may be absent when called from JavaScript without
+    // type checking — the ?? guards cover this case.
+    const finding = { severity: 'info' } as unknown as OneShotFinding;
+    const outputs = findingToOutputs(finding);
+    expect(outputs['summary']).toBe('');
+    expect(outputs['answer']).toBe('');
+    expect(outputs['suggested-commands']).toBe('');
+  });
 });
 
 describe('renderJobSummary', () => {
@@ -234,6 +244,13 @@ describe('renderJobSummary', () => {
   it('omits validity score line when validityScore is undefined', () => {
     const md = renderJobSummary(baseFinding);
     expect(md).not.toContain('Validity score');
+  });
+
+  it('omits summary and answer sections when both fields are empty strings', () => {
+    const finding: OneShotFinding = { summary: '', answer: '', severity: 'info', suggestedCommands: [] };
+    const md = renderJobSummary(finding);
+    expect(md).not.toContain('### Summary');
+    expect(md).not.toContain('### Answer');
   });
 });
 
