@@ -5,8 +5,10 @@
  * `_HEIMDALL_ACTION_`, runs the appropriate Heimdall mode, and writes
  * outputs to $GITHUB_OUTPUT and optionally $GITHUB_STEP_SUMMARY.
  *
- * This file is intentionally not imported by any other module; it is the
- * action entrypoint only.  Pure helper logic lives in github-action.ts.
+ * The file exports testable I/O helpers (`setOutput`, `appendSummary`,
+ * `capture`) so they can be unit-tested without spawning a real process.
+ * Pure, side-effect-free logic lives in github-action.ts.
+ * The dispatch (`main`) only fires when this file is the process entry point.
  */
 import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -14,48 +16,61 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   normaliseSeverity,
-  severityAtLeast,
   findingToOutputs,
   renderJobSummary,
   renderTriageJobSummary,
   detectTriageSeverity,
+  evaluateFailOn,
+  VALID_FAIL_ON_SEVERITIES,
   type ActionSeverity,
 } from './github-action.ts';
 import type { OneShotFinding } from './format-output.ts';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const BIN_PATH  = resolve(__dirname, '..', '..', 'bin', 'heimdall');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+const BIN_PATH   = resolve(__dirname, '..', '..', 'bin', 'heimdall');
 
-const MODE            = process.env['_HEIMDALL_ACTION_MODE'] ?? 'prompt';
-const PROMPT          = process.env['_HEIMDALL_ACTION_PROMPT'] ?? '';
-const NAMESPACE       = process.env['_HEIMDALL_ACTION_NAMESPACE'] ?? '';
-const ALL_NAMESPACES  = process.env['_HEIMDALL_ACTION_ALL_NAMESPACES'] === 'true';
-const FAIL_ON         = (process.env['_HEIMDALL_ACTION_FAIL_ON'] ?? '').trim();
-const POST_SUMMARY    = process.env['_HEIMDALL_ACTION_POST_SUMMARY'] !== 'false';
+const MODE           = process.env['_HEIMDALL_ACTION_MODE'] ?? 'prompt';
+const PROMPT         = process.env['_HEIMDALL_ACTION_PROMPT'] ?? '';
+const NAMESPACE      = process.env['_HEIMDALL_ACTION_NAMESPACE'] ?? '';
+const ALL_NAMESPACES = process.env['_HEIMDALL_ACTION_ALL_NAMESPACES'] === 'true';
+const FAIL_ON        = (process.env['_HEIMDALL_ACTION_FAIL_ON'] ?? '').trim();
+const POST_SUMMARY   = process.env['_HEIMDALL_ACTION_POST_SUMMARY'] !== 'false';
 
 const GITHUB_OUTPUT       = process.env['GITHUB_OUTPUT'] ?? '';
 const GITHUB_STEP_SUMMARY = process.env['GITHUB_STEP_SUMMARY'] ?? '';
 
-/** Append a name=value pair to $GITHUB_OUTPUT (multiline-safe). */
-function setOutput(name: string, value: string): void {
-  if (!GITHUB_OUTPUT) return;
+/**
+ * Append a name=value pair to a GitHub Actions output file (multiline-safe).
+ *
+ * `outputPath` defaults to $GITHUB_OUTPUT; pass an explicit path in tests to
+ * avoid touching environment variables.
+ */
+export function setOutput(name: string, value: string, outputPath = GITHUB_OUTPUT): void {
+  if (!outputPath) return;
   const delimiter = `_heimdall_eof_${name}_${Date.now()}`;
-  appendFileSync(GITHUB_OUTPUT, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
+  appendFileSync(outputPath, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
 }
 
-/** Append markdown to $GITHUB_STEP_SUMMARY. */
-function appendSummary(markdown: string): void {
-  if (!GITHUB_STEP_SUMMARY) return;
-  appendFileSync(GITHUB_STEP_SUMMARY, markdown + '\n');
+/**
+ * Append markdown to a GitHub step-summary file.
+ *
+ * `summaryPath` defaults to $GITHUB_STEP_SUMMARY; pass an explicit path in
+ * tests to avoid touching environment variables.
+ */
+export function appendSummary(markdown: string, summaryPath = GITHUB_STEP_SUMMARY): void {
+  if (!summaryPath) return;
+  appendFileSync(summaryPath, markdown + '\n');
 }
 
-/** Run a command, capture stdout, stream stderr to process.stderr.
+/**
+ * Run a command, capture stdout, stream stderr to process.stderr.
  *
  * When spawning the Heimdall shell script (`BIN_PATH`) we invoke it via
  * `process.execPath` (the current Node.js binary) so the runner works on
  * Windows hosts where extensionless files cannot be spawned directly.
  */
-function capture(
+export function capture(
   cmd: string,
   args: string[],
   opts: { env?: NodeJS.ProcessEnv } = {},
@@ -79,6 +94,24 @@ function capture(
       resolve({ stdout, code: 1 });
     });
   });
+}
+
+// ── Failure gating ─────────────────────────────────────────────────────────
+
+function checkFailOnSeverity(severity: ActionSeverity): void {
+  const decision = evaluateFailOn(FAIL_ON, severity);
+  if (decision.ok) return;
+  if (decision.reason === 'invalid-value') {
+    process.stderr.write(
+      `[heimdall-action] Error: invalid fail-on-severity value "${decision.value}". ` +
+      `Expected one of: ${VALID_FAIL_ON_SEVERITIES.join(', ')}\n`,
+    );
+    process.exit(1);
+  }
+  process.stderr.write(
+    `[heimdall-action] Failing: detected severity "${decision.found}" meets fail-on-severity threshold "${decision.threshold}"\n`,
+  );
+  process.exit(1);
 }
 
 // ── Prompt mode ────────────────────────────────────────────────────────────
@@ -115,8 +148,7 @@ async function runPromptMode(): Promise<void> {
     appendSummary(summaryMd);
   }
 
-  const severity = normaliseSeverity(finding.severity);
-  checkFailOnSeverity(severity);
+  checkFailOnSeverity(normaliseSeverity(finding.severity));
 }
 
 // ── Triage mode ────────────────────────────────────────────────────────────
@@ -169,40 +201,24 @@ async function runScheduleOnceMode(): Promise<void> {
   setOutput('summary-markdown', '');
 }
 
-// ── Failure gating ─────────────────────────────────────────────────────────
+// ── Dispatch ───────────────────────────────────────────────────────────────
 
-const VALID_SEVERITIES: readonly string[] = ['critical', 'warning', 'info', 'ok'];
-
-function checkFailOnSeverity(severity: ActionSeverity): void {
-  if (!FAIL_ON) return;
-  const cleaned = FAIL_ON.toLowerCase().trim();
-  if (!VALID_SEVERITIES.includes(cleaned)) {
-    process.stderr.write(
-      `[heimdall-action] Error: invalid fail-on-severity value "${FAIL_ON}". ` +
-      `Expected one of: ${VALID_SEVERITIES.join(', ')}\n`,
-    );
-    process.exit(1);
-  }
-  const threshold = cleaned as ActionSeverity;
-  if (severityAtLeast(severity, threshold)) {
-    process.stderr.write(
-      `[heimdall-action] Failing: detected severity "${severity}" meets fail-on-severity threshold "${threshold}"\n`,
-    );
-    process.exit(1);
+async function main(): Promise<void> {
+  switch (MODE) {
+    case 'triage':
+      await runTriageMode();
+      break;
+    case 'schedule-once':
+      await runScheduleOnceMode();
+      break;
+    case 'prompt':
+    default:
+      await runPromptMode();
+      break;
   }
 }
 
-// ── Dispatch ───────────────────────────────────────────────────────────────
-
-switch (MODE) {
-  case 'triage':
-    await runTriageMode();
-    break;
-  case 'schedule-once':
-    await runScheduleOnceMode();
-    break;
-  case 'prompt':
-  default:
-    await runPromptMode();
-    break;
+// Only run when this file is the entry point, not when imported by tests.
+if (process.argv[1] === __filename) {
+  await main();
 }
