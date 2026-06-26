@@ -80,18 +80,8 @@ export async function evaluateSLO(
   prometheusConfig: PrometheusConfig,
   slo: SloDefinition,
 ): Promise<SloResult> {
-  let raw: string;
-  try {
-    raw = await runPrometheusQuery('instant', { query: slo.metric }, prometheusConfig);
-  } catch (err) {
-    return {
-      name: slo.name,
-      burnRate: 0,
-      remainingBudget: 1,
-      breaching: false,
-      error: `Failed to query Prometheus: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
+  // runPrometheusQuery never throws — it returns error strings for all failure modes.
+  const raw = await runPrometheusQuery('instant', { query: slo.metric }, prometheusConfig);
 
   let currentValue: number | undefined;
   let parsed: PrometheusInstantResponse;
