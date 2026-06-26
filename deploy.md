@@ -345,18 +345,188 @@ credentials instead of IRSA.
 
 ---
 
+---
+
+## Option 6: AWS Bedrock AgentCore Runtime
+
+Deploy Heimdall as a container in
+[AWS Bedrock AgentCore Runtime](https://docs.aws.amazon.com/bedrock/latest/userguide/agents-agentcore.html),
+Amazon's managed compute environment purpose-built for AI agent workloads.
+
+AgentCore Runtime packages your agent as a Docker container and exposes it via
+a managed HTTP endpoint. Compared to Lambda, it supports longer-running
+invocations (no 15-minute hard limit) and is designed for stateful agent
+loops. Authentication is handled by IAM at the control plane — no Bearer-token
+auth is needed inside the container.
+
+### Protocol
+
+AgentCore invokes your container at two endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /ping` | Liveness / health check — must return `200 OK` |
+| `POST /invocations` | Agent invocation — receives the diagnosis request |
+
+**Request body** (`POST /invocations`):
+
+```json
+{
+  "inputText": "Why is my api pod crash-looping in prod?",
+  "sessionId": "optional-correlation-id",
+  "sessionAttributes": { "caller": "ci-pipeline" }
+}
+```
+
+**Response body**:
+
+```json
+{
+  "outputText": "The api pod is OOM-killed due to a 256 Mi memory limit…",
+  "sessionId": "optional-correlation-id",
+  "sessionAttributes": {
+    "caller": "ci-pipeline",
+    "heimdall_finding": "{...full OneShotFinding JSON...}",
+    "heimdall_severity": "critical",
+    "heimdall_validity_score": "0.9"
+  }
+}
+```
+
+The full structured `OneShotFinding` (same schema as `/api/diagnose`) is
+included in `sessionAttributes["heimdall_finding"]` for callers that need it.
+
+### Feature matrix
+
+| Feature | AgentCore support |
+|---------|-----------------|
+| `POST /invocations` (diagnosis) | ✅ Works |
+| `GET /ping` (health check) | ✅ Works |
+| `heimdall triage` | ⚠️ Works if invocation timeout allows |
+| `heimdall watch` | ❌ Requires persistent long-running process |
+| `heimdall schedule` | ❌ Requires persistent long-running process |
+| `heimdall session` | ❌ Requires persistent long-running process |
+| `heimdall alert` (PagerDuty) | ✅ Works via invocation |
+| MCP server mode | ❌ Requires stdio transport |
+
+### Container image
+
+Use `Dockerfile.agentcore` which starts the AgentCore HTTP server (port 8080)
+instead of the standard Flue server (port 3000):
+
+```bash
+# 1. Build the AgentCore container image
+docker build -f Dockerfile.agentcore -t heimdall-agentcore .
+
+# 2. Tag and push to ECR
+aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+docker tag heimdall-agentcore <account>.dkr.ecr.<region>.amazonaws.com/heimdall-agentcore:latest
+docker push <account>.dkr.ecr.<region>.amazonaws.com/heimdall-agentcore:latest
+```
+
+### Creating the AgentCore runtime
+
+```bash
+# 3. Create the AgentCore runtime (requires Bedrock AgentCore GA access)
+aws bedrock-agentcore create-agent-runtime \
+  --agent-runtime-name heimdall \
+  --container-configuration '{
+    "type": "PrivateRegistry",
+    "imageUri": "<account>.dkr.ecr.<region>.amazonaws.com/heimdall-agentcore:latest"
+  }' \
+  --network-configuration '{
+    "networkMode": "PublicSubnet"
+  }' \
+  --role-arn arn:aws:iam::<account>:role/heimdall-agentcore \
+  --environment-variables '{
+    "ANTHROPIC_API_KEY": "<key>",
+    "KUBECONFIG": "/tmp/kubeconfig",
+    "HEIMDALL_MODEL": "anthropic/claude-sonnet-4-6"
+  }'
+```
+
+For private EKS API server access, use `"networkMode": "VPC"` and supply
+`subnetIds` and `securityGroupIds` that can reach the cluster endpoint.
+
+### Invoking Heimdall via AgentCore
+
+```bash
+aws bedrock-agentcore invoke-agent-runtime \
+  --agent-runtime-identifier <runtime-id> \
+  --body '{"inputText": "Why are pods crash-looping in the prod namespace?"}' \
+  --content-type application/json
+```
+
+### IAM execution role
+
+The AgentCore execution role needs:
+- `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer` — pull the container
+- `logs:CreateLogGroup`, `logs:CreateLogDelivery` — CloudWatch Logs
+- (optional) Read-only AWS policies for the `aws_cli` tool
+
+```hcl
+resource "aws_iam_role" "heimdall_agentcore" {
+  name               = "heimdall-agentcore"
+  assume_role_policy = data.aws_iam_policy_document.agentcore_trust.json
+}
+
+data "aws_iam_policy_document" "agentcore_trust" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["bedrock-agentcore.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "readonly" {
+  role       = aws_iam_role.heimdall_agentcore.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+```
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | **Required.** Anthropic API key |
+| `HEIMDALL_MODEL` | Optional model override (`provider/model` format) |
+| `HEIMDALL_CONFIG_YAML` | Optional raw YAML config (no filesystem needed) |
+| `KUBECONFIG` | Path to kubeconfig mounted via Secrets Manager / SSM |
+| `AGENTCORE_PORT` | Override listen port (default: `8080`) |
+| `OTEL_SERVICE_NAME` | Optional service name for Prometheus metrics labels |
+
+### Local testing
+
+```bash
+# Run the AgentCore server locally
+npm run agentcore
+
+# Test the health check
+curl http://localhost:8080/ping
+
+# Test an invocation
+curl -X POST http://localhost:8080/invocations \
+  -H 'Content-Type: application/json' \
+  -d '{"inputText": "Why is my api pod crash-looping?", "sessionId": "test-123"}'
+```
+
+---
+
 ## Decision matrix
 
-| Requirement | EKS Pod | Lambda | Fargate | EC2 |
-|-------------|---------|--------|---------|-----|
-| Full feature parity | ✅ | ❌ | ✅ | ✅ |
-| Watch / schedule / session | ✅ | ❌ | ✅ | ✅ |
-| No server management | ✅ (with Terraform) | ✅ | ✅ | ❌ |
-| IRSA / native AWS creds | ✅ | ❌ (workaround) | ✅ | ✅ (instance profile) |
-| Existing Terraform support | ✅ | ❌ | ✅ (same module) | ❌ |
-| Cost at low traffic | Medium | Low | Medium | Low |
-| Cold start latency | Low | High | Medium | None |
-| Ops complexity | Low | Low | Low | Medium |
+| Requirement | EKS Pod | Lambda | Fargate | EC2 | AgentCore |
+|-------------|---------|--------|---------|-----|-----------|
+| Full feature parity | ✅ | ❌ | ✅ | ✅ | ❌ |
+| Watch / schedule / session | ✅ | ❌ | ✅ | ✅ | ❌ |
+| No server management | ✅ (with Terraform) | ✅ | ✅ | ❌ | ✅ |
+| IRSA / native AWS creds | ✅ | ❌ (workaround) | ✅ | ✅ (instance profile) | ✅ (execution role) |
+| Existing Terraform support | ✅ | ❌ | ✅ (same module) | ❌ | ❌ |
+| Cost at low traffic | Medium | Low | Medium | Low | Low |
+| Cold start latency | Low | High | Medium | None | Low |
+| Ops complexity | Low | Low | Low | Medium | Low |
+| Bedrock ecosystem integration | ❌ | ❌ | ❌ | ❌ | ✅ |
 
 **Summary:** Use **EKS Pod** (Option 1) for any production deployment where you
 want the full Heimdall feature set. Use **Lambda** (Option 2) only if you need a
@@ -365,6 +535,8 @@ lightweight CI webhook and can live without watch/session/schedule modes. Use
 node pool management. Use **EC2** (Option 4) for local dev or a quick trial.
 Use **Cloudflare** (Option 5) when you want a globally-distributed edge deployment
 with zero infrastructure management and only need HTTP-based observability tools.
+Use **AgentCore** (Option 6) when you want to run Heimdall in the AWS Bedrock
+ecosystem with managed IAM auth and no infrastructure to maintain.
 
 ---
 
