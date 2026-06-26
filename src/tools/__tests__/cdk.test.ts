@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { runCdk } = vi.hoisted(() => ({ runCdk: vi.fn() }));
 vi.mock('../../lib/cdk.ts', () => ({ runCdk }));
 
-import { makeCdkQuery, cdkQuery } from '../cdk.ts';
+import { makeCdkQuery, cdkQuery, cdkPlugin } from '../cdk.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 beforeEach(() => {
   runCdk.mockReset();
@@ -40,5 +42,28 @@ describe('makeCdkQuery — execute', () => {
     const tool = makeCdkQuery(options);
     await tool.run({ input: { args: 'diff' } });
     expect(runCdk).toHaveBeenCalledWith('diff', expect.objectContaining({ cwd: '/my/app' }));
+  });
+
+  it('forwards compiled regex redaction rules to runCdk', async () => {
+    runCdk.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /AKIA[0-9A-Z]{16}/g }];
+    const tool = makeCdkQuery(undefined, rules);
+    await tool.run({ input: { args: 'ls' } });
+    expect(runCdk).toHaveBeenCalledWith('ls', expect.objectContaining({ regexRedactionRules: rules }));
+  });
+});
+
+describe('cdkPlugin', () => {
+  it('key is "cdkQuery"', () => {
+    expect(cdkPlugin.key).toBe('cdkQuery');
+  });
+
+  it('factory passes audit config and rules through to runCdk', async () => {
+    runCdk.mockResolvedValue('ok');
+    const auditConfig = { enabled: true, file: '/tmp/audit.log' };
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = cdkPlugin.factory({ audit: auditConfig } as unknown as HeimdallConfig, rules);
+    await tool.run({ input: { args: 'ls' } });
+    expect(runCdk).toHaveBeenCalledWith('ls', expect.objectContaining({ audit: auditConfig, regexRedactionRules: rules }));
   });
 });
