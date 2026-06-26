@@ -228,11 +228,13 @@ describe('extractKubectlCommands', () => {
   });
 
   it('collects commands across multiple fenced blocks in document order', () => {
+    // Fenced blocks are searched before inline spans; inline spans are appended after
+    // all fenced blocks regardless of their position in the document.
     const text = [
       '```bash',
       'kubectl get nodes',
       '```',
-      'Some prose.',
+      'Some prose with `kubectl version --client` inline.',
       '```sh',
       'kubectl get pods -A',
       '```',
@@ -240,6 +242,7 @@ describe('extractKubectlCommands', () => {
     expect(extractKubectlCommands(text)).toEqual([
       'kubectl get nodes',
       'kubectl get pods -A',
+      'kubectl version --client',
     ]);
   });
 

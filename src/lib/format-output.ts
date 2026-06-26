@@ -188,7 +188,7 @@ function extractCommandsFromLines(lines: string[]): string[] {
       if (trimmed.endsWith('\\')) {
         current += ' ' + trimmed.slice(0, -1).trim();
       } else {
-        commands.push(current + ' ' + trimmed);
+        commands.push(trimmed ? current + ' ' + trimmed : current);
         current = '';
       }
     } else if (trimmed.startsWith('kubectl ')) {
