@@ -135,6 +135,16 @@ contexts:
     expect(getContextNames(partial!)).toEqual(['dev']);
     expect(await parseKubeconfig(missing)).toBeNull();
   });
+
+  it('splits on ";" when platform is win32', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32' as NodeJS.Platform);
+    try {
+      const parsed = await parseKubeconfig(`${fileA};${fileB}`);
+      expect(getContextNames(parsed!)).toEqual(['prod', 'staging', 'dev']);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });
 
 describe('getContextNames', () => {

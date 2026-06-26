@@ -330,6 +330,10 @@ describe('parseOtelHeaders', () => {
     const result = parseOtelHeaders('Authorization=Bearer%XYtoken');
     expect(result['Authorization']).toBe('Bearer%XYtoken');
   });
+
+  it('skips pairs with an empty key (leading = sign)', () => {
+    expect(parseOtelHeaders('=empty-key-value')).toEqual({});
+  });
 });
 
 describe('formatPrometheusMetrics', () => {
