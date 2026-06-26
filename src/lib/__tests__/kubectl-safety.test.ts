@@ -181,6 +181,11 @@ describe('parseKubectlCommand — edge cases', () => {
   it('collapses irregular whitespace between tokens', () => {
     expect(parseKubectlCommand('kubectl\tget   pods').subcommand).toBe('get');
   });
+
+  it('does not set skipNext for flags not in OPTIONS_WITH_VALUE before subcommand', () => {
+    const result = parseKubectlCommand('kubectl --dry-run get pods');
+    expect(result.subcommand).toBe('get');
+  });
 });
 
 describe('isDestructiveCommand', () => {
@@ -194,6 +199,10 @@ describe('isDestructiveCommand', () => {
     expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
     expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
     expect(validateCommand('kubectl --context=prod rollout restart deploy/api').allowed).toBe(false);
+  });
+
+  it('returns false for rollout with no following verb (args[0] is undefined)', () => {
+    expect(isDestructiveCommand('kubectl rollout')).toBe(false);
   });
 });
 
@@ -323,6 +332,31 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks --all-namespaces=1', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '--all-namespaces=1'], NS);
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks --namespace with no following token (pushed empty string)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--namespace'], NS);
+    expect(result.blocked).toBe(true);
+  });
+
+  it('ignores non-namespace double-dash flags (e.g. --output=json)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '--output=json', '-n', NS], NS);
+    expect(result.blocked).toBe(false);
+  });
+
+  it('ignores short flags without n or A (e.g. -l app=api)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-l', 'app=api', '-n', NS], NS);
+    expect(result.blocked).toBe(false);
+  });
+
+  it('handles combined flag with n and trailing chars plus eq-value (e.g. -na=prod)', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', `-na=${NS}`], NS);
+    expect(result.blocked).toBe(true);
+  });
+
+  it('blocks -n as last argument with no following namespace token', () => {
+    const result = applyNamespaceLockdown(['get', 'pods', '-n'], NS);
     expect(result.blocked).toBe(true);
   });
 });
