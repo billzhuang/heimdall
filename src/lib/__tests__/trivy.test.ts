@@ -162,6 +162,24 @@ describe('runTrivy — exec paths (mocked execFile)', () => {
     expect(result).toMatch(/trivy exited with an error|trivy binary not found/i);
   });
 
+  it('falls back to String(error) when err.stdout, err.stderr, and err.message are all empty', async () => {
+    // Covers the 4th arm of: err.stdout || err.stderr || err.message || String(error)
+    const err = Object.assign(new Error(), { stdout: '', stderr: '', message: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runTrivy('image', 'nginx:latest', []);
+    expect(result).toMatch(/trivy|Error/i);
+  });
+
+  it('returns the generic error message when detail is empty after redaction', async () => {
+    // If String(error).toString() produces '' → detail is '' → if (detail) false → generic message.
+    const errLike = Object.assign(Object.create({ toString: () => '' }), {
+      stdout: '', stderr: '', message: '',
+    });
+    stubExec((_cmd, _args, _opts, cb) => cb(errLike as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runTrivy('image', 'nginx:latest', []);
+    expect(result).toMatch(/trivy exited with an error/i);
+  });
+
   it('writes audit entry to stderr when audit is enabled', async () => {
     const lines: string[] = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
