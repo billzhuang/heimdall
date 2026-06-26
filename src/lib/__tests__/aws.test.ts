@@ -112,6 +112,12 @@ describe('runAwsCli — input validation (no exec)', () => {
     expect(result).toMatch(/no AWS CLI arguments provided/i);
   });
 
+  it('returns error when argv is empty after stripping the leading aws token', async () => {
+    // "aws" alone → tokenizeAwsArgs strips the prefix → argv = [] → line 80 true branch.
+    const result = await runAwsCli('aws');
+    expect(result).toMatch(/no AWS CLI subcommand provided/i);
+  });
+
   it('blocks destructive commands before exec (BLOCKED_PREFIX)', async () => {
     const result = await runAwsCli('aws ec2 terminate-instances --instance-ids i-123abc');
     expect(result).toMatch(BLOCKED_RE);
@@ -285,5 +291,21 @@ describe('runAwsCli — exec paths (mocked child_process)', () => {
     const result = await runAwsCli('ec2 describe-instances', { regexRedactionRules: rules });
     expect(result).not.toContain('AKIAIOSFODNN7EXAMPLE');
     expect(result).toContain('[REDACTED:aws-key]');
+  });
+
+  it('quotes arguments containing spaces in the cmd audit string', async () => {
+    // '--output\\ text' tokenizes to '--output text' (one token with a space).
+    // The ternary at line 82 wraps it in single quotes because /[\s'"\\]/.test(a) is true.
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: 'text-output', stderr: '' }));
+    const result = await runAwsCli('ec2 describe-instances --output\\ text');
+    expect(result).toBe('text-output');
+  });
+
+  it('falls back to String(error) when err.stderr, err.stdout, and err.message are all empty', async () => {
+    // Covers the 4th arm of: err.stderr || err.stdout || err.message || String(error)
+    const err = Object.assign(new Error(), { stderr: '', stdout: '', message: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runAwsCli('ec2 describe-instances');
+    expect(result).toMatch(/aws exited with an error/i);
   });
 });
