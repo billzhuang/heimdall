@@ -192,6 +192,57 @@ describe('extractKubectlCommands', () => {
     expect(extractKubectlCommands('No commands here.')).toEqual([]);
   });
 
+  it('flushes a trailing continuation when the last line ends with backslash', () => {
+    // The block ends mid-continuation — the partial command is still emitted.
+    const text = '```bash\nkubectl get pods \\\n  -n prod \\\n```';
+    expect(extractKubectlCommands(text)).toEqual(['kubectl get pods -n prod']);
+  });
+
+  it('handles a four-line continuation chain', () => {
+    const text = [
+      '```bash',
+      'kubectl get pods \\',
+      '  -n prod \\',
+      '  -l app=api \\',
+      '  --field-selector status.phase=Running',
+      '```',
+    ].join('\n');
+    expect(extractKubectlCommands(text)).toEqual([
+      'kubectl get pods -n prod -l app=api --field-selector status.phase=Running',
+    ]);
+  });
+
+  it('extracts multiple independent commands from the same fenced block', () => {
+    const text = [
+      '```bash',
+      'kubectl get nodes',
+      'kubectl get pods -A',
+      'kubectl describe node worker-1',
+      '```',
+    ].join('\n');
+    expect(extractKubectlCommands(text)).toEqual([
+      'kubectl get nodes',
+      'kubectl get pods -A',
+      'kubectl describe node worker-1',
+    ]);
+  });
+
+  it('collects commands across multiple fenced blocks in document order', () => {
+    const text = [
+      '```bash',
+      'kubectl get nodes',
+      '```',
+      'Some prose.',
+      '```sh',
+      'kubectl get pods -A',
+      '```',
+    ].join('\n');
+    expect(extractKubectlCommands(text)).toEqual([
+      'kubectl get nodes',
+      'kubectl get pods -A',
+    ]);
+  });
+
   it('uses commands from the full fixture correctly', () => {
     const result = parseOneShotOutput(FULL_OUTPUT);
     expect(result.suggestedCommands).toContain('kubectl rollout undo deploy/api -n prod');
