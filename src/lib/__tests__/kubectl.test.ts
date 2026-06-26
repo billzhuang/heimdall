@@ -124,6 +124,38 @@ describe('parseDurationMs', () => {
     expect(parseDurationMs('0s')).toBeNull();
     expect(parseDurationMs('abc')).toBeNull();
   });
+
+  it('returns null for all-zero compound duration', () => {
+    expect(parseDurationMs('0h0m0s')).toBeNull();
+  });
+
+  it('accepts leading-zero component when total is non-zero', () => {
+    expect(parseDurationMs('0m30s')).toBe(30_000);
+  });
+
+  it('accepts seconds value exceeding 59', () => {
+    expect(parseDurationMs('100s')).toBe(100_000);
+  });
+
+  it('accepts minutes value of 60 or more', () => {
+    expect(parseDurationMs('60m')).toBe(3_600_000);
+  });
+
+  it('returns null for out-of-order units (s before m)', () => {
+    expect(parseDurationMs('1s2m')).toBeNull();
+  });
+
+  it('returns null for unsupported millisecond unit', () => {
+    expect(parseDurationMs('1ms')).toBeNull();
+  });
+
+  it('returns null for unsupported day unit', () => {
+    expect(parseDurationMs('1d')).toBeNull();
+  });
+
+  it('returns null for a bare number without a unit', () => {
+    expect(parseDurationMs('1')).toBeNull();
+  });
 });
 
 describe('getWaitTimeoutMs', () => {
@@ -139,6 +171,14 @@ describe('getWaitTimeoutMs', () => {
   it('returns null when no --timeout flag is present', () => {
     expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web'])).toBeNull();
     expect(getWaitTimeoutMs(['get', 'pods'])).toBeNull();
+  });
+
+  it('returns null when --timeout is the last argument with no following value', () => {
+    expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web', '--timeout'])).toBeNull();
+  });
+
+  it('extracts a compound --timeout=1h30m value', () => {
+    expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web', '--timeout=1h30m'])).toBe(5_400_000);
   });
 });
 
