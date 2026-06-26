@@ -418,6 +418,51 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('HEIMDALL_CONFIG env var (file-path override)', () => {
+    const saved: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      saved['HEIMDALL_CONFIG'] = process.env.HEIMDALL_CONFIG;
+      saved['HEIMDALL_CONFIG_YAML'] = process.env.HEIMDALL_CONFIG_YAML;
+      delete process.env.HEIMDALL_CONFIG;
+      delete process.env.HEIMDALL_CONFIG_YAML;
+    });
+
+    afterEach(() => {
+      if (saved['HEIMDALL_CONFIG'] === undefined) delete process.env.HEIMDALL_CONFIG;
+      else process.env.HEIMDALL_CONFIG = saved['HEIMDALL_CONFIG'];
+      if (saved['HEIMDALL_CONFIG_YAML'] === undefined) delete process.env.HEIMDALL_CONFIG_YAML;
+      else process.env.HEIMDALL_CONFIG_YAML = saved['HEIMDALL_CONFIG_YAML'];
+    });
+
+    it('returns defaults when HEIMDALL_CONFIG points to a non-existent file', () => {
+      // resolveConfigPath returns resolve(envPath) → arm[0] of branch 4.
+      // existsSync → false → arm[0] of branch 13 → defaultConfig.
+      process.env.HEIMDALL_CONFIG = join(tmpDir, 'does-not-exist.yaml');
+      const config = loadConfig();
+      expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
+    });
+
+    it('reads config from HEIMDALL_CONFIG path when the file exists', () => {
+      // resolveConfigPath returns resolve(envPath) → arm[0] of branch 4.
+      // existsSync → true → arm[1] of branch 13 → readFileSync + parse.
+      const configPath = join(tmpDir, 'via-env.yaml');
+      writeFileSync(configPath, 'tools:\n  prometheusQuery: true\n');
+      process.env.HEIMDALL_CONFIG = configPath;
+      const config = loadConfig();
+      expect(config.tools.prometheusQuery).toBe(true);
+    });
+
+    it('falls through to resolveConfigPath when neither HEIMDALL_CONFIG_YAML nor configPath is provided', () => {
+      // Neither env var is set and no configPath arg is passed.
+      // resolveConfigPath falls through to the default-path arm (branch 4 arm[1]).
+      // The default path resolves to cwd/heimdall.config.yaml which may or may not exist;
+      // either way loadConfig() returns a HeimdallConfig with a tools property.
+      const config = loadConfig();
+      expect(config.tools).toBeDefined();
+    });
+  });
+
   describe('Cloudflare Workers config', () => {
     it('disables all subprocess tools and leaves HTTP tools configurable', () => {
       const configPath = join(tmpDir, 'heimdall.config.cloudflare.yaml');
