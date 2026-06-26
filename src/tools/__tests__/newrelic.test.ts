@@ -18,7 +18,7 @@ describe('makeNewRelicQuery — apiKey/accountId precedence', () => {
     vi.stubEnv('NEW_RELIC_API_KEY', 'env-api-key');
     vi.stubEnv('NEW_RELIC_ACCOUNT_ID', 'env-account-id');
     const tool = makeNewRelicQuery({ apiKey: 'cfg-api-key', accountId: 'cfg-account-id' });
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ apiKey: 'cfg-api-key', accountId: 'cfg-account-id' }),
@@ -30,7 +30,7 @@ describe('makeNewRelicQuery — apiKey/accountId precedence', () => {
     vi.stubEnv('NEW_RELIC_API_KEY', 'env-api');
     vi.stubEnv('NEW_RELIC_ACCOUNT_ID', 'env-acct');
     const tool = makeNewRelicQuery({});
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ apiKey: 'env-api', accountId: 'env-acct' }),
@@ -42,7 +42,7 @@ describe('makeNewRelicQuery — apiKey/accountId precedence', () => {
     vi.stubEnv('NEW_RELIC_API_KEY', '');
     vi.stubEnv('NEW_RELIC_ACCOUNT_ID', '');
     const tool = makeNewRelicQuery(null);
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ apiKey: '', accountId: '' }),
@@ -54,7 +54,7 @@ describe('makeNewRelicQuery — timeout precedence', () => {
   it('uses config timeoutMs when provided', async () => {
     runNewRelicQuery.mockResolvedValue('ok');
     const tool = makeNewRelicQuery({ timeoutMs: 5000 });
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ timeoutMs: 5000 }),
@@ -64,7 +64,7 @@ describe('makeNewRelicQuery — timeout precedence', () => {
   it('defaults to 15000ms when timeoutMs is absent', async () => {
     runNewRelicQuery.mockResolvedValue('ok');
     const tool = makeNewRelicQuery({});
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ timeoutMs: 15_000 }),
@@ -74,7 +74,7 @@ describe('makeNewRelicQuery — timeout precedence', () => {
   it('rejects zero timeoutMs and falls back to default', async () => {
     runNewRelicQuery.mockResolvedValue('ok');
     const tool = makeNewRelicQuery({ timeoutMs: 0 });
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ timeoutMs: 15_000 }),
@@ -84,7 +84,7 @@ describe('makeNewRelicQuery — timeout precedence', () => {
   it('rejects negative timeoutMs and falls back to default', async () => {
     runNewRelicQuery.mockResolvedValue('ok');
     const tool = makeNewRelicQuery({ timeoutMs: -500 });
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ timeoutMs: 15_000 }),
@@ -94,7 +94,7 @@ describe('makeNewRelicQuery — timeout precedence', () => {
   it('rejects non-finite timeoutMs and falls back to default', async () => {
     runNewRelicQuery.mockResolvedValue('ok');
     const tool = makeNewRelicQuery({ timeoutMs: Infinity });
-    await tool.execute(BASE_PARAMS);
+    await tool.run({ input: BASE_PARAMS });
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ timeoutMs: 15_000 }),
@@ -112,13 +112,13 @@ describe('makeNewRelicQuery — parameter forwarding', () => {
   it('forwards all query params to runNewRelicQuery', async () => {
     runNewRelicQuery.mockResolvedValue('alerts result');
     const tool = makeNewRelicQuery({});
-    const result = await tool.execute({
+    const result = await tool.run({ input: {
       queryType: 'alerts',
       query: "priority = 'CRITICAL'",
       from: '-1h',
       to: 'now',
       limit: 50,
-    });
+    } });
     expect(result).toBe('alerts result');
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -135,10 +135,10 @@ describe('makeNewRelicQuery — parameter forwarding', () => {
   it('forwards metrics queryType with NRQL query', async () => {
     runNewRelicQuery.mockResolvedValue('metrics result');
     const tool = makeNewRelicQuery({});
-    const result = await tool.execute({
+    const result = await tool.run({ input: {
       queryType: 'metrics',
       query: 'SELECT average(cpuPercent) FROM SystemSample SINCE 1 hour ago',
-    });
+    } });
     expect(result).toBe('metrics result');
     expect(runNewRelicQuery).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -152,6 +152,6 @@ describe('makeNewRelicQuery — parameter forwarding', () => {
   it('returns the value from runNewRelicQuery verbatim', async () => {
     runNewRelicQuery.mockResolvedValue('raw tool output');
     const tool = makeNewRelicQuery({});
-    expect(await tool.execute(BASE_PARAMS)).toBe('raw tool output');
+    expect(await tool.run({ input: BASE_PARAMS })).toBe('raw tool output');
   });
 });

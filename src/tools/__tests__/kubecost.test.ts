@@ -16,7 +16,7 @@ describe('makeKubecostQuery — config precedence', () => {
   it('uses kubecostConfig.url when provided', async () => {
     const fetchMock = stubOkFetch();
     const tool = makeKubecostQuery({ url: 'http://custom:9090' });
-    await tool.execute({ endpoint: 'allocation', window: '7d', aggregate: 'namespace' });
+    await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
     expect(fetchMock.mock.calls[0][0] as string).toContain('http://custom:9090');
   });
 
@@ -24,7 +24,7 @@ describe('makeKubecostQuery — config precedence', () => {
     const fetchMock = stubOkFetch();
     vi.stubEnv('KUBECOST_URL', 'http://env-kubecost:9090');
     const tool = makeKubecostQuery({});
-    await tool.execute({ endpoint: 'allocation', window: '7d', aggregate: 'namespace' });
+    await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
     expect(fetchMock.mock.calls[0][0] as string).toContain('http://env-kubecost:9090');
   });
 
@@ -32,7 +32,7 @@ describe('makeKubecostQuery — config precedence', () => {
     const fetchMock = stubOkFetch();
     vi.stubEnv('KUBECOST_URL', '');
     const tool = makeKubecostQuery(null);
-    await tool.execute({ endpoint: 'allocation', window: '7d', aggregate: 'namespace' });
+    await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
     expect(fetchMock.mock.calls[0][0] as string).toContain('http://kubecost-cost-analyzer.kubecost:9090');
   });
 
@@ -42,7 +42,7 @@ describe('makeKubecostQuery — config precedence', () => {
       vi.fn().mockRejectedValue(Object.assign(new Error('abort'), { name: 'AbortError' })),
     );
     const tool = makeKubecostQuery({ timeoutMs: 1 });
-    const result = await tool.execute({ endpoint: 'allocation', window: '7d', aggregate: 'namespace' });
+    const result = await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
     expect(result).toContain('1ms');
   });
 
@@ -52,7 +52,7 @@ describe('makeKubecostQuery — config precedence', () => {
       vi.fn().mockRejectedValue(Object.assign(new Error('abort'), { name: 'AbortError' })),
     );
     const tool = makeKubecostQuery({});
-    const result = await tool.execute({ endpoint: 'allocation', window: '7d', aggregate: 'namespace' });
+    const result = await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
     expect(result).toContain('10000ms');
   });
 });

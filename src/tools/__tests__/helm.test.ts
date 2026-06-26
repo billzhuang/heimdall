@@ -19,7 +19,7 @@ describe('makeHelmRelease', () => {
   it('forwards list action to runHelm', async () => {
     runHelm.mockResolvedValue('NAME  NAMESPACE  STATUS  CHART  APP VERSION  DEPLOYED');
     const tool = makeHelmRelease();
-    const result = await tool.execute({ action: 'list' });
+    const result = await tool.run({ input: { action: 'list' } });
     expect(result).toContain('NAME');
     expect(runHelm).toHaveBeenCalledWith('list', expect.objectContaining({ allNamespaces: undefined }));
   });
@@ -28,7 +28,7 @@ describe('makeHelmRelease', () => {
 describe('makeHelmRelease — namespace lockdown', () => {
   it('blocks allNamespaces when lockdown is active', async () => {
     const tool = makeHelmRelease('prod-payments');
-    const result = await tool.execute({ action: 'list', allNamespaces: true });
+    const result = await tool.run({ input: { action: 'list', allNamespaces: true } });
     expect(result).toMatch(/BLOCKED/i);
     expect(result).toContain("allNamespaces");
     expect(runHelm).not.toHaveBeenCalled();
@@ -36,7 +36,7 @@ describe('makeHelmRelease — namespace lockdown', () => {
 
   it('blocks wrong namespace when lockdown is active', async () => {
     const tool = makeHelmRelease('prod-payments');
-    const result = await tool.execute({ action: 'list', namespace: 'other-namespace' });
+    const result = await tool.run({ input: { action: 'list', namespace: 'other-namespace' } });
     expect(result).toMatch(/BLOCKED/i);
     expect(result).toContain('other-namespace');
     expect(runHelm).not.toHaveBeenCalled();
@@ -45,7 +45,7 @@ describe('makeHelmRelease — namespace lockdown', () => {
   it('allows correct locked namespace and enforces it', async () => {
     runHelm.mockResolvedValue('releases...');
     const tool = makeHelmRelease('prod-payments');
-    const result = await tool.execute({ action: 'list', namespace: 'prod-payments' });
+    const result = await tool.run({ input: { action: 'list', namespace: 'prod-payments' } });
     expect(result).toBe('releases...');
     expect(runHelm).toHaveBeenCalledWith(
       'list',
@@ -56,7 +56,7 @@ describe('makeHelmRelease — namespace lockdown', () => {
   it('fills in locked namespace when none is provided', async () => {
     runHelm.mockResolvedValue('releases...');
     const tool = makeHelmRelease('prod-payments');
-    await tool.execute({ action: 'list' });
+    await tool.run({ input: { action: 'list' } });
     expect(runHelm).toHaveBeenCalledWith(
       'list',
       expect.objectContaining({ namespace: 'prod-payments' }),

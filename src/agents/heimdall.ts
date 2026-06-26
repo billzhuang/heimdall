@@ -11,7 +11,7 @@
  * TOOL_PLUGINS below, and add a matching key to the config schema in
  * src/lib/config.ts.
  */
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { initTelemetry, isTelemetryEnabled, recordToolCall } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
@@ -111,13 +111,12 @@ const { allTools: ALL_TOOLS, enabledKeys: enabledToolKeys } = buildToolRegistry(
 const telemetryEnabled = isTelemetryEnabled();
 
 function wrapWithTiming(tool: ToolDefinition): ToolDefinition {
-  const t = tool as ToolDefinition & { execute: (input: Record<string, unknown>) => Promise<string> };
-  const orig = t.execute.bind(t);
+  const orig = tool.run.bind(tool);
   return Object.assign({}, tool, {
-    execute: async (input: Record<string, unknown>): Promise<string> => {
+    run: async (context: Parameters<typeof orig>[0]) => {
       const start = Date.now();
       try {
-        return await orig(input);
+        return await orig(context);
       } finally {
         recordToolCall(Date.now() - start);
       }
@@ -145,7 +144,7 @@ const subagents = (Object.keys(SUBAGENT_INSTRUCTIONS) as SubagentName[]).map((na
 
 export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster issues with kubectl + AI reasoning.';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: DEFAULT_MODEL,
   instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext, config.slos ?? []),
   tools: clusterTools,

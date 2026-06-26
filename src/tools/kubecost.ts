@@ -41,7 +41,7 @@ export function makeKubecostQuery(
       'Use this to answer FinOps questions: which namespace costs the most, which controller drives cost spikes, ' +
       'and how costs trend over time. The window parameter controls the time range (e.g. "7d", "24h", "30d", "lastweek").' +
       lockdownNote,
-    parameters: v.object({
+    input: v.object({
       endpoint: v.pipe(
         v.picklist(['allocation', 'assets']),
         v.description(
@@ -79,7 +79,7 @@ export function makeKubecostQuery(
         ),
       ),
     }),
-    execute: async ({ endpoint, window, aggregate, namespace, accumulate }) =>
+    run: async ({ input: { endpoint, window, aggregate, namespace, accumulate } }) =>
       runKubecostQuery(endpoint, { window, aggregate, namespace, accumulate }, config),
   });
 }

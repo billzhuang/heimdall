@@ -31,13 +31,13 @@ export function makeCdkQuery(options?: RunCdkOptions, regexRedactionRules?: Comp
       'There is no shell, so pipes/redirects do not work. ' +
       'For diff/synth/metadata the CDK app must be in the working directory or ' +
       'specified via --app. Credentials are resolved by the AWS CLI credential chain.',
-    parameters: v.object({
+    input: v.object({
       args: v.pipe(
         v.string(),
         v.description('Arguments passed to the CDK CLI, excluding the leading "cdk".'),
       ),
     }),
-    execute: async ({ args }) => runCdk(args, { ...options, regexRedactionRules }),
+    run: async ({ input: { args } }) => runCdk(args, { ...options, regexRedactionRules }),
   });
 }
 

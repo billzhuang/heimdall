@@ -23,7 +23,7 @@ describe('makeCdkQuery — execute', () => {
   it('forwards args to runCdk and returns its result', async () => {
     runCdk.mockResolvedValue('MyStack\nOtherStack');
     const tool = makeCdkQuery();
-    const result = await tool.execute({ args: 'ls' });
+    const result = await tool.run({ input: { args: 'ls' } });
     expect(result).toBe('MyStack\nOtherStack');
     expect(runCdk).toHaveBeenCalledWith('ls', expect.objectContaining({ regexRedactionRules: undefined }));
   });
@@ -31,14 +31,14 @@ describe('makeCdkQuery — execute', () => {
   it('passes a blocked result straight through', async () => {
     runCdk.mockResolvedValue('BLOCKED: Destructive CDK command');
     const tool = makeCdkQuery();
-    expect(await tool.execute({ args: 'deploy' })).toMatch(/^BLOCKED:/);
+    expect(await tool.run({ input: { args: 'deploy' } })).toMatch(/^BLOCKED:/);
   });
 
   it('passes options to runCdk', async () => {
     runCdk.mockResolvedValue('ok');
     const options = { cwd: '/my/app' };
     const tool = makeCdkQuery(options);
-    await tool.execute({ args: 'diff' });
+    await tool.run({ input: { args: 'diff' } });
     expect(runCdk).toHaveBeenCalledWith('diff', expect.objectContaining({ cwd: '/my/app' }));
   });
 });

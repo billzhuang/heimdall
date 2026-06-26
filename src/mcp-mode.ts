@@ -90,22 +90,22 @@ export const enabledTools: ToolDefinition[] = Array.from(enabledKeys).map((key) 
  * or other schema libraries) are passed through as-is. Falls back to a bare
  * `{ type: 'object' }` when neither conversion applies.
  */
-export function parametersToInputSchema(parameters: unknown): {
+export function parametersToInputSchema(input: unknown): {
   type: 'object';
   properties?: Record<string, unknown>;
   required?: string[];
   [key: string]: unknown;
 } {
   const isValibotSchema =
-    typeof parameters === 'object' &&
-    parameters !== null &&
-    'kind' in parameters &&
-    (parameters as { kind: unknown }).kind === 'schema';
+    typeof input === 'object' &&
+    input !== null &&
+    'kind' in input &&
+    (input as { kind: unknown }).kind === 'schema';
 
   if (isValibotSchema) {
     try {
       const jsonSchema = toJsonSchema(
-        parameters as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
+        input as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
       ) as Record<string, unknown>;
       return {
         type: 'object',
@@ -121,8 +121,8 @@ export function parametersToInputSchema(parameters: unknown): {
     }
   }
 
-  // parameters is a raw JSON Schema object (or something unrecognised) — use directly.
-  const raw = (parameters ?? {}) as Record<string, unknown>;
+  // input is a raw JSON Schema object (or something unrecognised) — use directly.
+  const raw = (input ?? {}) as Record<string, unknown>;
   return {
     type: 'object',
     ...(raw.properties !== undefined && {
@@ -147,7 +147,7 @@ export function createMcpServer(): Server {
     tools: enabledTools.map((tool) => ({
       name: tool.name,
       description: tool.description,
-      inputSchema: parametersToInputSchema(tool.parameters),
+      inputSchema: parametersToInputSchema(tool.input),
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -156,7 +156,7 @@ export function createMcpServer(): Server {
     })),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const tool = enabledTools.find((t) => t.name === name);
 
@@ -171,15 +171,15 @@ export function createMcpServer(): Server {
       // Validate args against the tool's valibot schema when possible.
       // Raw JSON Schema tools (no `kind`) skip validation and pass args directly.
       let validatedArgs: Record<string, unknown>;
-      const isValibotParams =
-        typeof tool.parameters === 'object' &&
-        tool.parameters !== null &&
-        'kind' in tool.parameters &&
-        (tool.parameters as { kind: unknown }).kind === 'schema';
+      const isValibotInput =
+        typeof tool.input === 'object' &&
+        tool.input !== null &&
+        'kind' in tool.input &&
+        (tool.input as { kind: unknown }).kind === 'schema';
 
-      if (isValibotParams) {
+      if (isValibotInput) {
         const parseResult = v.safeParse(
-          tool.parameters as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
+          tool.input as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
           args ?? {},
         );
         if (!parseResult.success) {
@@ -194,13 +194,10 @@ export function createMcpServer(): Server {
         validatedArgs = (args ?? {}) as Record<string, unknown>;
       }
 
-      const result = await (
-        tool as ToolDefinition & {
-          execute: (args: Record<string, unknown>) => Promise<string>;
-        }
-      ).execute(validatedArgs);
+      const result = await tool.run({ input: validatedArgs, signal: extra.signal });
+      const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
 
-      return { content: [{ type: 'text' as const, text: result }] };
+      return { content: [{ type: 'text' as const, text }] };
     } catch (err) {
       return {
         isError: true,

@@ -19,8 +19,8 @@ export const listContexts = defineTool({
   description:
     'List the Kubernetes cluster contexts available in the kubeconfig, and indicate the current one. ' +
     'Use this to discover which clusters you can target.',
-  parameters: v.object({}),
-  execute: async () => {
+  input: v.object({}),
+  run: async () => {
     // In-cluster: kubectl reads the pod's service account token automatically.
     if (isInCluster()) {
       return `Contexts (1):\n* ${IN_CLUSTER_CONTEXT} (current)`;
@@ -48,13 +48,13 @@ export function makeListNamespaces(lockedNamespace?: string | null) {
     name: 'list_namespaces',
     description:
       'List the namespaces in a cluster context. Defaults to the current/configured context.' + lockdownNote,
-    parameters: v.object({
+    input: v.object({
       context: v.pipe(
         v.optional(v.string()),
         v.description('Cluster context to query. Defaults to the configured/current context.'),
       ),
     }),
-    execute: async ({ context }) => {
+    run: async ({ input: { context } }) => {
       // When lockdown is active, return only the locked namespace without
       // querying the cluster (which would list all namespaces).
       if (lockedNamespace) {
