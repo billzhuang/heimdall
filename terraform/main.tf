@@ -442,7 +442,8 @@ resource "kubernetes_deployment" "heimdall" {
           }
 
           liveness_probe {
-            tcp_socket {
+            http_get {
+              path = "/api/health"
               port = 3000
             }
             initial_delay_seconds = 15
@@ -450,7 +451,8 @@ resource "kubernetes_deployment" "heimdall" {
           }
 
           readiness_probe {
-            tcp_socket {
+            http_get {
+              path = "/api/health"
               port = 3000
             }
             initial_delay_seconds = 5
@@ -495,4 +497,35 @@ resource "kubernetes_deployment" "heimdall" {
     kubernetes_secret_v1.heimdall_api_key,
     kubernetes_secret_v1.heimdall_credentials,
   ]
+}
+
+# ---------------------------------------------------------------------------
+# Service — ClusterIP to expose Heimdall inside the cluster
+# ---------------------------------------------------------------------------
+resource "kubernetes_service_v1" "heimdall" {
+  metadata {
+    name      = local.name
+    namespace = kubernetes_namespace.heimdall.metadata[0].name
+    labels = {
+      "app.kubernetes.io/name"       = local.name
+      "app.kubernetes.io/managed-by" = "terraform"
+    }
+  }
+
+  spec {
+    selector = {
+      "app.kubernetes.io/name" = local.name
+    }
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 3000
+      protocol    = "TCP"
+    }
+
+    type = "ClusterIP"
+  }
+
+  depends_on = [kubernetes_deployment.heimdall]
 }

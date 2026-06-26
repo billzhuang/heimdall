@@ -75,3 +75,11 @@ output "service_account_name" {
 output "namespace" {
   value = module.heimdall.namespace
 }
+
+output "service_name" {
+  value = module.heimdall.service_name
+}
+
+output "service_cluster_ip" {
+  value = module.heimdall.service_cluster_ip
+}

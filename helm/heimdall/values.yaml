@@ -65,6 +65,10 @@ slack:
     name: ""
     key: "SLACK_WEBHOOK_URL"
 
+service:
+  type: ClusterIP
+  port: 80
+
 podAnnotations: {}
 podSecurityContext:
   runAsNonRoot: true
