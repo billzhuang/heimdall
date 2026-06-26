@@ -54,4 +54,30 @@ describe('parseDurationMs', () => {
   it('returns null for negative values (not in format)', () => {
     expect(parseDurationMs('-1h')).toBeNull();
   });
+
+  it('returns 0 for zero values', () => {
+    expect(parseDurationMs('0ms')).toBe(0);
+    expect(parseDurationMs('0s')).toBe(0);
+    expect(parseDurationMs('0h')).toBe(0);
+  });
+
+  it('parses fractional seconds', () => {
+    expect(parseDurationMs('0.5s')).toBe(500);
+    expect(parseDurationMs('2.5s')).toBe(2_500);
+  });
+
+  it('parses fractional days', () => {
+    expect(parseDurationMs('1.5d')).toBe(129_600_000);
+    expect(parseDurationMs('0.5d')).toBe(43_200_000);
+  });
+
+  it('parses multi-digit millisecond values', () => {
+    expect(parseDurationMs('100ms')).toBe(100);
+    expect(parseDurationMs('1000ms')).toBe(1_000);
+  });
+
+  it('returns null for unit with missing numeric prefix', () => {
+    expect(parseDurationMs('ms')).toBeNull();
+    expect(parseDurationMs('h')).toBeNull();
+  });
 });
