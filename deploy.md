@@ -46,6 +46,14 @@ kubectl create secret generic heimdall-api-key \
 
 # 3. Deploy
 kubectl apply -f deploy/deployment.yaml
+kubectl apply -f deploy/service.yaml
+```
+
+After the pod is ready, verify the health endpoint:
+
+```bash
+kubectl run --rm curl --image=curlimages/curl --restart=Never -- \
+  curl -sf http://heimdall.heimdall/api/health
 ```
 
 For namespaced-only access use `deploy/rbac-namespaced.yaml` instead of `rbac.yaml`.

@@ -67,3 +67,15 @@ variable "resources" {
   })
   default = {}
 }
+
+variable "service_type" {
+  description = "Kubernetes Service type for the Heimdall ClusterIP Service (e.g. ClusterIP, LoadBalancer, NodePort)."
+  type        = string
+  default     = "ClusterIP"
+}
+
+variable "service_port" {
+  description = "Port exposed by the Heimdall Service (front-end port; target is always the container's port 3000)."
+  type        = number
+  default     = 80
+}

@@ -7,7 +7,10 @@ Heimdall has been deployed!
    POD=$(kubectl get pod -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -o name | head -1)
    kubectl exec -it -n {{ .Release.Namespace }} $POD -- npx flue connect heimdall local
 
-3. Run a cluster triage:
+3. Call the HTTP API (from inside the cluster):
+   curl http://{{ include "heimdall.fullname" . }}.{{ .Release.Namespace }}/api/health
+
+4. Run a cluster triage:
    kubectl exec -n {{ .Release.Namespace }} $POD -- node dist/server.mjs triage
 
 RBAC variant: {{ .Values.rbac.variant }}
