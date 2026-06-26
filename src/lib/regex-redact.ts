@@ -78,7 +78,7 @@ function compileSingleRule(rule: RedactionRule): CompiledRedactionRule | null {
   // The sticky flag `y` conflicts with global `g` in String.prototype.replace: with `/gy`,
   // replace stops after the first non-contiguous match, leaving later secrets unredacted.
   // Strip `y` and warn so redaction is always exhaustive.
-  let flagSet = new Set('g' + extraFlags);
+  const flagSet = new Set('g' + extraFlags);
   if (flagSet.has('y')) {
     flagSet.delete('y');
     console.warn(
