@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { sendSlackNotification, meetsMinSeverity, type SlackConfig } from '../slack.ts';
+import {
+  sendSlackNotification,
+  meetsMinSeverity,
+  MAX_SLACK_TEXT_CHARS,
+  MAX_BULLET_LINES,
+  MAX_SUGGESTED_COMMANDS,
+  type SlackConfig,
+} from '../slack.ts';
 import type { OneShotFinding } from '../format-output.ts';
 
 const BASE_CONFIG: SlackConfig = {
@@ -240,5 +247,39 @@ describe('sendSlackNotification — buildBlockKitPayload edge cases', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     await expect(sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG)).resolves.toBeUndefined();
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('string error value'));
+  });
+
+  it(`truncates answer to MAX_SLACK_TEXT_CHARS (${MAX_SLACK_TEXT_CHARS}) characters`, async () => {
+    const fetch = mockFetch();
+    const longAnswer = 'x'.repeat(MAX_SLACK_TEXT_CHARS + 500);
+    await sendSlackNotification({ ...CRITICAL_FINDING, answer: longAnswer }, BASE_CONFIG);
+    const bodyStr = fetch.mock.calls[0][1].body as string;
+    const payload = JSON.parse(bodyStr) as { blocks: Array<{ text?: { text: string } }> };
+    const answerBlock = payload.blocks.find((b) => b.text?.text.startsWith('x'));
+    expect(answerBlock?.text?.text).toHaveLength(MAX_SLACK_TEXT_CHARS);
+  });
+
+  it(`shows at most MAX_BULLET_LINES (${MAX_BULLET_LINES}) bullets from summary`, async () => {
+    const fetch = mockFetch();
+    const manyBullets = Array.from({ length: 10 }, (_, i) => `- bullet ${i + 1}`).join('\n');
+    await sendSlackNotification({ ...CRITICAL_FINDING, summary: manyBullets }, BASE_CONFIG);
+    const payload = JSON.parse(fetch.mock.calls[0][1].body as string) as {
+      blocks: Array<{ text?: { text: string } }>;
+    };
+    const findingsBlock = payload.blocks.find((b) => b.text?.text.includes('Key findings'));
+    const bulletLines = findingsBlock?.text?.text.split('\n').filter((l) => l.startsWith('-')) ?? [];
+    expect(bulletLines.length).toBe(MAX_BULLET_LINES);
+  });
+
+  it(`shows at most MAX_SUGGESTED_COMMANDS (${MAX_SUGGESTED_COMMANDS}) commands`, async () => {
+    const fetch = mockFetch();
+    const manyCommands = Array.from({ length: 10 }, (_, i) => `kubectl get pod-${i}`);
+    await sendSlackNotification({ ...CRITICAL_FINDING, suggestedCommands: manyCommands }, BASE_CONFIG);
+    const payload = JSON.parse(fetch.mock.calls[0][1].body as string) as {
+      blocks: Array<{ text?: { text: string } }>;
+    };
+    const cmdsBlock = payload.blocks.find((b) => b.text?.text.includes('Suggested commands'));
+    const cmdLines = cmdsBlock?.text?.text.split('\n').filter((l) => l.startsWith('kubectl')) ?? [];
+    expect(cmdLines.length).toBe(MAX_SUGGESTED_COMMANDS);
   });
 });
