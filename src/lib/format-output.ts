@@ -43,6 +43,17 @@ export interface OneShotFinding {
 const RCA_SECTION_HEADER_RE =
   /(?:^|\n)(?:##?\s+(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?|(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):)[ \t]*(?=\n|-?\d)/im;
 
+/** Header regex for each named RCA section. */
+const CAUSAL_CHAIN_RE = /(?:^|\n)(?:##?\s+Causal Chain:?|Causal Chain:)[ \t]*\n/i;
+const EVIDENCE_RE = /(?:^|\n)(?:##?\s+Evidence:?|Evidence:)[ \t]*\n/i;
+const VALIDITY_SCORE_RE =
+  /(?:^|\n)(?:##?\s+Validity Score:?|Validity Score:)[ \t]*(-?\d+(?:\.\d+)?)/i;
+const REMEDIATION_STEPS_RE =
+  /(?:^|\n)(?:##?\s+Remediation Steps?:?|Remediation Steps?:)[ \t]*\n/i;
+
+/** Strips leading bullet or numbered-list markers from a line. */
+const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
+
 /**
  * Extract the body of a named section from raw output.
  * Stops at the next RCA section header or end of string.
@@ -61,7 +72,7 @@ function extractRcaSection(raw: string, headerRe: RegExp): string | null {
 function parseBulletList(body: string): string[] {
   return body
     .split('\n')
-    .map(l => l.replace(/^\s*(?:[-*•]|\d+[.):])\s*/, '').trim())
+    .map(l => l.replace(BULLET_STRIP_RE, '').trim())
     .filter(Boolean);
 }
 
@@ -69,7 +80,7 @@ function parseBulletList(body: string): string[] {
 function parseEvidenceMap(body: string): Record<string, string> | null {
   const map: Record<string, string> = {};
   for (const line of body.split('\n')) {
-    const stripped = line.replace(/^\s*(?:[-*•]|\d+[.):])\s*/, '').trim();
+    const stripped = line.replace(BULLET_STRIP_RE, '').trim();
     const sep = stripped.indexOf(': ');
     if (sep > 0) {
       const key = stripped.slice(0, sep).trim();
@@ -134,31 +145,62 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
 
   // ── Structured RCA fields (searched within rcaRaw only) ──────────────────
 
-  const causalBody = extractRcaSection(rcaRaw, /(?:^|\n)(?:##?\s+Causal Chain:?|Causal Chain:)[ \t]*\n/i);
+  const causalBody = extractRcaSection(rcaRaw, CAUSAL_CHAIN_RE);
   if (causalBody) {
     const items = parseBulletList(causalBody);
     if (items.length > 0) finding.causalChain = items;
   }
 
-  const evidenceBody = extractRcaSection(rcaRaw, /(?:^|\n)(?:##?\s+Evidence:?|Evidence:)[ \t]*\n/i);
+  const evidenceBody = extractRcaSection(rcaRaw, EVIDENCE_RE);
   if (evidenceBody) {
     const map = parseEvidenceMap(evidenceBody);
     if (map) finding.evidence = map;
   }
 
-  const vsMatch = /(?:^|\n)(?:##?\s+Validity Score:?|Validity Score:)[ \t]*(-?\d+(?:\.\d+)?)/i.exec(rcaRaw);
+  const vsMatch = VALIDITY_SCORE_RE.exec(rcaRaw);
   if (vsMatch) {
     const score = parseFloat(vsMatch[1]);
     if (!isNaN(score)) finding.validityScore = Math.min(1, Math.max(0, score));
   }
 
-  const remBody = extractRcaSection(rcaRaw, /(?:^|\n)(?:##?\s+Remediation Steps?:?|Remediation Steps?:)[ \t]*\n/i);
+  const remBody = extractRcaSection(rcaRaw, REMEDIATION_STEPS_RE);
   if (remBody) {
     const items = parseBulletList(remBody);
     if (items.length > 0) finding.remediationSteps = items;
   }
 
   return finding;
+}
+
+/**
+ * Walk fenced-block lines, joining backslash continuations and collecting
+ * all kubectl commands. Non-kubectl lines are ignored unless they continue
+ * a preceding kubectl line.
+ *
+ * A trailing continuation (last line ends with `\`) is flushed as-is.
+ */
+function extractCommandsFromLines(lines: string[]): string[] {
+  const commands: string[] = [];
+  let current = '';
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (current !== '') {
+      if (trimmed.endsWith('\\')) {
+        current += ' ' + trimmed.slice(0, -1).trim();
+      } else {
+        commands.push(trimmed ? current + ' ' + trimmed : current);
+        current = '';
+      }
+    } else if (trimmed.startsWith('kubectl ')) {
+      if (trimmed.endsWith('\\')) {
+        current = trimmed.slice(0, -1).trim();
+      } else {
+        commands.push(trimmed);
+      }
+    }
+  }
+  if (current !== '') commands.push(current);
+  return commands;
 }
 
 /**
@@ -189,28 +231,9 @@ export function extractKubectlCommands(text: string): string[] {
   const fencedRe = /```(?:bash|sh|shell)?\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
   while ((m = fencedRe.exec(text)) !== null) {
-    const lines = m[1].split('\n');
-    let current = '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (current !== '') {
-        // Continuation: append this fragment (strip the trailing backslash if present)
-        if (trimmed.endsWith('\\')) {
-          current += ' ' + trimmed.slice(0, -1).trim();
-        } else {
-          add(current + ' ' + trimmed);
-          current = '';
-        }
-      } else if (trimmed.startsWith('kubectl ')) {
-        if (trimmed.endsWith('\\')) {
-          current = trimmed.slice(0, -1).trim();
-        } else {
-          add(trimmed);
-        }
-      }
+    for (const cmd of extractCommandsFromLines(m[1].split('\n'))) {
+      add(cmd);
     }
-    // Flush a trailing continuation (no final non-backslash line).
-    if (current !== '') add(current);
   }
 
   // Inline spans: `kubectl …`
