@@ -288,6 +288,17 @@ const ScheduleSchema = v.nullish(
   }),
 );
 
+// Infrastructure drift detection — disabled by default; compares each triage run against a stored checkpoint.
+const DriftSchema = v.nullish(
+  v.object({
+    // Set to true to enable drift detection on every triage run.
+    enabled: v.nullish(v.boolean(), false),
+    // Path for the checkpoint JSONL file (alongside task-history.jsonl by default).
+    checkpointFile: v.nullish(v.string()),
+  }),
+  { enabled: false },
+);
+
 // Performance telemetry — disabled by default; auto-enabled by HEIMDALL_TELEMETRY_FILE env var.
 const TelemetrySchema = v.nullish(
   v.object({
@@ -339,6 +350,8 @@ const HeimdallConfigSchema = v.object({
   schedule: ScheduleSchema,
   // Service Level Objectives to evaluate against Prometheus (empty by default).
   slos: SlosSchema,
+  // Infrastructure drift detection: compare each triage run against a stored cluster snapshot (disabled by default).
+  drift: DriftSchema,
   // Performance telemetry: token usage, cache hit rate, tool-call latency (disabled by default).
   telemetry: TelemetrySchema,
   // HTTP server settings for `heimdall serve` mode (disabled by default; port 3000).

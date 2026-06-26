@@ -21,6 +21,17 @@ import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
 import { resolveModel } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
+import {
+  loadCheckpoint,
+  saveCheckpoint,
+  detectDrift,
+  buildDriftPromptSection,
+  parseNamespacesFromJson,
+  parseWorkloadsFromJson,
+  parseNodesFromJson,
+  type ClusterCheckpoint,
+} from './lib/drift.ts';
+import { runKubectl } from './lib/kubectl.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -69,12 +80,62 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
   });
 }
 
+const DEFAULT_CHECKPOINT_FILE = 'scenarios/drift-checkpoint.jsonl';
+
+/**
+ * Capture a lightweight cluster snapshot using direct kubectl reads.
+ * Errors are swallowed — a missing kubectl or unreachable cluster must not
+ * prevent the triage sweep itself from running.
+ */
+async function captureCheckpoint(timestamp: string): Promise<ClusterCheckpoint> {
+  const [nsRaw, wlRaw, nodeRaw] = await Promise.all([
+    runKubectl('get namespaces -o json').catch(() => ''),
+    runKubectl('get deployments,statefulsets,daemonsets -A -o json').catch(() => ''),
+    runKubectl('get nodes -o json').catch(() => ''),
+  ]);
+  return {
+    timestamp,
+    namespaces: parseNamespacesFromJson(nsRaw),
+    workloads: parseWorkloadsFromJson(wlRaw),
+    nodes: parseNodesFromJson(nodeRaw),
+  };
+}
+
 export async function runTriageMode(opts: TriageOptions = {}, model?: string): Promise<void> {
   const config = loadConfig();
   // Only inject SLO step when prometheusQuery is enabled; the slo-evaluator
   // subagent has no Prometheus tool otherwise and cannot evaluate anything.
   const slos = config.tools.prometheusQuery ? (config.slos ?? []) : [];
-  const prompt = buildTriagePrompt({ ...opts, slos });
+
+  // Drift detection: load previous checkpoint, capture current state, compute delta.
+  let driftSection = '';
+  const driftEnabled = config.drift?.enabled ?? false;
+  const checkpointFile = config.drift?.checkpointFile ?? DEFAULT_CHECKPOINT_FILE;
+  if (driftEnabled) {
+    const now = new Date().toISOString();
+    const [previous, current] = await Promise.all([
+      loadCheckpoint(checkpointFile).catch(() => null),
+      captureCheckpoint(now),
+    ]);
+    // Save the new checkpoint regardless of whether a previous one existed.
+    saveCheckpoint(current, checkpointFile).catch((err: unknown) => {
+      process.stderr.write(`[heimdall-triage] Warning: could not save drift checkpoint: ${err instanceof Error ? err.message : String(err)}\n`);
+    });
+    const findings = detectDrift(current, previous);
+    if (previous) {
+      driftSection = buildDriftPromptSection(findings, previous.timestamp);
+      if (findings.length > 0) {
+        process.stderr.write(`[heimdall-triage] Drift detected: ${findings.length} change(s) since ${previous.timestamp}\n`);
+      } else {
+        process.stderr.write(`[heimdall-triage] No infrastructure drift detected since ${previous.timestamp}\n`);
+      }
+    } else {
+      process.stderr.write(`[heimdall-triage] No previous checkpoint found — baseline saved for next run\n`);
+    }
+  }
+
+  const basePrompt = buildTriagePrompt({ ...opts, slos });
+  const prompt = driftSection ? driftSection + basePrompt : basePrompt;
 
   if (opts.contexts && opts.contexts.length > 0) {
     process.stderr.write(`[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}\n`);
