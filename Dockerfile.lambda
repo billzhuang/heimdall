@@ -1,0 +1,76 @@
+# Dockerfile.lambda — AWS Lambda container image for Heimdall.
+#
+# The standard Dockerfile uses node:22-slim which lacks the Lambda Runtime
+# Interface Client (LRIC).  This variant switches to the official AWS Lambda
+# Node.js 22 base image that bundles the LRIC, enabling the --handler flag in
+# `aws lambda create-function` and direct Lambda event dispatch to the Hono
+# handler without an extra Lambda layer.
+#
+# Differences from the main Dockerfile:
+#   - Runtime base:  public.ecr.aws/lambda/nodejs22.x  (Amazon Linux 2023 + LRIC)
+#   - Package manager: dnf (AL2023) instead of apt-get
+#   - kubectl/helm are installed using the same pinned versions
+#   - CMD invokes the Hono Lambda handler (not the HTTP server entrypoint)
+#
+# Usage — see deploy.md §"Option 2: AWS Lambda":
+#   docker build -f Dockerfile.lambda -t heimdall-lambda .
+#   docker push <account>.dkr.ecr.<region>.amazonaws.com/heimdall-lambda:latest
+#   aws lambda create-function \
+#     --package-type Image \
+#     --code ImageUri=<account>.dkr.ecr.<region>.amazonaws.com/heimdall-lambda:latest \
+#     --handler dist/server.handler \
+#     ...
+
+# ─── Stage 1: build ───────────────────────────────────────────────────────────
+# Pin to immutable digest; update intentionally when pulling in base-image security patches.
+FROM node:22-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2 AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# ─── Stage 2: Lambda runtime ──────────────────────────────────────────────────
+# public.ecr.aws/lambda/nodejs22.x ships Node.js 22 together with the Lambda
+# Runtime Interface Client.  It supports ES modules (.mjs / "type":"module")
+# and honours the --handler flag passed to aws lambda create-function.
+FROM public.ecr.aws/lambda/nodejs22.x
+
+# Install kubectl and helm (same pinned versions as the main Dockerfile).
+# Amazon Linux 2023 uses dnf instead of apt-get.
+RUN dnf install -y --nodocs curl tar gzip && \
+    KUBECTL_VERSION=$(curl --fail -sL https://dl.k8s.io/release/stable.txt) && \
+    ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    curl --fail -sLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" && \
+    curl --fail -sLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl.sha256" && \
+    echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check && \
+    chmod +x kubectl && mv kubectl /usr/local/bin/kubectl && \
+    rm kubectl.sha256 && \
+    HELM_VERSION=v3.17.3 && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    sha256sum --check "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    tar -zxf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    mv "linux-${ARCH}/helm" /usr/local/bin/helm && \
+    rm -rf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" "linux-${ARCH}" && \
+    dnf remove -y curl && dnf clean all
+
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+COPY --from=builder /app/package*.json ./
+ENV NODE_ENV=production
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/heimdall.config.yaml ./
+
+# The Lambda base image runtime loads dist/server.mjs as an ES module and
+# invokes the `handler` named export.  The handler is built by Flue and
+# re-exports createLambdaHandler() from src/lambda-handler.ts.
+#
+# Equivalent to passing --handler dist/server.handler to aws lambda
+# create-function; the CLI flag overrides this CMD value if needed.
+CMD ["dist/server.handler"]
