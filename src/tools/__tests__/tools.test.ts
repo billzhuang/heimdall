@@ -14,7 +14,7 @@ vi.mock('../../lib/kubectl.ts', () => ({
 }));
 
 import { kubectl } from '../kubectl.ts';
-import { listContexts, listNamespaces } from '../kubeconfig.ts';
+import { listContexts, listNamespaces, makeListNamespaces } from '../kubeconfig.ts';
 
 const KUBECONFIG = `
 current-context: prod
@@ -74,6 +74,25 @@ describe('list_namespaces tool', () => {
   });
 });
 
+describe('list_namespaces tool — namespace lockdown', () => {
+  it('returns only the locked namespace without querying the cluster', async () => {
+    const locked = makeListNamespaces('production');
+    const out = await locked.run({ input: {} });
+    expect(out).toBe('Namespaces (1):\n  production');
+    expect(runKubectl).not.toHaveBeenCalled();
+  });
+
+  it('includes the lockdown note in the tool description', () => {
+    const locked = makeListNamespaces('production');
+    expect(locked.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    expect(locked.description).toContain("'production'");
+  });
+
+  it('has no lockdown note when no namespace is locked', () => {
+    expect(listNamespaces.description).not.toContain('NAMESPACE LOCKDOWN ACTIVE');
+  });
+});
+
 describe('list_contexts tool (real kubeconfig parsing)', () => {
   let dir: string;
   let cfg: string;
@@ -112,6 +131,17 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
       expect(await listContexts.run({ input: {} })).toMatch(/No kubeconfig contexts found/);
     } finally {
       process.env.KUBECONFIG = cfg;
+    }
+  });
+
+  it('returns the in-cluster context when running inside a Kubernetes pod', async () => {
+    process.env.KUBERNETES_SERVICE_HOST = '10.96.0.1';
+    try {
+      const out = await listContexts.run({ input: {} });
+      expect(out).toBe('Contexts (1):\n* in-cluster (current)');
+      expect(runKubectl).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.KUBERNETES_SERVICE_HOST;
     }
   });
 });
