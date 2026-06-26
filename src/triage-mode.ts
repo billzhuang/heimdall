@@ -21,6 +21,17 @@ import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
 import { resolveModel } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
+import {
+  loadCheckpoint,
+  saveCheckpoint,
+  detectDrift,
+  buildDriftPromptSection,
+  parseNamespacesFromJson,
+  parseWorkloadsFromJson,
+  parseNodesFromJson,
+  type ClusterCheckpoint,
+} from './lib/drift.ts';
+import { runKubectl } from './lib/kubectl.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -69,12 +80,88 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
   });
 }
 
+// Resolve relative to the package root so the checkpoint sits alongside
+// task-history.jsonl regardless of the process working directory.
+const DEFAULT_CHECKPOINT_FILE = resolve(__dirname, '..', 'scenarios', 'drift-checkpoint.jsonl');
+
+/**
+ * Capture a lightweight cluster snapshot using direct kubectl reads.
+ *
+ * Returns null when ALL three kubectl calls fail (non-JSON responses), which
+ * indicates kubectl is unavailable or the cluster is unreachable — in that case
+ * the caller must NOT overwrite the existing baseline with an empty snapshot.
+ *
+ * When `lockedNamespace` is set the workload query is scoped to that namespace
+ * and the options are forwarded to runKubectl so the lockdown policy applies.
+ */
+async function captureCheckpoint(
+  timestamp: string,
+  lockedNamespace?: string,
+): Promise<ClusterCheckpoint | null> {
+  const opts = lockedNamespace ? { lockedNamespace } : {};
+  // When namespace is locked, scope workloads to that namespace instead of -A
+  // (which applyNamespaceLockdown would block anyway).
+  const wlArgs = lockedNamespace
+    ? `get deployments,statefulsets,daemonsets -n ${lockedNamespace} -o json`
+    : 'get deployments,statefulsets,daemonsets -A -o json';
+  const [nsRaw, wlRaw, nodeRaw] = await Promise.all([
+    runKubectl('get namespaces -o json', opts).catch(() => ''),
+    runKubectl(wlArgs, opts).catch(() => ''),
+    runKubectl('get nodes -o json', opts).catch(() => ''),
+  ]);
+  // If none of the responses look like JSON objects, kubectl is unavailable or
+  // all commands were blocked — skip saving so we don't overwrite a good baseline
+  // with an all-empty snapshot that would trigger spurious drift findings next run.
+  const hasJsonData = [nsRaw, wlRaw, nodeRaw].some((raw) => raw.trimStart().startsWith('{'));
+  if (!hasJsonData) return null;
+  return {
+    timestamp,
+    namespaces: parseNamespacesFromJson(nsRaw),
+    workloads: parseWorkloadsFromJson(wlRaw),
+    nodes: parseNodesFromJson(nodeRaw),
+  };
+}
+
 export async function runTriageMode(opts: TriageOptions = {}, model?: string): Promise<void> {
   const config = loadConfig();
   // Only inject SLO step when prometheusQuery is enabled; the slo-evaluator
   // subagent has no Prometheus tool otherwise and cannot evaluate anything.
   const slos = config.tools.prometheusQuery ? (config.slos ?? []) : [];
-  const prompt = buildTriagePrompt({ ...opts, slos });
+
+  // Drift detection: load previous checkpoint, capture current state, compute delta.
+  let driftSection = '';
+  const driftEnabled = config.drift?.enabled ?? false;
+  const checkpointFile = config.drift?.checkpointFile ?? DEFAULT_CHECKPOINT_FILE;
+  if (driftEnabled) {
+    const now = new Date().toISOString();
+    const lockedNamespace = config.namespace?.locked ?? undefined;
+    const [previous, current] = await Promise.all([
+      loadCheckpoint(checkpointFile).catch(() => null),
+      captureCheckpoint(now, lockedNamespace),
+    ]);
+    if (current) {
+      // Save the new checkpoint only when we got real data from the cluster.
+      saveCheckpoint(current, checkpointFile).catch((err: unknown) => {
+        process.stderr.write(`[heimdall-triage] Warning: could not save drift checkpoint: ${err instanceof Error ? err.message : String(err)}\n`);
+      });
+      const findings = detectDrift(current, previous);
+      if (previous) {
+        driftSection = buildDriftPromptSection(findings, previous.timestamp);
+        if (findings.length > 0) {
+          process.stderr.write(`[heimdall-triage] Drift detected: ${findings.length} change(s) since ${previous.timestamp}\n`);
+        } else {
+          process.stderr.write(`[heimdall-triage] No infrastructure drift detected since ${previous.timestamp}\n`);
+        }
+      } else {
+        process.stderr.write(`[heimdall-triage] No previous checkpoint found — baseline saved for next run\n`);
+      }
+    } else {
+      process.stderr.write(`[heimdall-triage] Drift snapshot skipped — kubectl unavailable or cluster unreachable\n`);
+    }
+  }
+
+  const basePrompt = buildTriagePrompt({ ...opts, slos });
+  const prompt = driftSection ? driftSection + basePrompt : basePrompt;
 
   if (opts.contexts && opts.contexts.length > 0) {
     process.stderr.write(`[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}\n`);
