@@ -18,6 +18,13 @@ export interface SlackConfig {
   timeoutMs: number;
 }
 
+/** Maximum characters for a Slack section text block (API limit is 3 001; we use 2 000 for safety). */
+export const MAX_SLACK_TEXT_CHARS = 2_000;
+/** Maximum bullet lines extracted from the Thinking Summary section. */
+export const MAX_BULLET_LINES = 3;
+/** Maximum suggested kubectl commands shown in the notification. */
+export const MAX_SUGGESTED_COMMANDS = 3;
+
 const SEVERITY_EMOJI: Record<string, string> = {
   critical: ':rotating_light:',
   warning: ':warning:',
@@ -44,11 +51,11 @@ function buildBlockKitPayload(finding: OneShotFinding, channel?: string | null):
     },
   ];
 
-  // Top-3 bullet points from the Thinking Summary section.
+  // Top bullet points from the Thinking Summary section.
   const bullets = finding.summary
     .split('\n')
     .filter((l) => l.trim().startsWith('-'))
-    .slice(0, 3)
+    .slice(0, MAX_BULLET_LINES)
     .map((l) => l.trim())
     .join('\n');
 
@@ -59,17 +66,16 @@ function buildBlockKitPayload(finding: OneShotFinding, channel?: string | null):
     });
   }
 
-  // Main answer — capped at 2 000 chars to stay within Slack block limits.
   // Fallback to a placeholder if the answer is empty: Slack rejects empty text fields.
-  const answerText = finding.answer.trim().slice(0, 2_000) || '_No answer provided._';
+  const answerText = finding.answer.trim().slice(0, MAX_SLACK_TEXT_CHARS) || '_No answer provided._';
   blocks.push({
     type: 'section',
     text: { type: 'mrkdwn', text: answerText },
   });
 
-  // Top-3 suggested kubectl commands as a fenced code block.
+  // Top suggested kubectl commands as a fenced code block.
   if (finding.suggestedCommands.length > 0) {
-    const cmds = finding.suggestedCommands.slice(0, 3).join('\n');
+    const cmds = finding.suggestedCommands.slice(0, MAX_SUGGESTED_COMMANDS).join('\n');
     blocks.push({
       type: 'section',
       text: { type: 'mrkdwn', text: `*Suggested commands:*\n\`\`\`\n${cmds}\n\`\`\`` },
