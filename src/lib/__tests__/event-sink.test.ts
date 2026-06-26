@@ -57,29 +57,12 @@ describe('createEventSink', () => {
 // ---------------------------------------------------------------------------
 
 describe('EventSink — file sink', () => {
-  let appendFileSyncMock: ReturnType<typeof vi.fn>;
-
-  beforeEach(async () => {
-    appendFileSyncMock = vi.fn();
-    vi.doMock('node:fs', () => ({ appendFileSync: appendFileSyncMock }));
+  beforeEach(() => {
+    vi.doMock('node:fs', () => ({ appendFileSync: vi.fn() }));
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it('appends a JSONL line to the configured file path', async () => {
-    const { appendFileSync } = await import('node:fs');
-    const mockAppend = vi.mocked(appendFileSync);
-
-    const sink = new EventSink({ filePath: '/var/log/events.jsonl' });
-    const finding = makeFinding();
-    await sink.write(finding);
-
-    // The call may not use the mock depending on module caching; verify the record shape instead.
-    // We use a spy approach: intercept via vi.spyOn on the module.
-    expect(mockAppend).toHaveBeenCalledTimes(0); // doMock doesn't affect already-imported modules
-    // Validate record shape by calling write with a real spy via unit test of findingToRecord logic.
   });
 
   it('writes a JSONL record with the correct shape', async () => {
@@ -195,6 +178,19 @@ describe('EventSink — webhook sink', () => {
     await expect(sink.write(makeFinding())).resolves.toBeUndefined();
 
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'));
+    vi.unstubAllGlobals();
+    stderrSpy.mockRestore();
+  });
+
+  it('logs to stderr on AbortError (timeout) and does not throw', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const abortErr = Object.assign(new Error('signal timed out'), { name: 'AbortError' });
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortErr));
+
+    const sink = new EventSink({ webhookUrl: 'https://example.com/hook' });
+    await expect(sink.write(makeFinding())).resolves.toBeUndefined();
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('AbortError'));
     vi.unstubAllGlobals();
     stderrSpy.mockRestore();
   });
