@@ -68,7 +68,7 @@ export async function readTaskHistory(logPath: string): Promise<TaskHistoryEntry
     try {
       entries.push(JSON.parse(trimmed) as TaskHistoryEntry);
     } catch {
-      // Skip malformed lines.
+      console.warn(`[heimdall] task-history: skipping malformed JSONL line in ${logPath}`);
     }
   }
   return entries;
@@ -81,7 +81,9 @@ export async function readTaskHistory(logPath: string): Promise<TaskHistoryEntry
  */
 export function buildTaskHistoryContext(entries: TaskHistoryEntry[], maxEntries = 20): string {
   if (entries.length === 0) return 'No task history entries yet.';
-  const recent = entries.slice(-maxEntries);
+  // entries.slice(-0) === entries.slice(0) (full array), so guard explicitly.
+  const recent = maxEntries > 0 ? entries.slice(-maxEntries) : [];
+  if (recent.length === 0) return 'No task history entries yet.';
   return recent
     .map(
       (e, i) =>
