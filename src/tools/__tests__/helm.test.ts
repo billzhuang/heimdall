@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { runHelm } = vi.hoisted(() => ({ runHelm: vi.fn() }));
 vi.mock('../../lib/helm.ts', () => ({ runHelm }));
 
-import { makeHelmRelease, helmRelease } from '../helm.ts';
+import { makeHelmRelease, helmRelease, helmReleasePlugin } from '../helm.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 beforeEach(() => runHelm.mockReset());
 
@@ -71,6 +72,30 @@ describe('makeHelmRelease — namespace lockdown', () => {
 
   it('description has no lockdown note when no lock is set', () => {
     const tool = makeHelmRelease();
+    expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
+  });
+});
+
+describe('helmReleasePlugin', () => {
+  it('key is "helmRelease"', () => {
+    expect(helmReleasePlugin.key).toBe('helmRelease');
+  });
+
+  it('factory passes namespace.locked through to makeHelmRelease', async () => {
+    runHelm.mockResolvedValue('ok');
+    const config = {
+      namespace: { locked: 'prod-ns' },
+    } as unknown as HeimdallConfig;
+    const tool = helmReleasePlugin.factory(config, []);
+    expect(tool.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    expect(tool.description).toContain('prod-ns');
+    await tool.run({ input: { action: 'list', namespace: 'prod-ns' } });
+    expect(runHelm).toHaveBeenCalledWith('list', expect.objectContaining({ namespace: 'prod-ns' }));
+  });
+
+  it('factory works when namespace.locked is undefined', () => {
+    const config = {} as unknown as HeimdallConfig;
+    const tool = helmReleasePlugin.factory(config, []);
     expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
   });
 });
