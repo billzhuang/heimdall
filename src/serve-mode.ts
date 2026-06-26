@@ -9,6 +9,7 @@
  *   POST /api/diagnose     — run an agent investigation; returns OneShotFinding JSON
  *   GET  /api/health       — liveness probe
  *   GET  /api/openapi.json — OpenAPI 3.1 spec
+ *   GET  /metrics          — Prometheus exposition format (public, no auth)
  *
  * Usage:
  *   npm run serve
@@ -32,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { resolveModel } from './lib/model.ts';
+import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -254,6 +256,15 @@ export function createServeApp(
 
   app.get('/api/openapi.json', (c) => c.json(OPENAPI_SPEC));
 
+  // Prometheus metrics endpoint — always public (no auth) so scrapers work without credentials.
+  app.get('/metrics', (c) => {
+    const snapshot = getTelemetrySnapshot();
+    const body = formatPrometheusMetrics(snapshot);
+    return c.text(body, 200, {
+      'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
+    });
+  });
+
   app.post('/api/diagnose', async (c) => {
     let body: Record<string, unknown>;
     try {
@@ -361,6 +372,7 @@ Endpoints:
   POST /api/diagnose       { prompt, namespace?, model? } → OneShotFinding
   GET  /api/health         Liveness probe → { status, service }
   GET  /api/openapi.json   OpenAPI 3.1 spec
+  GET  /metrics            Prometheus metrics (public)
 
 Examples:
   heimdall serve
@@ -416,6 +428,9 @@ Examples:
     );
     process.stderr.write(
       `  GET  http://${info.address}:${info.port}/api/openapi.json\n`,
+    );
+    process.stderr.write(
+      `  GET  http://${info.address}:${info.port}/metrics\n`,
     );
   });
 }

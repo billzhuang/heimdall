@@ -313,6 +313,30 @@ const TelemetrySchema = v.nullish(
   { enabled: false },
 );
 
+// OpenTelemetry export — push Heimdall metrics to an OTLP/HTTP endpoint.
+// Standard env vars (OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_EXPORTER_OTLP_HEADERS,
+// OTEL_METRIC_EXPORT_INTERVAL, OTEL_SERVICE_NAME) are also respected at runtime
+// so this config block is optional if you set env vars directly.
+const OtelSchema = v.nullish(
+  v.object({
+    // Set to true to enable periodic OTLP push (even if endpoint is set via env var).
+    enabled: v.nullish(v.boolean(), false),
+    // OTLP/HTTP endpoint base URL, e.g. "http://localhost:4318".
+    // Also readable from OTEL_EXPORTER_OTLP_ENDPOINT.
+    endpoint: v.nullish(v.string()),
+    // HTTP headers for authentication, e.g. { Authorization: "Bearer token" }.
+    // Also parsed from OTEL_EXPORTER_OTLP_HEADERS ("key=value,key2=value2" format).
+    headers: v.nullish(v.record(v.string(), v.string()), {}),
+    // Export interval in milliseconds (default 60000).
+    // Also readable from OTEL_METRIC_EXPORT_INTERVAL.
+    exportIntervalMs: v.nullish(v.number()),
+    // OTEL service.name resource attribute (default "heimdall").
+    // Also readable from OTEL_SERVICE_NAME.
+    serviceName: v.nullish(v.string()),
+  }),
+  { enabled: false, headers: {} },
+);
+
 // HTTP server config — used by `heimdall serve` mode.
 const ServerSchema = v.nullish(
   v.object({
@@ -358,6 +382,8 @@ const HeimdallConfigSchema = v.object({
   drift: DriftSchema,
   // Performance telemetry: token usage, cache hit rate, tool-call latency (disabled by default).
   telemetry: TelemetrySchema,
+  // OpenTelemetry push export to OTLP/HTTP endpoint (disabled by default).
+  otel: OtelSchema,
   // HTTP server settings for `heimdall serve` mode (disabled by default; port 3000).
   server: ServerSchema,
 });
