@@ -392,3 +392,200 @@ describe('DEFAULT_MODEL', () => {
     expect(DEFAULT_MODEL).toMatch(/.+\/.+/);
   });
 });
+
+describe('buildInstructions — past incident context (ragContext)', () => {
+  it('injects past incident content under a Past incident precedents section', () => {
+    const out = buildInstructions(undefined, null, undefined, 'OOMKill on payment pod at 14:32 UTC.');
+    expect(out).toContain('## Past incident precedents');
+    expect(out).toContain('OOMKill on payment pod');
+  });
+
+  it('does not include the section when ragContext is absent or empty', () => {
+    expect(buildInstructions()).not.toContain('## Past incident precedents');
+    expect(buildInstructions(undefined, null, '', '')).not.toContain('## Past incident precedents');
+  });
+
+  it('places past incident precedents before the Tools section', () => {
+    const out = buildInstructions(undefined, null, undefined, 'Prior incident details');
+    const ragPos = out.indexOf('## Past incident precedents');
+    const toolsPos = out.indexOf('## Tools');
+    expect(ragPos).toBeGreaterThan(-1);
+    expect(ragPos).toBeLessThan(toolsPos);
+  });
+});
+
+describe('buildInstructions — recurring anomaly baselines (baselineContext)', () => {
+  it('injects baseline content under a Recurring anomaly baselines section', () => {
+    const out = buildInstructions(undefined, null, undefined, undefined, undefined, 'CPU spikes every morning at 09:00 UTC.');
+    expect(out).toContain('## Recurring anomaly baselines');
+    expect(out).toContain('CPU spikes every morning');
+  });
+
+  it('does not include the section when baselineContext is not provided', () => {
+    expect(buildInstructions()).not.toContain('## Recurring anomaly baselines');
+  });
+
+  it('places recurring anomaly baselines before the Tools section', () => {
+    const out = buildInstructions(undefined, null, undefined, undefined, undefined, 'Baseline anomalies');
+    const basePos = out.indexOf('## Recurring anomaly baselines');
+    const toolsPos = out.indexOf('## Tools');
+    expect(basePos).toBeGreaterThan(-1);
+    expect(basePos).toBeLessThan(toolsPos);
+  });
+});
+
+describe('buildInstructions — SLO context', () => {
+  const testSlo = {
+    name: 'API availability',
+    metric: 'sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))',
+    target: 0.999,
+    window: '30d',
+    budget: 0.001,
+  };
+
+  it('injects a Configured SLOs table when slos are provided', () => {
+    const out = buildInstructions(undefined, null, undefined, undefined, [testSlo]);
+    expect(out).toContain('## Configured SLOs');
+    expect(out).toContain('API availability');
+    expect(out).toContain('0.999');
+    expect(out).toContain('0.001');
+    expect(out).toContain('30d');
+  });
+
+  it('omits the SLO section when the slos array is empty or not provided', () => {
+    expect(buildInstructions(undefined, null, undefined, undefined, [])).not.toContain('## Configured SLOs');
+    expect(buildInstructions()).not.toContain('## Configured SLOs');
+  });
+
+  it('escapes pipe characters in SLO names and metrics so the Markdown table stays valid', () => {
+    const pipeSlo = { name: 'A|B slo', metric: 'metric|selector', target: 0.99, window: '7d', budget: 0.01 };
+    const out = buildInstructions(undefined, null, undefined, undefined, [pipeSlo]);
+    expect(out).toContain('A\\|B slo');
+    expect(out).toContain('metric\\|selector');
+  });
+
+  it('places the Configured SLOs section before the Tools section', () => {
+    const out = buildInstructions(undefined, null, undefined, undefined, [testSlo]);
+    const sloPos = out.indexOf('## Configured SLOs');
+    const toolsPos = out.indexOf('## Tools');
+    expect(sloPos).toBeGreaterThan(-1);
+    expect(sloPos).toBeLessThan(toolsPos);
+  });
+});
+
+describe('buildInstructions — conditional subagent sections', () => {
+  it('includes AWS subagents (eks-troubleshooter, iam-auditor, aws-resource-analyzer) when awsCli is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'awsCli']));
+    expect(out).toContain('eks-troubleshooter');
+    expect(out).toContain('iam-auditor');
+    expect(out).toContain('aws-resource-analyzer');
+  });
+
+  it('omits AWS subagents when awsCli is disabled', () => {
+    const out = buildInstructions(new Set(['kubectl']));
+    expect(out).not.toContain('eks-troubleshooter');
+    expect(out).not.toContain('iam-auditor');
+    expect(out).not.toContain('aws-resource-analyzer');
+  });
+
+  it('includes cost-analyzer when kubecostQuery is enabled', () => {
+    expect(buildInstructions(new Set(['kubectl', 'kubecostQuery']))).toContain('cost-analyzer');
+  });
+
+  it('omits cost-analyzer when kubecostQuery is disabled', () => {
+    expect(buildInstructions(new Set(['kubectl']))).not.toContain('cost-analyzer');
+  });
+
+  it('includes newrelic-investigator when newRelicQuery is enabled', () => {
+    expect(buildInstructions(new Set(['kubectl', 'newRelicQuery']))).toContain('newrelic-investigator');
+  });
+
+  it('omits newrelic-investigator when newRelicQuery is disabled', () => {
+    expect(buildInstructions(new Set(['kubectl']))).not.toContain('newrelic-investigator');
+  });
+
+  it('includes cdk-investigator when cdkQuery is enabled', () => {
+    expect(buildInstructions(new Set(['kubectl', 'cdkQuery']))).toContain('cdk-investigator');
+  });
+
+  it('omits cdk-investigator when cdkQuery is disabled', () => {
+    expect(buildInstructions(new Set(['kubectl']))).not.toContain('cdk-investigator');
+  });
+
+  it('enables golden-signals-investigator when only newRelicQuery is enabled', () => {
+    expect(buildInstructions(new Set(['kubectl', 'newRelicQuery']))).toContain('golden-signals-investigator');
+  });
+});
+
+describe('buildInstructions — no cluster tools enabled', () => {
+  it('shows "No cluster tools are enabled." when the enabledTools set is empty', () => {
+    const out = buildInstructions(new Set());
+    expect(out).toContain('No cluster tools are enabled.');
+  });
+});
+
+describe('slo-evaluator subagent', () => {
+  it('is listed in the specialist subagents section of buildInstructions', () => {
+    expect(buildInstructions()).toContain('slo-evaluator');
+  });
+
+  it('instructions describe the burn rate formula using current_value / budget', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['slo-evaluator'];
+    expect(inst).toMatch(/burn.?rate/i);
+    expect(inst).toContain('current_value');
+    expect(inst).toContain('budget');
+  });
+
+  it('instructions describe the remaining budget formula', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['slo-evaluator'];
+    expect(inst).toContain('remaining_budget');
+    expect(inst).toMatch(/max\(0/);
+  });
+
+  it('instructions require prometheus_query to evaluate each SLO metric', () => {
+    expect(SUBAGENT_INSTRUCTIONS['slo-evaluator']).toMatch(/prometheus_query/);
+  });
+
+  it('instructions mandate a Healthy SLOs summary table', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['slo-evaluator'];
+    expect(inst).toMatch(/Healthy SLOs/i);
+    expect(inst).toMatch(/\| Name/);
+    expect(inst).toMatch(/Burn Rate/i);
+  });
+
+  it('rereads the read-only policy', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['slo-evaluator'];
+    expect(inst).toMatch(/read-only/i);
+    expect(inst).toMatch(/Thinking Summary/);
+  });
+});
+
+describe('certificate-inspector subagent', () => {
+  it('is listed in the specialist subagents section of buildInstructions', () => {
+    expect(buildInstructions()).toContain('certificate-inspector');
+  });
+
+  it('instructions cover cert-manager Certificate CRD detection', () => {
+    expect(SUBAGENT_INSTRUCTIONS['certificate-inspector']).toContain('certificates.cert-manager.io');
+  });
+
+  it('instructions define severity tiers for certificate expiry', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['certificate-inspector'];
+    expect(inst).toMatch(/CRITICAL/);
+    expect(inst).toMatch(/Expired/i);
+    expect(inst).toMatch(/7 days/);
+    expect(inst).toMatch(/30 days/);
+  });
+
+  it('instructions cover Ingress TLS audit', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['certificate-inspector'];
+    expect(inst).toMatch(/Ingress/);
+    expect(inst).toMatch(/TLS/);
+  });
+
+  it('rereads the read-only policy', () => {
+    const inst = SUBAGENT_INSTRUCTIONS['certificate-inspector'];
+    expect(inst).toMatch(/read-only/i);
+    expect(inst).toMatch(/Thinking Summary/);
+  });
+});
