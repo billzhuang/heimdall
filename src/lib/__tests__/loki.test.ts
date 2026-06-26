@@ -57,6 +57,14 @@ describe('resolveTime', () => {
     // Should not throw; returns expr unchanged when Date is out of range
     expect(typeof result).toBe('string');
   });
+
+  it('returns the original expression when the computed timestamp is not finite (overflow to Infinity)', () => {
+    // A 401-digit number overflows parseFloat to Infinity, making durationMs=Infinity
+    // and ts = NOW - Infinity = -Infinity, triggering the !Number.isFinite(ts) guard.
+    const hugeNum = '1' + '0'.repeat(400);
+    const result = resolveTime(`-${hugeNum}d`, NOW);
+    expect(result).toBe(`-${hugeNum}d`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -324,6 +332,13 @@ describe('runLokiQuery — HTTP errors', () => {
     const result = await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
     expect(result).toContain('invalid query expression');
   });
+
+  it('omits the body detail when the error response has an empty body', async () => {
+    mockFetch('', 400);
+    const result = await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
+    expect(result).toMatch(/Loki HTTP 400/);
+    expect(result).not.toContain(':');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -355,6 +370,14 @@ describe('runLokiQuery — network errors', () => {
     const result = await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
     expect(result).toMatch(/Loki query failed/i);
     expect(result).toContain('ECONNREFUSED');
+  });
+
+  it('uses String(err) when the thrown value is not an Error instance', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('plain string error'));
+
+    const result = await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
+    expect(result).toMatch(/Loki query failed/i);
+    expect(result).toContain('plain string error');
   });
 });
 

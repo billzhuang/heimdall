@@ -281,6 +281,24 @@ describe('generateSuggestion — Severity prefix without matching pattern', () =
   });
 });
 
+describe('generateSuggestion — missing/forbidden keyword without quoted string', () => {
+  it('returns empty string when "Missing expected keyword:" has no quoted keyword', () => {
+    const s = generateSuggestion('Scenario', 'prompt', ['Missing expected keyword: no-quotes-here']);
+    expect(s).toBe('');
+  });
+
+  it('returns empty string when "Found forbidden keyword:" has no quoted keyword', () => {
+    const s = generateSuggestion('Scenario', 'prompt', ['Found forbidden keyword: no-quotes-here']);
+    expect(s).toBe('');
+  });
+});
+
+describe('readLearningLog — non-ENOENT error', () => {
+  it('rethrows non-ENOENT errors (e.g. EISDIR when path is a directory)', async () => {
+    await expect(readLearningLog('/tmp')).rejects.toThrow();
+  });
+});
+
 describe('appendLearningEntry', () => {
   it('creates the file and appends valid JSONL', async () => {
     const tmpPath = join(tmpdir(), `test-append-${Date.now()}.jsonl`);
