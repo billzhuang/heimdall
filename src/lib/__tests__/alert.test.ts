@@ -106,6 +106,40 @@ describe('parseAlertManagerPayload', () => {
     const alerts = parseAlertManagerPayload(payload);
     expect(alerts[0].deployment).toBe('my-deploy');
   });
+
+  it('uses empty labels when alert.labels is absent', () => {
+    const payload = { alerts: [{ annotations: { summary: 'ok' } }] };
+    const alerts = parseAlertManagerPayload(payload);
+    expect(alerts[0].alertname).toBe('Unknown');
+    expect(alerts[0].labels).toEqual({});
+  });
+
+  it('treats absent annotations the same as empty (no summary or description)', () => {
+    const payload = { alerts: [{ labels: { alertname: 'Test' } }] };
+    const alerts = parseAlertManagerPayload(payload);
+    expect(alerts[0].summary).toBeUndefined();
+    expect(alerts[0].description).toBeUndefined();
+  });
+
+  it('skips label entries whose value is not a string', () => {
+    const payload = {
+      alerts: [{
+        labels: { alertname: 'Test', bad: undefined as unknown as string },
+        annotations: {},
+      }],
+    };
+    const alerts = parseAlertManagerPayload(payload);
+    expect(alerts[0].alertname).toBe('Test');
+    expect(alerts[0].labels).not.toHaveProperty('bad');
+  });
+
+  it('returns undefined pod when instance host does not look like a pod name (IP address)', () => {
+    const payload = {
+      alerts: [{ labels: { alertname: 'Test', instance: '192.168.1.1:9090' }, annotations: {} }],
+    };
+    const alerts = parseAlertManagerPayload(payload);
+    expect(alerts[0].pod).toBeUndefined();
+  });
 });
 
 // ── buildAlertPrompt ─────────────────────────────────────────────────────────
@@ -164,6 +198,17 @@ describe('buildAlertPrompt', () => {
   it('ends with a remediation ask', () => {
     const prompt = buildAlertPrompt({ alertname: 'Test', labels: {} });
     expect(prompt).toContain('remediation steps');
+  });
+
+  it('includes summary and description lines when both are present', () => {
+    const prompt = buildAlertPrompt({
+      alertname: 'Test',
+      summary: 'High memory usage',
+      description: 'Worker nodes are under pressure',
+      labels: {},
+    });
+    expect(prompt).toContain('Summary: High memory usage');
+    expect(prompt).toContain('Description: Worker nodes are under pressure');
   });
 });
 
@@ -271,6 +316,33 @@ describe('parsePagerDutyV2Payload', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertname).toBe('Flat V2');
     expect(alerts[0].labels['incident_id']).toBe('P999');
+  });
+
+  it('uses id as alertname when title is absent', () => {
+    const payload = {
+      messages: [{ data: { incident: { id: 'P-XYZ', status: 'triggered', urgency: 'high', service: { name: 'svc' } } } }],
+    };
+    const alerts = parsePagerDutyV2Payload(payload);
+    expect(alerts[0].alertname).toBe('P-XYZ');
+  });
+
+  it('falls back to "PagerDuty Incident" when both title and id are absent', () => {
+    const payload = {
+      messages: [{ data: { incident: { status: 'triggered', urgency: 'high' } } }],
+    };
+    const alerts = parsePagerDutyV2Payload(payload);
+    expect(alerts[0].alertname).toBe('PagerDuty Incident');
+    expect(alerts[0].labels).not.toHaveProperty('incident_id');
+    expect(alerts[0].labels).not.toHaveProperty('service');
+    expect(alerts[0].deployment).toBeUndefined();
+  });
+
+  it('passes through urgency values that are neither high nor low unchanged', () => {
+    const payload = {
+      messages: [{ data: { incident: { id: 'P1', title: 'Test', urgency: 'critical', service: { name: 'svc' } } } }],
+    };
+    const alerts = parsePagerDutyV2Payload(payload);
+    expect(alerts[0].severity).toBe('critical');
   });
 });
 
