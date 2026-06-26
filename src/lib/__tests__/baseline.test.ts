@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile, rm } from 'node:fs/promises';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { writeFile, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, writeFile: vi.fn().mockImplementation(actual.writeFile) };
+});
 import {
   buildBaselineKey,
   readBaselines,
@@ -63,6 +68,17 @@ describe('readBaselines', () => {
     const entries = await readBaselines(tmpFile);
     expect(entries).toHaveLength(1);
     expect(entries[0].key).toBe('c/ns/Pod/p');
+  });
+
+  it('re-throws non-ENOENT errors from readFile', async () => {
+    // readFile on a directory throws EISDIR (not ENOENT) — must propagate.
+    const dir = join(tmpdir(), `baseline-eisdir-${Date.now()}`);
+    await mkdir(dir);
+    try {
+      await expect(readBaselines(dir)).rejects.toMatchObject({ code: 'EISDIR' });
+    } finally {
+      await rm(dir, { recursive: true });
+    }
   });
 
   it('skips blank lines', async () => {
@@ -160,6 +176,24 @@ describe('upsertBaseline', () => {
       expect(entries[0].key).toBe('prod/default/Pod/api');
     } finally {
       await rm(newDir, { recursive: true, force: true });
+    }
+  });
+
+  it('re-throws non-ENOENT write errors from writeFile', async () => {
+    // Create a valid empty file so readBaselines succeeds, then make the next
+    // writeFile call throw EACCES to exercise the else-throw at line 117.
+    const tmpFile = join(tmpdir(), `baseline-write-err-${Date.now()}.jsonl`);
+    await writeFile(tmpFile, '', 'utf8');
+    vi.mocked(writeFile).mockRejectedValueOnce(
+      Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+    );
+    try {
+      await expect(
+        upsertBaseline('prod', 'ns', 'Pod', 'x', 'sum', tmpFile),
+      ).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      vi.mocked(writeFile).mockClear();
+      await rm(tmpFile, { force: true });
     }
   });
 });
