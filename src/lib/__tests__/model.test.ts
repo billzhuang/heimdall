@@ -14,6 +14,7 @@ describe('resolveModel', () => {
 
   it('falls back to DEFAULT_MODEL when cliFlag is empty string', () => {
     expect(() => resolveModel('')).not.toThrow();
+    expect(resolveModel('')).toContain('/');
   });
 
   it('throws for "/" (empty provider and empty model)', () => {
@@ -34,6 +35,6 @@ describe('resolveModel', () => {
 
   it('includes the invalid model string in the error message', () => {
     expect(() => resolveModel('badmodel')).toThrow(/badmodel/);
-    expect(() => resolveModel('/')).toThrow(/"\/"/)
+    expect(() => resolveModel('/')).toThrow(/"\/"/);
   });
 });
