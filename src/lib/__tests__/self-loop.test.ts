@@ -177,6 +177,21 @@ describe('buildAutoReflectionPrompt', () => {
     const prompt = buildAutoReflectionPrompt([], [], 'instructions');
     expect(prompt).toContain('0 eval scenario');
   });
+
+  it('includes a history section when taskHistory is non-empty', () => {
+    const taskHistory = [
+      {
+        id: 'h1',
+        timestamp: '2026-01-01T00:00:00Z',
+        prompt: 'Why is the pod crashing?',
+        model: 'anthropic/claude-sonnet-4-6',
+        severity: 'critical',
+        summary: 'OOMKilled due to memory limit',
+      },
+    ];
+    const prompt = buildAutoReflectionPrompt([], taskHistory, 'instructions');
+    expect(prompt).toContain('Recent Real-World Investigations');
+  });
 });
 
 describe('extractInstructionsSnippet', () => {
@@ -197,6 +212,17 @@ describe('extractInstructionsSnippet', () => {
     const content = prefix + 'SUBAGENT_INSTRUCTIONS = `something important`' + 'b'.repeat(200);
     const snippet = extractInstructionsSnippet(content);
     expect(snippet).toContain('SUBAGENT_INSTRUCTIONS');
+  });
+
+  it('starts the snippet at the earliest of RESPONSE_FORMAT or SUBAGENT_INSTRUCTIONS in a long string', () => {
+    // The string must be >4000 chars so the early-return does not fire.
+    const prefix = 'x'.repeat(500);
+    const marker = 'RESPONSE_FORMAT = something important here';
+    const suffix = 'y'.repeat(4000);
+    const content = prefix + marker + suffix;
+    const snippet = extractInstructionsSnippet(content);
+    expect(snippet).toContain('RESPONSE_FORMAT');
+    expect(snippet).toContain('(truncated)');
   });
 });
 

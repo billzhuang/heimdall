@@ -252,6 +252,13 @@ describe('runKubecostQuery — HTTP errors', () => {
     const result = await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, BASE_CONFIG);
     expect(result).toContain('invalid window format');
   });
+
+  it('omits the body detail when the error response has an empty body', async () => {
+    mockFetch('', 400);
+    const result = await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, BASE_CONFIG);
+    expect(result).toMatch(/Kubecost HTTP 400/);
+    expect(result).not.toContain(':');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -288,6 +295,14 @@ describe('runKubecostQuery — network errors', () => {
     const result = await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, BASE_CONFIG);
     expect(result).toMatch(/Kubecost query failed/i);
     expect(result).toContain('ECONNREFUSED');
+  });
+
+  it('uses String(err) when the thrown value is not an Error instance', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('plain string error'));
+
+    const result = await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, BASE_CONFIG);
+    expect(result).toMatch(/Kubecost query failed/i);
+    expect(result).toContain('plain string error');
   });
 });
 

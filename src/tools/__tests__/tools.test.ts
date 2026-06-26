@@ -74,6 +74,12 @@ describe('list_namespaces tool', () => {
     runKubectl.mockResolvedValue('kubectl exited with an error:\nconnection refused');
     expect(await listNamespaces.run({ input: {} })).toMatch(/kubectl exited/);
   });
+
+  it('reports empty when output is a non-empty whitespace string (splits to zero namespaces)', async () => {
+    // '' is not NO_OUTPUT_MESSAGE, so it reaches the split/filter step and produces [].
+    runKubectl.mockResolvedValue('');
+    expect(await listNamespaces.run({ input: {} })).toMatch(/No namespaces found/);
+  });
 });
 
 describe('list_namespaces tool — namespace lockdown', () => {

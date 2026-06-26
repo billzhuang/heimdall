@@ -58,6 +58,12 @@ describe('meetsMinSeverity', () => {
   it('info does not meet critical', () => expect(meetsMinSeverity('info', 'critical')).toBe(false));
   it('warning does not meet critical', () =>
     expect(meetsMinSeverity('warning', 'critical')).toBe(false));
+
+  it('unknown severity uses 0 as fallback and can meet info', () =>
+    expect(meetsMinSeverity('unknown', 'info')).toBe(true));
+
+  it('unknown minSeverity uses 0 as fallback and is met by any known severity', () =>
+    expect(meetsMinSeverity('info', 'custom-level')).toBe(true));
 });
 
 // ---------------------------------------------------------------------------
@@ -140,6 +146,16 @@ describe('sendSlackNotification — minSeverity filtering', () => {
     const fetch = mockFetch();
     await sendSlackNotification(INFO_FINDING, { ...BASE_CONFIG, minSeverity: 'info' });
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('uses the fallback :mag: emoji when severity is not in SEVERITY_EMOJI', async () => {
+    const fetch = mockFetch();
+    const unknownSeverityFinding: OneShotFinding = { ...CRITICAL_FINDING, severity: 'debug' as OneShotFinding['severity'] };
+    await sendSlackNotification(unknownSeverityFinding, { ...BASE_CONFIG, minSeverity: 'info' });
+    const body = JSON.parse(fetch.mock.calls[0][1].body as string) as Record<string, unknown>;
+    const blocks = body['blocks'] as Array<Record<string, unknown>>;
+    const headerText = (blocks[0] as Record<string, unknown>)['text'] as Record<string, unknown>;
+    expect(String(headerText['text'])).toContain(':mag:');
   });
 });
 

@@ -151,4 +151,35 @@ describe('runHelm — exec paths (mocked execFile)', () => {
     });
     await runHelm('list', {});
   });
+
+  it('falls back to err.stdout when err.stderr is empty on exec failure', async () => {
+    const err = Object.assign(new Error('failed'), { stderr: '', stdout: 'helm: command not found', });
+    stubExec((_cmd, _args, _opts, cb) => cb(err, { stdout: '', stderr: '' }));
+    const result = await runHelm('status', { release: 'my-app' });
+    expect(result).toMatch(/helm exited with an error/i);
+    expect(result).toContain('helm: command not found');
+  });
+
+  it('falls back to err.message when err.stderr and err.stdout are empty on exec failure', async () => {
+    const err = Object.assign(new Error('helm binary not found'), { stderr: '', stdout: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err, { stdout: '', stderr: '' }));
+    const result = await runHelm('status', { release: 'my-app' });
+    expect(result).toMatch(/helm exited with an error/i);
+    expect(result).toContain('helm binary not found');
+  });
+
+  it('falls back to String(error) when err.stderr, err.stdout, and err.message are all empty', async () => {
+    const err = Object.assign(new Error(), { stderr: '', stdout: '', message: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runHelm('status', { release: 'my-app' });
+    expect(result).toMatch(/helm exited with an error|Error/i);
+  });
+});
+
+describe('runHelm — exhaustive action guard', () => {
+  it('returns an error for an unknown action (TypeScript exhaustive guard)', async () => {
+    // @ts-expect-error — testing the runtime guard for an unexpected action value
+    const result = await runHelm('deploy' as unknown as HelmAction, {});
+    expect(result).toMatch(/unknown helm action/i);
+  });
 });

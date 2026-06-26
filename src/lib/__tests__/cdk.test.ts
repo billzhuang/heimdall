@@ -15,7 +15,14 @@ vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
+// Allow per-test override of validateCdkCommand to reach the !validation path.
+vi.mock('../cdk-safety.ts', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../cdk-safety.ts')>();
+  return { ...original, validateCdkCommand: vi.fn(original.validateCdkCommand) };
+});
+
 import { tokenizeCdkArgs, runCdk, NO_OUTPUT_MESSAGE } from '../cdk.ts';
+import { validateCdkCommand } from '../cdk-safety.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
 import { stubExec, resetExec } from './execfile-helpers.ts';
 import { compileRules } from '../regex-redact.ts';
@@ -245,5 +252,20 @@ describe('runCdk — exec error paths (mocked execFile)', () => {
     await runCdk('ls', { cwd: '/tmp/custom-cwd' });
     expect(capturedOpts).toBeDefined();
     expect((capturedOpts as Record<string, unknown>)?.cwd).toBe('/tmp/custom-cwd');
+  });
+
+  it('falls back to String(error) when err.stderr, err.stdout, and err.message are all empty', async () => {
+    const err = Object.assign(new Error(), { stderr: '', stdout: '', message: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runCdk('synth');
+    expect(result).toMatch(/cdk exited with an error|Error/i);
+  });
+});
+
+describe('runCdk — validateCdkCommand returns null', () => {
+  it('returns "could not parse" when validateCdkCommand returns null', async () => {
+    vi.mocked(validateCdkCommand).mockReturnValueOnce(null);
+    const result = await runCdk('ls');
+    expect(result).toMatch(/could not parse CDK CLI command/i);
   });
 });
