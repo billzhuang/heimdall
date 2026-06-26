@@ -165,8 +165,16 @@ export function detectTriageSeverity(report: string): ActionSeverity {
   return 'ok';
 }
 
-/** All valid literal values accepted by the `fail-on-severity` action input. */
-export const VALID_FAIL_ON_SEVERITIES: readonly ActionSeverity[] = ['critical', 'warning', 'info', 'ok'];
+/**
+ * All valid literal values accepted by the `fail-on-severity` action input.
+ * `satisfies` enforces that every entry is a valid ActionSeverity — the
+ * compiler rejects any element that does not appear in the union.
+ */
+export const VALID_FAIL_ON_SEVERITIES = [
+  'critical', 'warning', 'info', 'ok',
+] as const satisfies readonly ActionSeverity[];
+
+const VALID_FAIL_ON_SET: ReadonlySet<string> = new Set(VALID_FAIL_ON_SEVERITIES);
 
 export type FailOnDecision =
   | { ok: true }
@@ -182,10 +190,9 @@ export type FailOnDecision =
  * appropriate message and exit.
  */
 export function evaluateFailOn(failOn: string, found: ActionSeverity): FailOnDecision {
-  const trimmed = failOn.trim();
-  if (!trimmed) return { ok: true };
-  const lower = trimmed.toLowerCase();
-  if (!(VALID_FAIL_ON_SEVERITIES as readonly string[]).includes(lower)) {
+  const lower = failOn.trim().toLowerCase();
+  if (!lower) return { ok: true };
+  if (!VALID_FAIL_ON_SET.has(lower)) {
     return { ok: false, reason: 'invalid-value', value: failOn };
   }
   return severityAtLeast(found, lower as ActionSeverity)

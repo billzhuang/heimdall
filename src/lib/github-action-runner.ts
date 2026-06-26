@@ -5,8 +5,10 @@
  * `_HEIMDALL_ACTION_`, runs the appropriate Heimdall mode, and writes
  * outputs to $GITHUB_OUTPUT and optionally $GITHUB_STEP_SUMMARY.
  *
- * This file is intentionally not imported by any other module; it is the
- * action entrypoint only.  Pure helper logic lives in github-action.ts.
+ * The file exports testable I/O helpers (`setOutput`, `appendSummary`,
+ * `capture`) so they can be unit-tested without spawning a real process.
+ * Pure, side-effect-free logic lives in github-action.ts.
+ * The dispatch (`main`) only fires when this file is the process entry point.
  */
 import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
