@@ -55,16 +55,8 @@ export function buildEmptyCheckpoint(timestamp: string): ClusterCheckpoint {
 
 /** Append a checkpoint snapshot as a JSONL line (creates the file and parent dirs if absent). */
 export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: string): Promise<void> {
-  try {
-    await appendFile(filePath, JSON.stringify(checkpoint) + '\n', 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      await mkdir(dirname(filePath), { recursive: true });
-      await appendFile(filePath, JSON.stringify(checkpoint) + '\n', 'utf8');
-    } else {
-      throw err;
-    }
-  }
+  await mkdir(dirname(filePath), { recursive: true });
+  await appendFile(filePath, JSON.stringify(checkpoint) + '\n', 'utf8');
 }
 
 /**
@@ -97,6 +89,14 @@ function workloadKey(w: WorkloadRef): string {
   return `${w.kind}/${w.namespace}/${w.name}`;
 }
 
+/** Return keys present only in `curr` (added) and only in `prev` (removed). */
+function diffStringSet(prev: Set<string>, curr: Set<string>): { added: string[]; removed: string[] } {
+  return {
+    added: [...curr].filter((s) => !prev.has(s)),
+    removed: [...prev].filter((s) => !curr.has(s)),
+  };
+}
+
 /**
  * Compare two snapshots and return classified drift findings.
  * Returns an empty array when `previous` is null (no baseline yet) or when
@@ -110,69 +110,67 @@ export function detectDrift(
   const findings: DriftFinding[] = [];
 
   // Namespace changes
-  const prevNs = new Set(previous.namespaces);
-  const currNs = new Set(current.namespaces);
-  for (const ns of currNs) {
-    if (!prevNs.has(ns)) {
-      findings.push({
-        type: 'new_namespace',
-        resource: `Namespace/${ns}`,
-        message: `Namespace "${ns}" appeared since the last triage run.`,
-      });
-    }
+  const { added: newNs, removed: deletedNs } = diffStringSet(
+    new Set(previous.namespaces),
+    new Set(current.namespaces),
+  );
+  for (const ns of newNs) {
+    findings.push({
+      type: 'new_namespace',
+      resource: `Namespace/${ns}`,
+      message: `Namespace "${ns}" appeared since the last triage run.`,
+    });
   }
-  for (const ns of prevNs) {
-    if (!currNs.has(ns)) {
-      findings.push({
-        type: 'deleted_namespace',
-        resource: `Namespace/${ns}`,
-        message: `Namespace "${ns}" was present at the last triage run but is now gone.`,
-      });
-    }
+  for (const ns of deletedNs) {
+    findings.push({
+      type: 'deleted_namespace',
+      resource: `Namespace/${ns}`,
+      message: `Namespace "${ns}" was present at the last triage run but is now gone.`,
+    });
   }
 
   // Workload changes
   const prevWl = new Map(previous.workloads.map((w) => [workloadKey(w), w]));
   const currWl = new Map(current.workloads.map((w) => [workloadKey(w), w]));
-  for (const [key, w] of currWl) {
-    if (!prevWl.has(key)) {
-      findings.push({
-        type: 'new_workload',
-        resource: `${w.kind}/${w.name} in ${w.namespace}`,
-        message: `${w.kind} "${w.name}" in namespace "${w.namespace}" appeared since the last triage run.`,
-      });
-    }
+  const { added: newWlKeys, removed: deletedWlKeys } = diffStringSet(
+    new Set(prevWl.keys()),
+    new Set(currWl.keys()),
+  );
+  for (const key of newWlKeys) {
+    const w = currWl.get(key)!;
+    findings.push({
+      type: 'new_workload',
+      resource: `${w.kind}/${w.name} in ${w.namespace}`,
+      message: `${w.kind} "${w.name}" in namespace "${w.namespace}" appeared since the last triage run.`,
+    });
   }
-  for (const [key, w] of prevWl) {
-    if (!currWl.has(key)) {
-      findings.push({
-        type: 'deleted_workload',
-        resource: `${w.kind}/${w.name} in ${w.namespace}`,
-        message: `${w.kind} "${w.name}" in namespace "${w.namespace}" was present at the last triage run but is now gone.`,
-      });
-    }
+  for (const key of deletedWlKeys) {
+    const w = prevWl.get(key)!;
+    findings.push({
+      type: 'deleted_workload',
+      resource: `${w.kind}/${w.name} in ${w.namespace}`,
+      message: `${w.kind} "${w.name}" in namespace "${w.namespace}" was present at the last triage run but is now gone.`,
+    });
   }
 
   // Node topology changes
-  const prevNodeNames = new Set(previous.nodes.map((n) => n.name));
-  const currNodeNames = new Set(current.nodes.map((n) => n.name));
-  for (const name of currNodeNames) {
-    if (!prevNodeNames.has(name)) {
-      findings.push({
-        type: 'topology_change',
-        resource: `Node/${name}`,
-        message: `Node "${name}" joined the cluster since the last triage run.`,
-      });
-    }
+  const { added: newNodes, removed: deletedNodes } = diffStringSet(
+    new Set(previous.nodes.map((n) => n.name)),
+    new Set(current.nodes.map((n) => n.name)),
+  );
+  for (const name of newNodes) {
+    findings.push({
+      type: 'topology_change',
+      resource: `Node/${name}`,
+      message: `Node "${name}" joined the cluster since the last triage run.`,
+    });
   }
-  for (const name of prevNodeNames) {
-    if (!currNodeNames.has(name)) {
-      findings.push({
-        type: 'topology_change',
-        resource: `Node/${name}`,
-        message: `Node "${name}" was present at the last triage run but is now absent.`,
-      });
-    }
+  for (const name of deletedNodes) {
+    findings.push({
+      type: 'topology_change',
+      resource: `Node/${name}`,
+      message: `Node "${name}" was present at the last triage run but is now absent.`,
+    });
   }
 
   return findings;
