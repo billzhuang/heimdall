@@ -105,6 +105,12 @@ resource "aws_iam_role" "heimdall" {
   assume_role_policy = data.aws_iam_policy_document.heimdall_oidc.json
 }
 
+locals {
+  # Strip the https:// prefix so the OIDC subject condition matches the format
+  # used by the EKS token projector.
+  oidc_issuer = trimprefix(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://")
+}
+
 data "aws_iam_policy_document" "heimdall_oidc" {
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
@@ -114,7 +120,7 @@ data "aws_iam_policy_document" "heimdall_oidc" {
     }
     condition {
       test     = "StringEquals"
-      variable = "${replace(aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")}:sub"
+      variable = "${local.oidc_issuer}:sub"
       values   = ["system:serviceaccount:heimdall:heimdall"]
     }
   }
