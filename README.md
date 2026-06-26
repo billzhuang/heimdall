@@ -311,7 +311,7 @@ Configure port, host, and API key in `heimdall.config.yaml`:
 server:
   port: 8080
   host: '0.0.0.0'
-  apiKey: ${HEIMDALL_API_KEY}   # or set HEIMDALL_API_KEY env var directly
+  apiKey: 'your-secret-key'   # or set HEIMDALL_API_KEY env var (env var takes precedence)
 ```
 
 `GET /api/health` is always unauthenticated so Kubernetes liveness probes work without credentials. All other endpoints (including `GET /api/openapi.json`) require a `Bearer` token when `HEIMDALL_API_KEY` is set.
@@ -632,7 +632,7 @@ Heimdall can post investigation findings to a Slack channel after a `--json` one
 ```yaml
 slack:
   enabled: true
-  webhookUrl: ${SLACK_WEBHOOK_URL}   # or set the SLACK_WEBHOOK_URL env var
+  webhookUrl: 'https://hooks.slack.com/services/...'   # or set SLACK_WEBHOOK_URL env var
   channel: '#sre-alerts'             # optional — uses the webhook's default channel when omitted
   minSeverity: warning               # only post 'warning' and 'critical' findings (default)
   timeoutMs: 10000                   # optional, default 10000 ms
@@ -697,8 +697,8 @@ kubecost:
   timeoutMs: 10000
 
 datadog:
-  apiKey: ${DD_API_KEY}
-  appKey: ${DD_APP_KEY}
+  apiKey: 'your-dd-api-key'    # or set DD_API_KEY / DATADOG_API_KEY env var
+  appKey: 'your-dd-app-key'   # or set DD_APP_KEY / DATADOG_APP_KEY env var
   site: datadoghq.com
   timeoutMs: 15000
 ```
@@ -828,8 +828,8 @@ tools:
   newRelicQuery: true
 
 newRelic:
-  apiKey: ${NEW_RELIC_API_KEY}       # or set NEW_RELIC_API_KEY env var
-  accountId: ${NEW_RELIC_ACCOUNT_ID} # or set NEW_RELIC_ACCOUNT_ID env var
+  apiKey: 'NRAK-...'     # or set NEW_RELIC_API_KEY env var (env var takes precedence)
+  accountId: '1234567'  # or set NEW_RELIC_ACCOUNT_ID env var
   timeoutMs: 15000
 ```
 
@@ -858,12 +858,14 @@ Define SLOs against Prometheus metrics. The agent evaluates compliance when aske
 ```yaml
 slos:
   - name: api-availability
-    expr: 'rate(http_requests_total{job="api",code!~"5.."}[5m]) / rate(http_requests_total{job="api"}[5m])'
-    target: 0.999
+    metric: 'rate(http_requests_total{job="api",code!~"5.."}[5m]) / rate(http_requests_total{job="api"}[5m])'
+    target: 0.999   # 99.9% availability
+    budget: 0.001   # 0.1% error budget (= 1 − target)
     window: 30d
-  - name: api-p99-latency
-    expr: 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="api"}[5m]))'
-    target: 0.5   # seconds
+  - name: api-success-rate
+    metric: 'sum(rate(http_requests_total{job="api",status!~"5.."}[5m])) / sum(rate(http_requests_total{job="api"}[5m]))'
+    target: 0.995   # 99.5% success rate
+    budget: 0.005
     window: 7d
 ```
 
@@ -871,12 +873,13 @@ Requires the `prometheus_query` tool to be enabled.
 
 ### Event sink
 
-Persist watch-mode findings to a webhook for post-incident audit trails:
+Persist watch-mode findings to a webhook or file for post-incident audit trails. Configure under the `watch` key:
 
 ```yaml
-eventSink:
-  enabled: true
-  webhookUrl: https://ingest.example.com/heimdall-events
+watch:
+  eventSink:
+    webhookUrl: https://ingest.example.com/heimdall-events
+    filePath: /var/log/heimdall-events.jsonl   # optional — JSONL append
 ```
 
 Findings are POSTed as JSON after each watch-mode diagnosis. Webhook failures are non-fatal and logged to stderr.
@@ -965,7 +968,7 @@ src/
     └── __tests__/           # unit + property-based tests
 ├── alert-mode.ts            # CLI entry: alert / PagerDuty mode
 ├── eval-mode.ts             # CLI entry: eval mode
-├── format-json.ts           # --json output formatter
+├── format-json.ts           # stdin→JSON formatter used by bin/heimdall --json (not a CLI entry point)
 ├── mcp-mode.ts              # CLI entry: MCP server mode (stdio)
 ├── serve-mode.ts            # CLI entry: HTTP REST API serve mode
 ├── session-mode.ts          # CLI entry: durable multi-turn session mode
