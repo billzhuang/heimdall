@@ -20,7 +20,7 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
       '- get: retrieve the values, manifest, or notes for a named release.\n' +
       'Install, upgrade, rollback, and uninstall are never executed.' +
       lockdownNote,
-    parameters: v.object({
+    input: v.object({
       action: v.pipe(
         v.picklist(['list', 'status', 'get']),
         v.description(
@@ -46,7 +46,7 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
         v.description('When true, list releases across every namespace (equivalent to helm list --all-namespaces).'),
       ),
     }),
-    execute: async ({ action, release, namespace, getType, allNamespaces }) => {
+    run: async ({ input: { action, release, namespace, getType, allNamespaces } }) => {
       if (lockedNamespace) {
         if (allNamespaces) {
           return `${BLOCKED_PREFIX}namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`;

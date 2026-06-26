@@ -24,7 +24,7 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean,
       'use label selectors, --field-selector, or -o jsonpath to filter output. ' +
       'Treat Secret .data and .stringData values as sensitive regardless of output format.' +
       lockdownNote,
-    parameters: v.object({
+    input: v.object({
       args: v.pipe(
         v.string(),
         v.description('Arguments passed to kubectl, excluding the leading "kubectl".'),
@@ -34,7 +34,7 @@ export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean,
         v.description('Optional cluster context to target (added as --context=...). Defaults to the configured/current context.'),
       ),
     }),
-    execute: async ({ args, context }) =>
+    run: async ({ input: { args, context } }) =>
       runKubectl(args, { context, audit, redactSecrets, regexRedactionRules, lockedNamespace: lockedNamespace ?? undefined }),
   });
 }

@@ -28,13 +28,13 @@ export function makeAwsCli(options?: RunAwsCliOptions, regexRedactionRules?: Com
       '(AWS_ACCESS_KEY_ID), IRSA / OIDC web identity (AWS_ROLE_ARN + ' +
       'AWS_WEB_IDENTITY_TOKEN_FILE), EKS Pod Identity ' +
       '(AWS_CONTAINER_CREDENTIALS_RELATIVE_URI), or instance profile.',
-    parameters: v.object({
+    input: v.object({
       args: v.pipe(
         v.string(),
         v.description('Arguments passed to the AWS CLI, excluding the leading "aws".'),
       ),
     }),
-    execute: async ({ args }) => runAwsCli(args, { ...options, regexRedactionRules }),
+    run: async ({ input: { args } }) => runAwsCli(args, { ...options, regexRedactionRules }),
   });
 }
 

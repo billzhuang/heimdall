@@ -11,7 +11,7 @@
  * TOOL_PLUGINS below, and add a matching key to the config schema in
  * src/lib/config.ts.
  */
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { initTelemetry, isTelemetryEnabled, recordToolCall } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
@@ -145,7 +145,7 @@ const subagents = (Object.keys(SUBAGENT_INSTRUCTIONS) as SubagentName[]).map((na
 
 export const description = 'Read-only Kubernetes SRE assistant: diagnose cluster issues with kubectl + AI reasoning.';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: DEFAULT_MODEL,
   instructions: buildInstructions(enabledToolKeys, lockedNs, runbookContext, ragContext, config.slos ?? []),
   tools: clusterTools,

@@ -23,7 +23,7 @@ export function makeTrivyScan(options?: RunTrivyOptions, regexRedactionRules?: C
       'Use severity to focus results (e.g. "CRITICAL,HIGH"). ' +
       'Requires the trivy binary to be available on PATH. ' +
       'Typical workflow: kubectl get pods -o json → extract image refs → trivy_scan each image.',
-    parameters: v.object({
+    input: v.object({
       scanType: v.pipe(
         v.picklist(['image', 'fs', 'config', 'sbom']),
         v.description('Trivy scan type: "image" for container images, "fs" for filesystem, "config" for IaC, "sbom" for SBOM files.'),
@@ -51,7 +51,7 @@ export function makeTrivyScan(options?: RunTrivyOptions, regexRedactionRules?: C
         v.description('When true, omit vulnerabilities that have no available fix. Reduces noise for triage.'),
       ),
     }),
-    execute: async ({ scanType, target, severity, format, ignoreUnfixed }) => {
+    run: async ({ input: { scanType, target, severity, format, ignoreUnfixed } }) => {
       const extraArgs: string[] = [];
       if (severity) extraArgs.push('--severity', severity);
       if (format) extraArgs.push('--format', format);

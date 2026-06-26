@@ -32,7 +32,7 @@ export function makePrometheusQuery(
       '- instant: evaluate a PromQL expression at a single point in time (defaults to now).\n' +
       '- range: evaluate a PromQL expression over a time window with a resolution step.\n' +
       'Use this to inspect golden signals (request rate, error rate, latency, saturation) and resource trends that kubectl cannot show.',
-    parameters: v.object({
+    input: v.object({
       queryType: v.pipe(
         v.picklist(['instant', 'range']),
         v.description(
@@ -66,7 +66,7 @@ export function makePrometheusQuery(
         ),
       ),
     }),
-    execute: async ({ queryType, query, time, start, end, step }) =>
+    run: async ({ input: { queryType, query, time, start, end, step } }) =>
       runPrometheusQuery(queryType, { query, time, start, end, step }, config),
   });
 }
