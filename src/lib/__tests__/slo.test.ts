@@ -130,6 +130,40 @@ describe('evaluateSLO — no data / empty result', () => {
     expect(result.error).toBeDefined();
     expect(result.breaching).toBe(false);
   });
+
+  it('returns error when the fetch call throws a network error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    const result = await evaluateSLO(BASE_CONFIG, API_SLO);
+    expect(result.error).toMatch(/ECONNREFUSED/);
+    expect(result.burnRate).toBe(0);
+    expect(result.remainingBudget).toBe(1);
+    expect(result.breaching).toBe(false);
+  });
+
+  it('returns error when the result entry is missing the value field', async () => {
+    mockFetch(
+      JSON.stringify({ status: 'success', data: { resultType: 'vector', result: [{ metric: {} }] } }),
+    );
+    const result = await evaluateSLO(BASE_CONFIG, API_SLO);
+    expect(result.error).toBe('No metric data returned for this SLO.');
+    expect(result.burnRate).toBe(0);
+    expect(result.remainingBudget).toBe(1);
+    expect(result.breaching).toBe(false);
+  });
+
+  it('returns error when the metric value string parses as NaN', async () => {
+    mockFetch(
+      JSON.stringify({
+        status: 'success',
+        data: { resultType: 'vector', result: [{ metric: {}, value: [1700000000, 'NaN'] }] },
+      }),
+    );
+    const result = await evaluateSLO(BASE_CONFIG, API_SLO);
+    expect(result.error).toBe('No metric data returned for this SLO.');
+    expect(result.burnRate).toBe(0);
+    expect(result.remainingBudget).toBe(1);
+    expect(result.breaching).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
