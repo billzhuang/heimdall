@@ -13,8 +13,10 @@ vi.mock('../../lib/kubectl.ts', () => ({
   NO_OUTPUT_MESSAGE: '(command produced no output)',
 }));
 
-import { kubectl } from '../kubectl.ts';
-import { listContexts, listNamespaces, makeListNamespaces } from '../kubeconfig.ts';
+import { kubectl, kubectlPlugin } from '../kubectl.ts';
+import { listContexts, listNamespaces, makeListNamespaces, listContextsPlugin, listNamespacesPlugin } from '../kubeconfig.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 const KUBECONFIG = `
 current-context: prod
@@ -135,7 +137,7 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
   });
 
   it('returns the in-cluster context when running inside a Kubernetes pod', async () => {
-    process.env.KUBERNETES_SERVICE_HOST = '10.96.0.1';
+    process.env['KUBERNETES_SERVICE_HOST'] = '10.96.0.1';
     try {
       const out = await listContexts.run({ input: {} });
       expect(out).toBe('Contexts (1):\n* in-cluster (current)');
@@ -143,5 +145,65 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
     } finally {
       delete process.env.KUBERNETES_SERVICE_HOST;
     }
+  });
+});
+
+describe('listContextsPlugin', () => {
+  it('key is "listContexts"', () => {
+    expect(listContextsPlugin.key).toBe('listContexts');
+  });
+
+  it('factory returns a tool named list_contexts', () => {
+    const config = {} as unknown as HeimdallConfig;
+    const tool = listContextsPlugin.factory(config, []);
+    expect(tool.name).toBe('list_contexts');
+  });
+});
+
+describe('listNamespacesPlugin', () => {
+  it('key is "listNamespaces"', () => {
+    expect(listNamespacesPlugin.key).toBe('listNamespaces');
+  });
+
+  it('factory passes namespace.locked through to makeListNamespaces', () => {
+    const config = { namespace: { locked: 'prod-ns' } } as unknown as HeimdallConfig;
+    const tool = listNamespacesPlugin.factory(config, []);
+    expect(tool.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    expect(tool.description).toContain("'prod-ns'");
+  });
+
+  it('factory works when namespace.locked is undefined', () => {
+    const config = {} as unknown as HeimdallConfig;
+    const tool = listNamespacesPlugin.factory(config, []);
+    expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
+  });
+});
+
+describe('kubectlPlugin', () => {
+  it('key is "kubectl"', () => {
+    expect(kubectlPlugin.key).toBe('kubectl');
+  });
+
+  it('factory passes audit, rules, and namespace.locked through to runKubectl', async () => {
+    runKubectl.mockResolvedValue('ok');
+    const auditConfig = { enabled: true, file: '/tmp/audit.log' };
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const config = {
+      audit: auditConfig,
+      redactSecrets: true,
+      namespace: { locked: 'prod-ns' },
+    } as unknown as HeimdallConfig;
+    const tool = kubectlPlugin.factory(config, rules);
+    expect(tool.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    await tool.run({ input: { args: 'get pods -n prod-ns' } });
+    expect(runKubectl).toHaveBeenCalledWith(
+      'get pods -n prod-ns',
+      expect.objectContaining({
+        audit: auditConfig,
+        redactSecrets: true,
+        regexRedactionRules: rules,
+        lockedNamespace: 'prod-ns',
+      }),
+    );
   });
 });
