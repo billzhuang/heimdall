@@ -155,6 +155,13 @@ describe('runPrometheusQuery — HTTP errors', () => {
     const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
     expect(result).toContain('bad request body');
   });
+
+  it('omits the body detail when the error response has an empty body', async () => {
+    mockFetch('', 400);
+    const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
+    expect(result).toMatch(/Prometheus HTTP 400/);
+    expect(result).not.toContain(':');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,6 +194,14 @@ describe('runPrometheusQuery — network errors', () => {
     const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
     expect(result).toMatch(/Prometheus query failed/i);
     expect(result).toContain('ECONNREFUSED');
+  });
+
+  it('uses String(err) when the thrown value is not an Error instance', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('plain string error'));
+
+    const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
+    expect(result).toMatch(/Prometheus query failed/i);
+    expect(result).toContain('plain string error');
   });
 });
 

@@ -150,7 +150,7 @@ describe('sendSlackNotification — minSeverity filtering', () => {
 
   it('uses the fallback :mag: emoji when severity is not in SEVERITY_EMOJI', async () => {
     const fetch = mockFetch();
-    const unknownSeverityFinding: OneShotFinding = { ...CRITICAL_FINDING, severity: 'debug' };
+    const unknownSeverityFinding: OneShotFinding = { ...CRITICAL_FINDING, severity: 'debug' as OneShotFinding['severity'] };
     await sendSlackNotification(unknownSeverityFinding, { ...BASE_CONFIG, minSeverity: 'info' });
     const body = JSON.parse(fetch.mock.calls[0][1].body as string) as Record<string, unknown>;
     const blocks = body['blocks'] as Array<Record<string, unknown>>;
