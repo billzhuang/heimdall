@@ -8,7 +8,7 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 
 - **Read-only by construction** — cluster access flows through a single `kubectl` tool that mechanically blocks every state-changing or code-executing subcommand (`apply`, `delete`, `patch`, `exec`, `port-forward`, …). Mixed command families are gated by nested verb: `kubectl auth` allows only `can-i`/`whoami`; `kubectl rollout` allows only `status`/`history`; `kubectl config` is blocked entirely.
 - **Rich observability toolset** — optional integrations for Prometheus (PromQL), Grafana Loki (LogQL), Jaeger/Tempo (distributed traces), Kubecost (cost attribution), Datadog (metrics/logs/events/monitors), AWS CLI (read-only describe-*/list-*/get-*), and Trivy (CVE + misconfiguration scanning). These are disabled by default; enable per-tool in `heimdall.config.yaml`. Helm release inspection is enabled by default alongside `kubectl`.
-- **Specialist subagents** — 17 focused diagnostic profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`, `netpol-auditor`, `triage`, `crashloop-analyzer`, `oomkill-analyzer`, `deployment-analyzer`, `gitops-investigator`, `multi-cluster-investigator`, `resilience-advisor`, plus optional `eks-troubleshooter`, `iam-auditor`, `aws-resource-analyzer`, `cost-analyzer`, and `datadog-investigator` when the relevant tools are enabled.
+- **Specialist subagents** — 24 focused diagnostic profiles: `log-analyzer`, `resource-analyzer`, `network-debugger`, `security-auditor`, `netpol-auditor`, `kyverno-auditor`, `triage`, `crashloop-analyzer`, `oomkill-analyzer`, `deployment-analyzer`, `gitops-investigator`, `multi-cluster-investigator`, `resilience-advisor`, `certificate-inspector`, `golden-signals-investigator`, `slo-evaluator`, `capi-investigator`, plus optional `eks-troubleshooter`, `iam-auditor`, `aws-resource-analyzer`, `cost-analyzer`, `datadog-investigator`, `newrelic-investigator`, and `cdk-investigator` when the relevant tools are enabled.
 - **Triage mode** — `heimdall triage` runs a structured, repeatable whole-cluster health sweep (nodes → pods → workloads → events → PVCs → jobs) and produces a severity-ranked report (critical / warning / info).
 - **Watch mode** — `heimdall watch` continuously monitors `kubectl events --watch` for Kubernetes Warning events and triggers AI diagnosis on each one, optionally posting findings to a Slack/webhook.
 - **Alert mode** — `heimdall alert` accepts a PagerDuty webhook payload, maps the alert to a K8s namespace/workload via a configurable service map, and dispatches an AI investigation.
@@ -22,6 +22,14 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 - **RAG / past-incident recall** — semantic retrieval over a JSONL task-history log to surface relevant past incidents.
 - **Regex redaction** — user-defined patterns to scrub secrets from tool output before it reaches the model.
 - **Deploy anywhere** — Flue agents run locally via the CLI or deploy to Node.js, Cloudflare, and more.
+- **Serve mode** — `heimdall serve` starts an HTTP REST API (`POST /api/diagnose`) with optional Bearer-token authentication, enabling programmatic integration with CI/CD pipelines, dashboards, and alert webhooks.
+- **MCP server mode** — `heimdall mcp` exposes Heimdall's read-only Kubernetes tools as an MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, and other MCP-compatible AI clients.
+- **Session mode** — `heimdall session` creates durable multi-turn debugging sessions backed by Flue's persistent streams, preserving conversation context across process restarts.
+- **Schedule mode** — `heimdall schedule` runs triage sweeps on a cron schedule defined in `heimdall.config.yaml`; `--once` fires immediately for CI/CronJob use.
+- **New Relic integration** — optional `newrelic_query` tool for NRQL metric queries, APM throughput/latency/error-rate, and open alert violations via the NerdGraph API.
+- **CDK integration** — optional `cdk_query` tool for read-only AWS CDK inspection (`ls`, `diff`, `synth`, `metadata`, `notices`); mutating subcommands blocked by `cdk-safety.ts`.
+- **SLO evaluation** — define SLOs in `heimdall.config.yaml`; the agent evaluates compliance against Prometheus metrics.
+- **Performance telemetry** — optional token-consumption and cache-hit-rate logging via `HEIMDALL_TELEMETRY_FILE` or `telemetry.file` in config.
 
 ## Prerequisites
 
@@ -265,6 +273,131 @@ heimdall self-loop             # run until no further improvement
 heimdall self-loop --iterations 3
 ```
 
+### Serve mode (HTTP REST API)
+
+Start an HTTP server exposing Heimdall's AI diagnostic capability as a REST API:
+
+```bash
+heimdall serve                              # listen on 127.0.0.1:3000
+heimdall serve --port 8080
+heimdall serve --host 0.0.0.0 --port 8080
+HEIMDALL_API_KEY=secret heimdall serve      # enable Bearer-token auth
+
+npm run serve                               # via npm
+```
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/diagnose` | POST | Run an AI diagnosis. Body: `{ prompt, namespace?, model? }` → `OneShotFinding` |
+| `/api/health` | GET | Liveness probe. Always unauthenticated. |
+| `/api/openapi.json` | GET | OpenAPI 3.1 spec. |
+
+```bash
+# One-shot diagnose request
+curl -X POST http://localhost:3000/api/diagnose \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Why is my api pod crash-looping in prod?", "namespace": "prod"}'
+
+# With Bearer-token auth (when HEIMDALL_API_KEY is set)
+curl -X POST http://localhost:3000/api/diagnose \
+  -H "Authorization: Bearer $HEIMDALL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Are all nodes healthy?"}'
+```
+
+Configure port, host, and API key in `heimdall.config.yaml`:
+
+```yaml
+server:
+  port: 8080
+  host: '0.0.0.0'
+  apiKey: ${HEIMDALL_API_KEY}   # or set HEIMDALL_API_KEY env var directly
+```
+
+`GET /api/health` is always unauthenticated so Kubernetes liveness probes work without credentials.
+
+### MCP server mode
+
+Expose all enabled Heimdall tools as an MCP server (stdio transport) for Claude Desktop, Claude Code, Cursor, and other MCP-compatible AI clients:
+
+```bash
+npm run mcp      # via npm
+heimdall mcp     # via CLI
+```
+
+Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "/path/to/heimdall/bin/heimdall",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Or with the pre-built bundle (after `npm run build`):
+
+```json
+{
+  "mcpServers": {
+    "heimdall": {
+      "command": "node",
+      "args": ["/path/to/heimdall/dist/mcp-mode.mjs"]
+    }
+  }
+}
+```
+
+All enabled tools are advertised with `readOnlyHint: true` / `destructiveHint: false` annotations. Tool enablement follows the same `heimdall.config.yaml` flags as the agent — add `tools: { prometheusQuery: true, ... }` to expose additional tools.
+
+### Session mode (durable multi-turn)
+
+Create a durable debugging session backed by Flue's persistent streams. Unlike `npm run connect`, sessions survive process restarts:
+
+```bash
+# 1. Start the Flue dev server (or heimdall serve)
+npm run dev
+
+# 2. Create a session
+heimdall session start --name prod-incident
+
+# 3. Send follow-up prompts using the returned session ID
+heimdall session prompt "Why is the api pod crash-looping?" --session <id>
+heimdall session prompt "What about the memory limits?"     --session <id>
+heimdall session prompt "Show me the last 100 log lines"    --session <id>
+
+# Manage sessions
+heimdall session list
+heimdall session info  <id>
+heimdall session end   <id>
+```
+
+The server URL defaults to `http://localhost:3583` (or `HEIMDALL_SERVER` env var). Session handles are stored in `~/.heimdall/sessions/` (or `HEIMDALL_SESSION_DIR` env var).
+
+### Schedule mode
+
+Run triage sweeps on a cron schedule. Useful as a long-running process or a Kubernetes CronJob:
+
+```bash
+npm run schedule               # long-running cron loop
+heimdall schedule              # same via CLI
+heimdall schedule --once       # fire once immediately and exit (for CI / CronJob)
+```
+
+Configure the schedule in `heimdall.config.yaml`:
+
+```yaml
+schedule:
+  triage:
+    enabled: true
+    cron: "0 */6 * * *"   # standard 5-field UTC cron (every 6 hours at :00)
+    namespace: prod         # optional namespace scope; omit for default namespace
+    allNamespaces: false    # set true for a full-cluster -A sweep
+```
+
 ### Example prompts
 
 ```text
@@ -495,6 +628,14 @@ All configuration is via environment variables (see `.env.example`):
 | `DD_SITE` | Datadog site, e.g. `datadoghq.eu` (overrides `datadog.site` in config) | `datadoghq.com` |
 | `SLACK_WEBHOOK_URL` | Slack incoming webhook URL (overrides `slack.webhookUrl` in config) | — |
 | `HEIMDALL_LEARNING_LOG` | Path for self-improve learning log | `scenarios/learning-log.jsonl` |
+| `HEIMDALL_PORT` | HTTP server port for `serve` mode (overrides `server.port` in config) | `3000` |
+| `HEIMDALL_HOST` | HTTP server bind address for `serve` mode (overrides `server.host` in config) | `127.0.0.1` |
+| `HEIMDALL_API_KEY` | Bearer-token for `serve` mode API authentication (optional) | — |
+| `HEIMDALL_SESSION_DIR` | Directory for session handle files used by `session` mode | `~/.heimdall/sessions` |
+| `HEIMDALL_SERVER` | Flue server URL for `session` mode | `http://localhost:3583` |
+| `NEW_RELIC_API_KEY` | New Relic User API key (overrides `newRelic.apiKey` in config) | — |
+| `NEW_RELIC_ACCOUNT_ID` | New Relic account ID (overrides `newRelic.accountId` in config) | — |
+| `HEIMDALL_TELEMETRY_FILE` | Path for telemetry JSON output; auto-enables telemetry when set | — |
 
 ### Slack notification sink
 
@@ -691,6 +832,84 @@ redaction:
 
 **Disabled by default.** When enabled, each rule's `pattern` is compiled as a JavaScript regex (global flag added automatically) and applied to all tool output before it reaches the model. Matches are replaced with `[REDACTED:<name>]`. Patterns are compiled once at startup; an invalid regex is skipped with a warning rather than crashing the agent.
 
+### New Relic integration
+
+Enable NRQL metric queries, APM throughput/latency/error-rate, and open alert violations:
+
+```yaml
+tools:
+  newRelicQuery: true
+
+newRelic:
+  apiKey: ${NEW_RELIC_API_KEY}       # or set NEW_RELIC_API_KEY env var
+  accountId: ${NEW_RELIC_ACCOUNT_ID} # or set NEW_RELIC_ACCOUNT_ID env var
+  timeoutMs: 15000
+```
+
+Three query types are supported:
+- `metrics` — arbitrary NRQL metric queries
+- `apm` — Transaction throughput, latency, and error rate per service
+- `alerts` — open NrAiIncident violations
+
+Env vars `NEW_RELIC_API_KEY` and `NEW_RELIC_ACCOUNT_ID` take precedence over config file values.
+
+### CDK integration
+
+Enable read-only AWS CDK CLI inspection:
+
+```yaml
+tools:
+  cdkQuery: true
+```
+
+Requires the CDK CLI (`cdk`) on PATH and AWS credentials. The `cdk-safety.ts` policy allows only informational subcommands: `ls`, `list`, `synth`, `synthesize`, `diff`, `metadata`, `context`, `notices`, `docs`, `doc`, `version`, `doctor`, `drift`. Mutating subcommands (`deploy`, `destroy`, `bootstrap`, `watch`, `import`, `migrate`, `gc`, `rollback`) are always blocked.
+
+### SLO evaluation
+
+Define SLOs against Prometheus metrics. The agent evaluates compliance when asked:
+
+```yaml
+slos:
+  - name: api-availability
+    expr: 'rate(http_requests_total{job="api",code!~"5.."}[5m]) / rate(http_requests_total{job="api"}[5m])'
+    target: 0.999
+    window: 30d
+  - name: api-p99-latency
+    expr: 'histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job="api"}[5m]))'
+    target: 0.5   # seconds
+    window: 7d
+```
+
+Requires the `prometheus_query` tool to be enabled.
+
+### Event sink
+
+Persist watch-mode findings to a webhook for post-incident audit trails:
+
+```yaml
+eventSink:
+  enabled: true
+  webhookUrl: https://ingest.example.com/heimdall-events
+```
+
+Findings are POSTed as JSON after each watch-mode diagnosis. Webhook failures are non-fatal and logged to stderr.
+
+### Performance telemetry
+
+Log token consumption, cache hit rates, and tool-call latency:
+
+```yaml
+telemetry:
+  enabled: true
+  file: /var/log/heimdall-telemetry.json   # omit to write to stderr
+```
+
+Or set the env var to auto-enable telemetry without changing config:
+
+```bash
+HEIMDALL_TELEMETRY_FILE=/var/log/heimdall-telemetry.json heimdall -p "..."
+```
+
 ## Project layout
 
 ```
@@ -707,7 +926,9 @@ src/
 │   ├── kubecost.ts          # kubecost_query (cost attribution)
 │   ├── loki.ts              # loki_query (Grafana Loki / LogQL)
 │   ├── jaeger.ts            # jaeger_query (Jaeger / Tempo traces)
-│   └── datadog.ts           # datadog_query (metrics/logs/events/monitors)
+│   ├── datadog.ts           # datadog_query (metrics/logs/events/monitors)
+│   ├── newrelic.ts          # newrelic_query (NerdGraph: NRQL / APM / alerts)
+│   └── cdk.ts               # cdk_query (read-only CDK CLI inspection)
 └── lib/
     ├── kubectl-safety.ts    # pure read-only policy (parse + validate)
     ├── kubectl.ts           # command execution (no shell) + JSON cache
@@ -743,10 +964,25 @@ src/
     ├── duration.ts          # human-readable duration helpers
     ├── claude-cli-llm.ts    # claude CLI adapter for eval/self-improve harness
     ├── codex-cli-llm.ts     # codex CLI adapter for eval/self-improve harness
+    ├── newrelic.ts          # New Relic NerdGraph API client
+    ├── cdk-safety.ts        # pure read-only policy for CDK CLI
+    ├── cdk.ts               # CDK CLI execution (no shell)
+    ├── plugin.ts            # tool plugin registry (buildToolRegistry)
+    ├── session.ts           # durable session handle CRUD helpers
+    ├── schedule.ts          # cron next-fire-time helpers
+    ├── event-sink.ts        # durable watch-mode finding storage
+    ├── output-truncation.ts # tool output size cap helpers
+    ├── slo.ts               # SLO evaluation helpers
+    ├── telemetry.ts         # token / cache / latency telemetry
+    ├── tokenizer.ts         # argv tokenizer (shared by safety modules)
     └── __tests__/           # unit + property-based tests
 ├── alert-mode.ts            # CLI entry: alert / PagerDuty mode
 ├── eval-mode.ts             # CLI entry: eval mode
 ├── format-json.ts           # --json output formatter
+├── mcp-mode.ts              # CLI entry: MCP server mode (stdio)
+├── serve-mode.ts            # CLI entry: HTTP REST API serve mode
+├── session-mode.ts          # CLI entry: durable multi-turn session mode
+├── schedule-mode.ts         # CLI entry: cron-based schedule mode
 ├── self-improve-mode.ts     # CLI entry: self-improve mode
 ├── self-loop-mode.ts        # CLI entry: self-loop mode
 ├── triage-mode.ts           # CLI entry: triage mode
