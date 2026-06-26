@@ -80,7 +80,6 @@ describe('termFrequency', () => {
 
   it('normalizes counts by total token count', () => {
     const tf = termFrequency(['pod', 'pod', 'crash']);
-    // 'pod' appears 2/3 of the time
     expect(tf.get('pod')).toBeCloseTo(2 / 3, 5);
     expect(tf.get('crash')).toBeCloseTo(1 / 3, 5);
   });

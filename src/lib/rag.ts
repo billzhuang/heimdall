@@ -162,7 +162,7 @@ export function selectDiverseEntries(
       // Score each candidate by its maximum similarity to any already-selected entry.
       const maxSim = selected.reduce(
         (max, s) => Math.max(max, cosineSimilarity(vecs[idx], vecs[s])),
-        0,
+        -Infinity,
       );
       // The entry least similar to the selection set is the most diverse.
       if (maxSim < minMaxSim) {
