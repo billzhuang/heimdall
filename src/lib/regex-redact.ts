@@ -22,15 +22,22 @@ export interface CompiledRedactionRule {
 }
 
 /**
- * Extract a leading inline-flag group `(?flags)` from a pattern string.
- * Supports the JavaScript flag letters (g, i, m, s, u, y).
- * `(?i)` is common in Python/Java/Perl patterns; this strips it and applies
- * the equivalent JS flag so operator-supplied patterns work as expected.
+ * Extract all leading inline-flag groups (e.g. `(?i)`, `(?im)`, `(?i)(?m)`)
+ * from a pattern string. Supports the JavaScript flag letters (g, i, m, s, u, y).
+ * Multiple consecutive groups like `(?i)(?m)SECRET` are fully consumed so the
+ * resulting flags string is their union — patterns copied from Python/Java/Perl
+ * that carry more than one flag group are handled correctly.
  */
 function extractInlineFlags(pattern: string): { pattern: string; extraFlags: string } {
-  const m = pattern.match(/^\(\?([gimsuy]+)\)/);
-  if (m) return { pattern: pattern.slice(m[0].length), extraFlags: m[1] };
-  return { pattern, extraFlags: '' };
+  const flagGroupRe = /^\(\?([gimsuy]+)\)/;
+  let remaining = pattern;
+  let allFlags = '';
+  let m: RegExpMatchArray | null;
+  while ((m = remaining.match(flagGroupRe)) !== null) {
+    allFlags += m[1];
+    remaining = remaining.slice(m[0].length);
+  }
+  return { pattern: remaining, extraFlags: allFlags };
 }
 
 /**
@@ -49,33 +56,46 @@ function hasPotentialReDoS(pattern: string): boolean {
 }
 
 /**
+ * Compile a single raw rule into a CompiledRedactionRule, or return null if the
+ * rule should be skipped (invalid pattern, ReDoS risk, or empty after flag strip).
+ * Logs a warning for every skipped rule.
+ */
+function compileSingleRule(rule: RedactionRule): CompiledRedactionRule | null {
+  const { pattern, extraFlags } = extractInlineFlags(rule.pattern);
+  if (!pattern) {
+    console.warn(
+      `[heimdall] Skipping invalid redaction rule "${rule.name}": pattern is empty after stripping inline flags`,
+    );
+    return null;
+  }
+  if (hasPotentialReDoS(pattern)) {
+    console.warn(
+      `[heimdall] Skipping redaction rule "${rule.name}": pattern "${rule.pattern}" may cause catastrophic backtracking`,
+    );
+    return null;
+  }
+  // Deduplicate flags via Set so `(?ii)` or a user-supplied `g` can't cause a SyntaxError.
+  const flags = Array.from(new Set('g' + extraFlags)).join('');
+  try {
+    return { name: rule.name, re: new RegExp(pattern, flags) };
+  } catch {
+    console.warn(
+      `[heimdall] Skipping invalid redaction rule "${rule.name}": pattern "${rule.pattern}" is not a valid regex`,
+    );
+    return null;
+  }
+}
+
+/**
  * Compile raw rule definitions into RegExp objects.
  * Invalid patterns are skipped with a console warning rather than crashing.
- * Leading inline flag groups (`(?i)`, `(?im)`, etc.) are extracted and
- * applied as JS regex flags so patterns copied from other languages work.
+ * Leading inline flag groups (`(?i)`, `(?im)`, `(?i)(?m)`, etc.) are extracted
+ * and applied as JS regex flags so patterns copied from other languages work,
+ * including those carrying multiple separate flag groups.
  * Patterns with nested quantifiers (potential ReDoS) are also skipped.
  */
 export function compileRules(rules: RedactionRule[]): CompiledRedactionRule[] {
-  const compiled: CompiledRedactionRule[] = [];
-  for (const rule of rules) {
-    const { pattern, extraFlags } = extractInlineFlags(rule.pattern);
-    if (!pattern) {
-      console.warn(`[heimdall] Skipping invalid redaction rule "${rule.name}": pattern is empty after stripping inline flags`);
-      continue;
-    }
-    if (hasPotentialReDoS(pattern)) {
-      console.warn(`[heimdall] Skipping redaction rule "${rule.name}": pattern "${rule.pattern}" may cause catastrophic backtracking`);
-      continue;
-    }
-    // Deduplicate flags via Set so `(?ii)` or a user-supplied `g` can't cause a SyntaxError.
-    const flags = Array.from(new Set('g' + extraFlags)).join('');
-    try {
-      compiled.push({ name: rule.name, re: new RegExp(pattern, flags) });
-    } catch {
-      console.warn(`[heimdall] Skipping invalid redaction rule "${rule.name}": pattern "${rule.pattern}" is not a valid regex`);
-    }
-  }
-  return compiled;
+  return rules.map(compileSingleRule).filter((r): r is CompiledRedactionRule => r !== null);
 }
 
 /**
