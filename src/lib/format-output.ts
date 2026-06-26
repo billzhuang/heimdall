@@ -69,24 +69,29 @@ function extractRcaSection(raw: string, headerRe: RegExp): string | null {
 }
 
 /** Parse a bullet/numbered list body into an array of trimmed strings. */
-function parseBulletList(body: string): string[] {
+export function parseBulletList(body: string): string[] {
   return body
     .split('\n')
     .map(l => l.replace(BULLET_STRIP_RE, '').trim())
     .filter(Boolean);
 }
 
-/** Parse an evidence section body into a { finding: evidence } map. */
-function parseEvidenceMap(body: string): Record<string, string> | null {
+/**
+ * Parse an evidence section body into a `{ finding: evidence }` map.
+ *
+ * Each line must be a `key: value` pair (the first `: ` is the separator).
+ * Lines without a separator, or where key or value is empty after trimming,
+ * are skipped. Returns `null` when no valid pairs are found.
+ */
+export function parseEvidenceMap(body: string): Record<string, string> | null {
   const map: Record<string, string> = {};
   for (const line of body.split('\n')) {
     const stripped = line.replace(BULLET_STRIP_RE, '').trim();
     const sep = stripped.indexOf(': ');
-    if (sep > 0) {
-      const key = stripped.slice(0, sep).trim();
-      const value = stripped.slice(sep + 2).trim();
-      if (key && value) map[key] = value;
-    }
+    if (sep <= 0) continue;
+    const key = stripped.slice(0, sep).trim();
+    const value = stripped.slice(sep + 2).trim();
+    if (key && value) map[key] = value;
   }
   return Object.keys(map).length > 0 ? map : null;
 }
