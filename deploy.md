@@ -200,24 +200,38 @@ Environment variables read at cold-start:
 | `KUBECONFIG` | Path to kubeconfig (e.g. `/tmp/kubeconfig` injected at startup) |
 | `OTEL_SERVICE_NAME` | Optional service name for Prometheus metrics labels |
 
-### Lambda deployment sketch
+### Container image requirements for `--handler`
+
+The `--handler` flag in `aws lambda create-function` only works when the
+container image includes the **Lambda Runtime Interface Client (LRIC)**.  The
+standard `Dockerfile` uses `node:22-slim` which does **not** include the LRIC.
+Choose one of the two approaches below depending on whether you want to bundle
+the LRIC into the image or add it via a Lambda layer at deploy time.
+
+---
+
+#### Approach A: `Dockerfile.lambda` — self-contained (recommended)
+
+`Dockerfile.lambda` uses `public.ecr.aws/lambda/nodejs22.x` as the runtime
+base image.  That image ships the LRIC and supports the `--handler` flag
+and ESM modules (`.mjs`) out of the box.  No extra Lambda layers are needed.
 
 ```bash
-# 1. Build the container image
-docker build -t heimdall-lambda .
+# 1. Build the Lambda-specific container image
+docker build -f Dockerfile.lambda -t heimdall-lambda .
 
 # 2. Tag and push to ECR
 aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-docker tag heimdall-lambda <account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest
-docker push <account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest
+docker tag heimdall-lambda <account>.dkr.ecr.<region>.amazonaws.com/heimdall-lambda:latest
+docker push <account>.dkr.ecr.<region>.amazonaws.com/heimdall-lambda:latest
 
-# 3. Create the function (container image Lambda)
+# 3. Create the function
 aws lambda create-function \
   --function-name heimdall \
   --package-type Image \
-  --code ImageUri=<account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest \
+  --code ImageUri=<account>.dkr.ecr.<region>.amazonaws.com/heimdall-lambda:latest \
   --role arn:aws:iam::<account>:role/heimdall-lambda \
-  --handler lambda-handler.handler \
+  --handler dist/server.handler \
   --timeout 900 \
   --memory-size 1024 \
   --environment "Variables={ANTHROPIC_API_KEY=<key>,KUBECONFIG=/tmp/kubeconfig}"
@@ -227,6 +241,48 @@ aws lambda create-function-url-config \
   --function-name heimdall \
   --auth-type NONE   # use HEIMDALL_API_KEY for app-level Bearer token auth instead
 ```
+
+---
+
+#### Approach B: Lambda Web Adapter layer — uses the standard `Dockerfile`
+
+The [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter)
+is a Lambda extension that converts Lambda events into HTTP requests and proxies
+them to a local HTTP server.  It works with the standard `Dockerfile` (no LRIC
+required) by adding a single Lambda layer at deploy time.  The `--handler` flag
+is **not** used with this approach; the Lambda Web Adapter intercepts invocations
+before the handler is called and forwards them as HTTP requests to port 3000.
+
+```bash
+# 1. Build the standard container image (no changes to Dockerfile needed)
+docker build -t heimdall-lambda .
+
+# 2. Tag and push to ECR  (same as above)
+aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
+docker tag heimdall-lambda <account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest
+docker push <account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest
+
+# 3. Create the function with the Lambda Web Adapter layer
+#    Replace <region> with your deployment region.
+#    x86_64 layer ARN: arn:aws:lambda:<region>:753240598075:layer:LambdaAdapterLayerX86:24
+#    arm64  layer ARN: arn:aws:lambda:<region>:753240598075:layer:LambdaAdapterLayerArm64:24
+aws lambda create-function \
+  --function-name heimdall \
+  --package-type Image \
+  --code ImageUri=<account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest \
+  --role arn:aws:iam::<account>:role/heimdall-lambda \
+  --timeout 900 \
+  --memory-size 1024 \
+  --layers arn:aws:lambda:<region>:753240598075:layer:LambdaAdapterLayerX86:24 \
+  --environment "Variables={ANTHROPIC_API_KEY=<key>,KUBECONFIG=/tmp/kubeconfig,AWS_LAMBDA_EXEC_WRAPPER=/opt/bootstrap,PORT=3000}"
+
+# 4. (Optional) Enable a Function URL for direct HTTPS access
+aws lambda create-function-url-config \
+  --function-name heimdall \
+  --auth-type NONE   # use HEIMDALL_API_KEY for app-level Bearer token auth instead
+```
+
+---
 
 For VPC placement (required to reach a private EKS API server):
 
