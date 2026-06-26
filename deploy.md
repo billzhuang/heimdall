@@ -172,10 +172,38 @@ features cannot run in Lambda:
 - You already have a Lambda-heavy infra and want to minimise new services.
 - Traffic is very low (a few calls per day) and cost is a concern.
 
+### Lambda handler
+
+`src/lambda-handler.ts` provides a ready-to-use Lambda handler built on
+[Hono's official `aws-lambda` adapter](https://hono.dev/docs/getting-started/aws-lambda).
+It wraps `createServeApp()` (the same Hono app as serve mode) and supports:
+
+- Lambda Function URLs
+- API Gateway HTTP API (payload format 2.0)
+- Application Load Balancer
+
+Export the handler from `dist/server.mjs` as `module.handler`:
+
+```typescript
+// dist/server.mjs (built by flue)
+export { handler } from './lambda-handler.js';
+```
+
+Environment variables read at cold-start:
+
+| Variable | Purpose |
+|----------|---------|
+| `ANTHROPIC_API_KEY` | **Required.** Anthropic API key |
+| `HEIMDALL_API_KEY` | Optional Bearer token auth (all routes except `/api/health`) |
+| `HEIMDALL_MODEL` | Optional model override (`provider/model` format) |
+| `HEIMDALL_CONFIG_YAML` | Optional raw YAML config (no filesystem needed) |
+| `KUBECONFIG` | Path to kubeconfig (e.g. `/tmp/kubeconfig` injected at startup) |
+| `OTEL_SERVICE_NAME` | Optional service name for Prometheus metrics labels |
+
 ### Lambda deployment sketch
 
 ```bash
-# 1. Build the image
+# 1. Build the container image
 docker build -t heimdall-lambda .
 
 # 2. Tag and push to ECR
@@ -189,14 +217,24 @@ aws lambda create-function \
   --package-type Image \
   --code ImageUri=<account>.dkr.ecr.<region>.amazonaws.com/heimdall:latest \
   --role arn:aws:iam::<account>:role/heimdall-lambda \
+  --handler lambda-handler.handler \
   --timeout 900 \
   --memory-size 1024 \
   --environment "Variables={ANTHROPIC_API_KEY=<key>,KUBECONFIG=/tmp/kubeconfig}"
+
+# 4. (Optional) Enable a Function URL for direct HTTPS access
+aws lambda create-function-url-config \
+  --function-name heimdall \
+  --auth-type NONE   # use HEIMDALL_API_KEY for app-level Bearer token auth instead
 ```
 
-The container entry point needs a Lambda handler wrapper (not yet included in the
-image). The existing Dockerfile targets `flue` CLI mode; a separate Lambda
-handler that calls `runHarness()` would be required.
+For VPC placement (required to reach a private EKS API server):
+
+```bash
+aws lambda update-function-configuration \
+  --function-name heimdall \
+  --vpc-config SubnetIds=<subnet-a>,<subnet-b>,SecurityGroupIds=<sg-id>
+```
 
 ---
 
