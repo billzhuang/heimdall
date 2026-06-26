@@ -215,7 +215,7 @@ describe('renderJobSummary', () => {
 });
 
 describe('detectTriageSeverity', () => {
-  it('returns critical when "critical" appears', () => {
+  it('returns critical when "critical" starts a line', () => {
     expect(detectTriageSeverity('CRITICAL: node NotReady')).toBe('critical');
   });
 
@@ -227,7 +227,7 @@ describe('detectTriageSeverity', () => {
     expect(detectTriageSeverity('WARNING: high memory usage')).toBe('warning');
   });
 
-  it('returns info when only info appears', () => {
+  it('returns info when only info appears at line start', () => {
     expect(detectTriageSeverity('INFO: all pods running')).toBe('info');
   });
 
@@ -238,6 +238,18 @@ describe('detectTriageSeverity', () => {
   it('is case-insensitive', () => {
     expect(detectTriageSeverity('Critical issue found')).toBe('critical');
     expect(detectTriageSeverity('Warning: latency')).toBe('warning');
+  });
+
+  it('does not match hyphenated service names', () => {
+    // "critical-api-service" should NOT trigger critical
+    expect(detectTriageSeverity('Checking critical-api-service pod health')).toBe('ok');
+    // "warning-controller" should NOT trigger warning
+    expect(detectTriageSeverity('warning-controller deployment found')).toBe('ok');
+  });
+
+  it('matches keyword at start of line with leading whitespace', () => {
+    expect(detectTriageSeverity('  critical node down')).toBe('critical');
+    expect(detectTriageSeverity('\n  warning: high load')).toBe('warning');
   });
 });
 

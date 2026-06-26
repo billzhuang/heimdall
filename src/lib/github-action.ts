@@ -149,12 +149,18 @@ export function renderTriageJobSummary(report: string): string {
 
 /**
  * Heuristically detect the highest severity mentioned in a triage report.
- * Scans for case-insensitive severity keywords in the text.
+ *
+ * Matches only when the keyword appears at the start of a line (optionally
+ * preceded by whitespace) followed by a non-alphanumeric, non-hyphen character
+ * or end-of-string, so hyphenated service names like "critical-api-service"
+ * are not false-positive matches.
  */
 export function detectTriageSeverity(report: string): ActionSeverity {
   const lower = report.toLowerCase();
-  if (/\bcritical\b/.test(lower)) return 'critical';
-  if (/\bwarning\b/.test(lower))  return 'warning';
-  if (/\binfo\b/.test(lower))     return 'info';
+  // Allow the keyword to be followed by whitespace, colon, comma, period, or EOL —
+  // but NOT a hyphen or alphanumeric (which would indicate a compound identifier).
+  if (/(?:^|\n)\s*critical(?=[:\s,.]|$)/.test(lower)) return 'critical';
+  if (/(?:^|\n)\s*warning(?=[:\s,.]|$)/.test(lower))  return 'warning';
+  if (/(?:^|\n)\s*info(?=[:\s,.]|$)/.test(lower))     return 'info';
   return 'ok';
 }

@@ -49,7 +49,12 @@ function appendSummary(markdown: string): void {
   appendFileSync(GITHUB_STEP_SUMMARY, markdown + '\n');
 }
 
-/** Run a command, capture stdout+stderr, stream stderr to process.stderr. */
+/** Run a command, capture stdout, stream stderr to process.stderr.
+ *
+ * When spawning the Heimdall shell script (`BIN_PATH`) we invoke it via
+ * `process.execPath` (the current Node.js binary) so the runner works on
+ * Windows hosts where extensionless files cannot be spawned directly.
+ */
 function capture(
   cmd: string,
   args: string[],
@@ -57,7 +62,12 @@ function capture(
 ): Promise<{ stdout: string; code: number }> {
   return new Promise((resolve) => {
     let stdout = '';
-    const child = spawn(cmd, args, {
+    // On Windows, shell scripts must be launched through an interpreter;
+    // use the running Node binary so this file remains the single entrypoint.
+    const isShellScript = cmd === BIN_PATH;
+    const spawnCmd  = isShellScript ? process.execPath : cmd;
+    const spawnArgs = isShellScript ? [BIN_PATH, ...args] : args;
+    const child = spawn(spawnCmd, spawnArgs, {
       env: { ...process.env, ...opts.env },
       stdio: ['ignore', 'pipe', 'inherit'],
     });
@@ -161,9 +171,19 @@ async function runScheduleOnceMode(): Promise<void> {
 
 // ── Failure gating ─────────────────────────────────────────────────────────
 
+const VALID_SEVERITIES: readonly string[] = ['critical', 'warning', 'info', 'ok'];
+
 function checkFailOnSeverity(severity: ActionSeverity): void {
   if (!FAIL_ON) return;
-  const threshold = normaliseSeverity(FAIL_ON);
+  const cleaned = FAIL_ON.toLowerCase().trim();
+  if (!VALID_SEVERITIES.includes(cleaned)) {
+    process.stderr.write(
+      `[heimdall-action] Error: invalid fail-on-severity value "${FAIL_ON}". ` +
+      `Expected one of: ${VALID_SEVERITIES.join(', ')}\n`,
+    );
+    process.exit(1);
+  }
+  const threshold = cleaned as ActionSeverity;
   if (severityAtLeast(severity, threshold)) {
     process.stderr.write(
       `[heimdall-action] Failing: detected severity "${severity}" meets fail-on-severity threshold "${threshold}"\n`,
