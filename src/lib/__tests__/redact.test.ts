@@ -33,6 +33,12 @@ describe('isGetSecretCommand', () => {
     expect(isGetSecretCommand([])).toBe(false);
   });
 
+  it('returns false when "get" is followed only by flags (no resource type)', () => {
+    // All tokens after 'get' are flags — the while loop exhausts without a resource token.
+    expect(isGetSecretCommand(['get', '--all-namespaces', '-o', 'json'])).toBe(false);
+    expect(isGetSecretCommand(['get', '-A'])).toBe(false);
+  });
+
   it('skips value-taking flags before the resource type', () => {
     expect(isGetSecretCommand(['get', '-n', 'prod', 'secret', 'foo'])).toBe(true);
     expect(isGetSecretCommand(['get', '--namespace', 'prod', 'secrets'])).toBe(true);
@@ -106,6 +112,25 @@ describe('redactSecretValues — JSON', () => {
     const data = parsed['data'] as Record<string, string>;
     expect(data['username']).toMatch(/^<redacted: \d+ bytes>$/);
     expect(data['password']).toMatch(/^<redacted: \d+ bytes>$/);
+  });
+
+  it('redacts Secrets inside a mixed List while leaving non-Secret items unchanged', () => {
+    const list = JSON.stringify({
+      apiVersion: 'v1',
+      kind: 'List',
+      items: [
+        { kind: 'Pod', metadata: { name: 'api-0' }, spec: { containers: [] } },
+        { kind: 'Secret', metadata: { name: 'db-creds' }, data: { password: 'c2VjcmV0' } },
+      ],
+    });
+    const result = redactSecretValues(list, ['get', 'all', '-o', 'json']);
+    const parsed = JSON.parse(result) as { items: Array<{ kind: string; data?: Record<string, string>; spec?: unknown }> };
+    const pod = parsed.items.find((i) => i.kind === 'Pod')!;
+    const secret = parsed.items.find((i) => i.kind === 'Secret')!;
+    // Pod passes through unchanged (redactObject line 120: return obj for non-Secret/List)
+    expect(pod.spec).toBeDefined();
+    // Secret data is redacted
+    expect(secret.data!['password']).toMatch(/^<redacted:/);
   });
 
   it('redacts Secrets inside a List', () => {
@@ -201,6 +226,19 @@ data:
   it('passes through invalid YAML unchanged', () => {
     const broken = ': invalid: [yaml';
     expect(redactSecretValues(broken, argv('yaml'))).toBe(broken);
+  });
+
+  it('redacts multiple Secrets in a multi-document YAML stream', () => {
+    const multiDoc =
+      `apiVersion: v1\nkind: Secret\nmetadata:\n  name: secret-1\ndata:\n  key: dmFsdWUx\n` +
+      `---\n` +
+      `apiVersion: v1\nkind: Secret\nmetadata:\n  name: secret-2\ndata:\n  key: dmFsdWUy\n`;
+    const result = redactSecretValues(multiDoc, argv('yaml'));
+    expect(result).not.toContain('dmFsdWUx');
+    expect(result).not.toContain('dmFsdWUy');
+    expect(result).toContain('secret-1');
+    expect(result).toContain('secret-2');
+    expect(result).toMatch(/<redacted: \d+ bytes>/);
   });
 });
 
