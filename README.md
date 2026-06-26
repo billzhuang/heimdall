@@ -345,7 +345,7 @@ All enabled tools are advertised with `readOnlyHint: true` / `destructiveHint: f
 Create a durable debugging session backed by Flue's persistent streams. Unlike `npm run connect`, sessions survive process restarts:
 
 ```bash
-# 1. Start the Flue dev server (or heimdall serve)
+# 1. Start the Flue dev server (session mode requires the Flue agent runtime, not heimdall serve)
 npm run dev
 
 # 2. Create a session
