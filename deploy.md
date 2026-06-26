@@ -345,8 +345,6 @@ credentials instead of IRSA.
 
 ---
 
----
-
 ## Option 6: AWS Bedrock AgentCore Runtime
 
 Deploy Heimdall as a container in
