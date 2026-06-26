@@ -155,7 +155,7 @@ describe('formatDurationMs', () => {
       ['2h', 7_200_000],
       ['1d', 86_400_000],
     ];
-    for (const [str, ms] of cases) {
+    for (const [str, _ms] of cases) {
       expect(formatDurationMs(parseDurationMs(str)!)).toBe(str);
     }
   });
