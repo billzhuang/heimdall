@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDurationMs } from '../duration.ts';
+import { parseDurationMs, formatDurationMs } from '../duration.ts';
 
 describe('parseDurationMs', () => {
   it('parses milliseconds', () => {
@@ -79,5 +79,88 @@ describe('parseDurationMs', () => {
   it('returns null for unit with missing numeric prefix', () => {
     expect(parseDurationMs('ms')).toBeNull();
     expect(parseDurationMs('h')).toBeNull();
+  });
+});
+
+describe('formatDurationMs', () => {
+  it('formats zero as "0s"', () => {
+    expect(formatDurationMs(0)).toBe('0s');
+  });
+
+  it('formats sub-second values as "0s" (rounds down)', () => {
+    expect(formatDurationMs(499)).toBe('0s');
+  });
+
+  it('rounds 500ms up to 1s', () => {
+    expect(formatDurationMs(500)).toBe('1s');
+  });
+
+  it('formats exact seconds', () => {
+    expect(formatDurationMs(1_000)).toBe('1s');
+    expect(formatDurationMs(45_000)).toBe('45s');
+    expect(formatDurationMs(59_000)).toBe('59s');
+  });
+
+  it('formats exact minutes', () => {
+    expect(formatDurationMs(60_000)).toBe('1m');
+    expect(formatDurationMs(30 * 60_000)).toBe('30m');
+  });
+
+  it('formats minutes and seconds', () => {
+    expect(formatDurationMs(90_000)).toBe('1m 30s');
+    expect(formatDurationMs(2 * 60_000 + 15_000)).toBe('2m 15s');
+  });
+
+  it('formats exact hours', () => {
+    expect(formatDurationMs(3_600_000)).toBe('1h');
+    expect(formatDurationMs(2 * 3_600_000)).toBe('2h');
+  });
+
+  it('formats hours and minutes', () => {
+    expect(formatDurationMs(5 * 3_600_000 + 30 * 60_000)).toBe('5h 30m');
+  });
+
+  it('formats hours and seconds (no minutes)', () => {
+    expect(formatDurationMs(3_600_000 + 45_000)).toBe('1h 45s');
+  });
+
+  it('formats hours, minutes, and seconds', () => {
+    expect(formatDurationMs(3_661_000)).toBe('1h 1m 1s');
+  });
+
+  it('formats exact days', () => {
+    expect(formatDurationMs(86_400_000)).toBe('1d');
+    expect(formatDurationMs(7 * 86_400_000)).toBe('7d');
+  });
+
+  it('formats days and hours', () => {
+    expect(formatDurationMs(86_400_000 + 3_600_000)).toBe('1d 1h');
+  });
+
+  it('formats days, hours, minutes, and seconds', () => {
+    expect(formatDurationMs(86_400_000 + 3_661_000)).toBe('1d 1h 1m 1s');
+  });
+
+  it('rounds to nearest second before decomposing', () => {
+    expect(formatDurationMs(1_500)).toBe('2s');
+    expect(formatDurationMs(1_499)).toBe('1s');
+    expect(formatDurationMs(59_500)).toBe('1m');
+  });
+
+  it('is the round-trip inverse of parseDurationMs for whole-unit inputs', () => {
+    const cases: [string, number][] = [
+      ['1s', 1_000],
+      ['30s', 30_000],
+      ['1m', 60_000],
+      ['2h', 7_200_000],
+      ['1d', 86_400_000],
+    ];
+    for (const [str, _ms] of cases) {
+      expect(formatDurationMs(parseDurationMs(str)!)).toBe(str);
+    }
+  });
+
+  it('handles large values without overflow', () => {
+    expect(formatDurationMs(365 * 86_400_000)).toBe('365d');
   });
 });

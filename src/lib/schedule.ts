@@ -5,6 +5,7 @@
  * Implements a minimal 5-field cron parser (minute hour dom month dow) in UTC,
  * covering *, step (STAR/n), specific values, ranges (a-b), and comma lists.
  */
+import { formatDurationMs } from './duration.ts';
 
 export interface ScheduledTriageConfig {
   /** Enable/disable the triage schedule. */
@@ -185,14 +186,5 @@ export function nextFireTime(cronExpr: string, from: Date): Date {
  * Format a delay in milliseconds as a human-readable string, e.g. "5h 30m".
  */
 export function formatDelay(ms: number): string {
-  const totalSecs = Math.round(ms / 1000);
-  const hours = Math.floor(totalSecs / 3600);
-  const minutes = Math.floor((totalSecs % 3600) / 60);
-  const secs = totalSecs % 60;
-
-  const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
-  return parts.join(' ');
+  return formatDurationMs(ms);
 }
