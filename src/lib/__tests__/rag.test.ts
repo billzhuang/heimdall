@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   tokenize,
+  termFrequency,
+  inverseDocumentFrequency,
+  applyIdf,
+  entryToText,
   cosineSimilarity,
   retrieveSimilarEntries,
   selectDiverseEntries,
@@ -57,6 +61,114 @@ describe('tokenize', () => {
 
   it('returns empty array for empty string', () => {
     expect(tokenize('')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// termFrequency
+// ---------------------------------------------------------------------------
+
+describe('termFrequency', () => {
+  it('returns an empty map for an empty token list', () => {
+    expect(termFrequency([])).toEqual(new Map());
+  });
+
+  it('counts a single token and normalizes by length 1', () => {
+    const tf = termFrequency(['pod']);
+    expect(tf.get('pod')).toBeCloseTo(1.0);
+  });
+
+  it('normalizes counts by total token count', () => {
+    const tf = termFrequency(['pod', 'pod', 'crash']);
+    expect(tf.get('pod')).toBeCloseTo(2 / 3, 5);
+    expect(tf.get('crash')).toBeCloseTo(1 / 3, 5);
+  });
+
+  it('handles repeated tokens that appear in every position', () => {
+    const tf = termFrequency(['x', 'x', 'x']);
+    expect(tf.get('x')).toBeCloseTo(1.0, 5);
+    expect(tf.size).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// inverseDocumentFrequency
+// ---------------------------------------------------------------------------
+
+describe('inverseDocumentFrequency', () => {
+  it('returns empty map for an empty corpus', () => {
+    expect(inverseDocumentFrequency([])).toEqual(new Map());
+  });
+
+  it('assigns higher IDF to rare terms', () => {
+    const doc1 = new Map([['common', 0.5], ['rare', 0.5]]);
+    const doc2 = new Map([['common', 0.5]]);
+    const doc3 = new Map([['common', 0.5]]);
+    const idf = inverseDocumentFrequency([doc1, doc2, doc3]);
+    // 'rare' appears in 1 doc; 'common' appears in all 3 — rare should have higher IDF
+    expect(idf.get('rare')!).toBeGreaterThan(idf.get('common')!);
+  });
+
+  it('assigns positive IDF values to all terms', () => {
+    const doc = new Map([['pod', 0.5], ['crash', 0.3]]);
+    const idf = inverseDocumentFrequency([doc]);
+    for (const val of idf.values()) {
+      expect(val).toBeGreaterThan(0);
+    }
+  });
+
+  it('uses smoothed formula: log((N+1)/(df+1)) + 1', () => {
+    // Single doc containing one term — df=1, N=1
+    // Expected: log((1+1)/(1+1)) + 1 = log(1) + 1 = 0 + 1 = 1
+    const doc = new Map([['term', 1.0]]);
+    const idf = inverseDocumentFrequency([doc]);
+    expect(idf.get('term')).toBeCloseTo(1.0, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyIdf
+// ---------------------------------------------------------------------------
+
+describe('applyIdf', () => {
+  it('returns empty map when tf is empty', () => {
+    const idf = new Map([['pod', 2.0]]);
+    expect(applyIdf(new Map(), idf)).toEqual(new Map());
+  });
+
+  it('multiplies tf values by their idf weights', () => {
+    const tf = new Map([['pod', 0.5], ['crash', 0.3]]);
+    const idf = new Map([['pod', 2.0], ['crash', 3.0]]);
+    const vec = applyIdf(tf, idf);
+    expect(vec.get('pod')).toBeCloseTo(1.0, 5);
+    expect(vec.get('crash')).toBeCloseTo(0.9, 5);
+  });
+
+  it('excludes terms whose idf is 0 or missing', () => {
+    const tf = new Map([['pod', 0.5], ['unknown', 0.3]]);
+    const idf = new Map([['pod', 2.0]]);
+    const vec = applyIdf(tf, idf);
+    expect(vec.has('unknown')).toBe(false);
+    expect(vec.has('pod')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// entryToText
+// ---------------------------------------------------------------------------
+
+describe('entryToText', () => {
+  it('concatenates prompt, summary, and severity', () => {
+    const entry = makeEntry('pod is crashing', 'exit code 1', 'critical');
+    const text = entryToText(entry);
+    expect(text).toContain('pod is crashing');
+    expect(text).toContain('exit code 1');
+    expect(text).toContain('critical');
+  });
+
+  it('separates fields with a space', () => {
+    const entry = makeEntry('A', 'B', 'C');
+    expect(entryToText(entry)).toBe('A B C');
   });
 });
 
@@ -194,6 +306,11 @@ describe('selectDiverseEntries', () => {
     const result = selectDiverseEntries(history, 3);
     const ids = result.map(e => e.id);
     expect(ids).toContain(history[history.length - 1].id);
+  });
+
+  it('returns empty array when topK is 0', () => {
+    const history = [makeEntry('pod crash', 'finding 1'), makeEntry('oom kill', 'finding 2')];
+    expect(selectDiverseEntries(history, 0)).toEqual([]);
   });
 
   it('returns diverse entries (not all on the same topic)', () => {

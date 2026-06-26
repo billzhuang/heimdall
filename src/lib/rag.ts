@@ -30,7 +30,7 @@ export function tokenize(text: string): string[] {
 }
 
 /** Build a term-frequency map (normalized by document length). */
-function termFrequency(tokens: string[]): Map<string, number> {
+export function termFrequency(tokens: string[]): Map<string, number> {
   const tf = new Map<string, number>();
   for (const token of tokens) {
     tf.set(token, (tf.get(token) ?? 0) + 1);
@@ -43,7 +43,7 @@ function termFrequency(tokens: string[]): Map<string, number> {
 }
 
 /** Compute smoothed IDF weights across a corpus of TF maps. */
-function inverseDocumentFrequency(corpus: Map<string, number>[]): Map<string, number> {
+export function inverseDocumentFrequency(corpus: Map<string, number>[]): Map<string, number> {
   const N = corpus.length;
   const df = new Map<string, number>();
   for (const doc of corpus) {
@@ -60,7 +60,7 @@ function inverseDocumentFrequency(corpus: Map<string, number>[]): Map<string, nu
 }
 
 /** Apply IDF weights to a TF map to produce a TF-IDF vector. */
-function applyIdf(tf: Map<string, number>, idf: Map<string, number>): Map<string, number> {
+export function applyIdf(tf: Map<string, number>, idf: Map<string, number>): Map<string, number> {
   const vec = new Map<string, number>();
   for (const [term, tfVal] of tf) {
     const idfVal = idf.get(term) ?? 0;
@@ -86,7 +86,7 @@ export function cosineSimilarity(a: Map<string, number>, b: Map<string, number>)
 }
 
 /** Concatenate the searchable text fields of a TaskHistoryEntry. */
-function entryToText(entry: TaskHistoryEntry): string {
+export function entryToText(entry: TaskHistoryEntry): string {
   return `${entry.prompt} ${entry.summary} ${entry.severity}`;
 }
 
@@ -138,6 +138,7 @@ export function selectDiverseEntries(
   history: TaskHistoryEntry[],
   topK = 5,
 ): TaskHistoryEntry[] {
+  if (topK <= 0) return [];
   if (history.length <= topK) return [...history];
 
   const texts = history.map(entryToText);
@@ -153,16 +154,27 @@ export function selectDiverseEntries(
   selected.push(seed);
   remaining.delete(seed);
 
-  while (selected.length < topK && remaining.size > 0) {
-    let bestIdx = -1;
-    let lowestMaxSim = Infinity;
+  // maxSims[i] = max cosine similarity of entry i to any already-selected entry.
+  // Updated incrementally (only against the last-selected entry each round) to
+  // keep the loop O(topK * N) rather than O(topK^2 * N).
+  const maxSims = new Map<number, number>();
 
+  while (selected.length < topK && remaining.size > 0) {
+    // Extend the cache using only the most recently selected entry.
+    const lastSelected = selected[selected.length - 1];
     for (const idx of remaining) {
-      // Score each candidate by its maximum similarity to any already-selected entry.
-      const maxSim = Math.max(...selected.map((s) => cosineSimilarity(vecs[idx], vecs[s])));
-      // The entry least similar to the selection is the most diverse.
-      if (maxSim < lowestMaxSim) {
-        lowestMaxSim = maxSim;
+      const sim = cosineSimilarity(vecs[idx], vecs[lastSelected]);
+      const prev = maxSims.get(idx) ?? -Infinity;
+      if (sim > prev) maxSims.set(idx, sim);
+    }
+
+    // Pick the remaining entry with the lowest max-similarity — the most diverse.
+    let bestIdx = -1;
+    let minMaxSim = Infinity;
+    for (const idx of remaining) {
+      const maxSim = maxSims.get(idx) ?? -Infinity;
+      if (maxSim < minMaxSim) {
+        minMaxSim = maxSim;
         bestIdx = idx;
       }
     }
@@ -170,6 +182,7 @@ export function selectDiverseEntries(
     if (bestIdx !== -1) {
       selected.push(bestIdx);
       remaining.delete(bestIdx);
+      maxSims.delete(bestIdx);
     }
   }
 
