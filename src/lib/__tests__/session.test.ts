@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -32,6 +32,13 @@ describe('sessionDir', () => {
     expect(sessionDir()).toMatch(/\.heimdall[/\\]sessions$/);
     process.env['HEIMDALL_SESSION_DIR'] = tmpDir; // restore
   });
+
+  it('falls back to default path when HEIMDALL_SESSION_DIR is an empty string', () => {
+    process.env['HEIMDALL_SESSION_DIR'] = '';
+    const dir = sessionDir();
+    process.env['HEIMDALL_SESSION_DIR'] = tmpDir; // restore
+    expect(dir).toMatch(/\.heimdall[/\\]sessions$/);
+  });
 });
 
 describe('createSession', () => {
@@ -47,6 +54,11 @@ describe('createSession', () => {
     const s = createSession({ name: 'incident-42', serverUrl: 'http://myserver:4000' });
     expect(s.name).toBe('incident-42');
     expect(s.serverUrl).toBe('http://myserver:4000');
+  });
+
+  it('uses the default server URL when an empty string is supplied', () => {
+    const s = createSession({ serverUrl: '' });
+    expect(s.serverUrl).toBe('http://localhost:3583');
   });
 
   it('can create two sessions without collision', () => {
@@ -72,6 +84,13 @@ describe('loadSession', () => {
     const loaded = loadSession(s.id);
     expect(loaded.id).toBe(s.id);
     expect(loaded.name).toBe('lookup');
+  });
+
+  it('throws for a file with valid JSON but invalid SessionRecord structure', () => {
+    const record = createSession({});
+    const [file] = readdirSync(tmpDir).filter((f) => f.endsWith('.json'));
+    writeFileSync(join(tmpDir, file!), '{"foo":"bar"}', 'utf-8');
+    expect(() => loadSession(record.id)).toThrow(/Invalid session record structure/);
   });
 });
 
@@ -140,5 +159,11 @@ describe('listSessions', () => {
     writeFileSync(join(tmpDir, 'corrupt.json'), 'not-json', 'utf-8');
     expect(() => listSessions()).not.toThrow();
     expect(listSessions()).toHaveLength(1);
+  });
+
+  it('returns empty array when the session directory does not exist', () => {
+    process.env['HEIMDALL_SESSION_DIR'] = join(tmpDir, 'nonexistent');
+    expect(listSessions()).toEqual([]);
+    process.env['HEIMDALL_SESSION_DIR'] = tmpDir; // restore
   });
 });
