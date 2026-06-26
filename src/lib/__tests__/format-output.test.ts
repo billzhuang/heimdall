@@ -181,6 +181,11 @@ describe('extractKubectlCommands', () => {
     expect(extractKubectlCommands(text)).toEqual(['kubectl get nodes']);
   });
 
+  it('does not extract commands from non-bash fenced blocks (yaml, python, etc.)', () => {
+    const text = '```yaml\nkubectl get pods -n prod\n```\n```python\nkubectl version\n```';
+    expect(extractKubectlCommands(text)).toEqual([]);
+  });
+
   it('extracts multi-line kubectl commands with backslash continuations', () => {
     const text = '```bash\nkubectl get pods \\\n  -n prod \\\n  -l app=api\n```';
     expect(extractKubectlCommands(text)).toEqual([
@@ -305,6 +310,10 @@ describe('inferSeverity', () => {
     expect(inferSeverity('Everything looks healthy. All pods are running.')).toBe('info');
   });
 
+  it('returns "info" for an empty string', () => {
+    expect(inferSeverity('')).toBe('info');
+  });
+
   it('returns "info" for "no warning events" (negation suppresses false positive)', () => {
     expect(inferSeverity('The cluster is healthy. No warning events in the last hour.')).toBe('info');
   });
@@ -315,6 +324,42 @@ describe('inferSeverity', () => {
 
   it('returns "info" for "without errors"', () => {
     expect(inferSeverity('The pod started successfully without errors.')).toBe('info');
+  });
+
+  it('returns "info" for "no oomkilled" (negation suppresses false positive)', () => {
+    expect(inferSeverity('No OOMKilled containers detected in the last 24h.')).toBe('info');
+  });
+
+  it('returns "info" for "no crashloopbackoff" (negation suppresses false positive)', () => {
+    expect(inferSeverity('All pods healthy, no CrashLoopBackOff events.')).toBe('info');
+  });
+
+  it('returns "info" for "no degraded" (negation suppresses false positive)', () => {
+    expect(inferSeverity('Deployment is healthy — no degraded replicas.')).toBe('info');
+  });
+
+  it('returns "warning" for text containing "failing"', () => {
+    expect(inferSeverity('The liveness probe is failing.')).toBe('warning');
+  });
+
+  it('returns "warning" for text containing "failure"', () => {
+    expect(inferSeverity('Deployment failure detected.')).toBe('warning');
+  });
+
+  it('returns "warning" for text containing "failures"', () => {
+    expect(inferSeverity('Multiple pod failures in the last hour.')).toBe('warning');
+  });
+
+  it('returns "warning" for text containing "fails"', () => {
+    expect(inferSeverity('The readiness probe fails on every attempt.')).toBe('warning');
+  });
+
+  it('returns "info" for "no failures" (negation suppresses false positive)', () => {
+    expect(inferSeverity('All checks passed with no failures.')).toBe('info');
+  });
+
+  it('returns "info" for "no failure" (negation suppresses false positive)', () => {
+    expect(inferSeverity('Deployment completed with no failure.')).toBe('info');
   });
 
   it('prioritises "critical" over "warning" keywords when both are present', () => {

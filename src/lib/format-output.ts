@@ -243,6 +243,18 @@ export function extractKubectlCommands(text: string): string[] {
   return commands;
 }
 
+const CRITICAL_SIGNAL_RE = /\b(?:critical|outage|unavailable)\b/;
+
+/**
+ * Matches healthy-summary phrases that should suppress a warning inference.
+ * e.g. "no warning events", "without errors", "no crashloopbackoff".
+ */
+const NEGATION_SUPPRESS_RE =
+  /\b(?:no|without)\s+(?:warnings?|errors?|fail(?:s|ed|ing|ures?)?|degraded|back-?off|crashloop(?:backoff)?|oomkilled?)\b/;
+
+const WARNING_SIGNAL_RE =
+  /\b(?:warning|degraded|oomkilled?|crashloop(?:backoff)?|back-?off|fail(?:s|ed|ing|ures?)?|error)\b/;
+
 /**
  * Infer a severity level from answer text using keyword matching.
  *
@@ -250,13 +262,9 @@ export function extractKubectlCommands(text: string): string[] {
  */
 export function inferSeverity(text: string): 'critical' | 'warning' | 'info' {
   const lower = text.toLowerCase();
-  if (/\b(critical|outage|unavailable)\b/.test(lower)) return 'critical';
+  if (CRITICAL_SIGNAL_RE.test(lower)) return 'critical';
   // Suppress false positives from healthy summaries like "no warning events" / "no errors".
-  if (/\b(?:no|without)\s+(?:warnings?|errors?|fail(?:ed|ing)?|degraded|back-?off|crashloop(?:backoff)?|oomkilled?)\b/.test(lower)) {
-    return 'info';
-  }
-  if (/\b(warning|degraded|oomkilled?|crashloop(backoff)?|back-?off|failed|failing|error)\b/.test(lower)) {
-    return 'warning';
-  }
+  if (NEGATION_SUPPRESS_RE.test(lower)) return 'info';
+  if (WARNING_SIGNAL_RE.test(lower)) return 'warning';
   return 'info';
 }
