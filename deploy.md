@@ -79,7 +79,7 @@ Key variables: `namespace`, `image_repository`, `image_tag`, `irsa_role_arn`,
 ```bash
 helm upgrade --install heimdall helm/heimdall \
   --namespace heimdall --create-namespace \
-  --set secrets.anthropicApiKey=<key> \
+  --set anthropicApiKey=<key> \
   --set image.tag=0.2.0
 ```
 
