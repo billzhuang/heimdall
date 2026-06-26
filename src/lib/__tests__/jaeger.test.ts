@@ -62,6 +62,13 @@ describe('resolveJaegerTimeUs', () => {
   it('returns null for a malformed relative duration', () => {
     expect(resolveJaegerTimeUs('-5y', NOW_MS)).toBeNull();
   });
+
+  it('returns null when the computed timestamp is not finite (overflow)', () => {
+    // A 401-digit number makes parseFloat return Infinity, so ts = nowMs - Infinity = -Infinity.
+    const hugeNum = '1' + '0'.repeat(400);
+    const result = resolveJaegerTimeUs(`-${hugeNum}d`, NOW_MS);
+    expect(result).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
