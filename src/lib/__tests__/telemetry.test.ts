@@ -10,6 +10,7 @@ import {
   recordTokens,
   getTelemetrySnapshot,
   emitTelemetry,
+  isTelemetryEnabled,
   percentile,
   _resetTelemetry,
 } from '../telemetry.ts';
@@ -202,6 +203,66 @@ describe('HEIMDALL_TELEMETRY_FILE env var auto-enables telemetry', () => {
     const content = await readFile(filePath, 'utf8');
     const snap = JSON.parse(content.trimEnd()) as Record<string, number>;
     expect(snap.cacheHits).toBe(3);
+  });
+});
+
+describe('isTelemetryEnabled', () => {
+  it('returns false before initTelemetry is called', () => {
+    expect(isTelemetryEnabled()).toBe(false);
+  });
+
+  it('returns true after initTelemetry with enabled: true', () => {
+    initTelemetry({ enabled: true });
+    expect(isTelemetryEnabled()).toBe(true);
+  });
+
+  it('returns false after initTelemetry with enabled: false and no env var', () => {
+    initTelemetry({ enabled: false });
+    expect(isTelemetryEnabled()).toBe(false);
+  });
+
+  it('returns true when auto-enabled via HEIMDALL_TELEMETRY_FILE even if config.enabled is false', () => {
+    process.env.HEIMDALL_TELEMETRY_FILE = '/tmp/does-not-matter.json';
+    initTelemetry({ enabled: false });
+    expect(isTelemetryEnabled()).toBe(true);
+    delete process.env.HEIMDALL_TELEMETRY_FILE;
+  });
+});
+
+describe('double-registration guard (_exitHandlerRegistered)', () => {
+  it('registers the exit handler only once across multiple initTelemetry calls', () => {
+    const onceSpy = vi.spyOn(process, 'once').mockImplementation(() => process);
+    initTelemetry({ enabled: true });
+    initTelemetry({ enabled: true });
+    initTelemetry({ enabled: true });
+    const exitCalls = onceSpy.mock.calls.filter(([event]) => event === 'exit');
+    expect(exitCalls).toHaveLength(1);
+  });
+
+  it('re-registers the exit handler after a full reset', () => {
+    const onceSpy = vi.spyOn(process, 'once').mockImplementation(() => process);
+    initTelemetry({ enabled: true });
+    _resetTelemetry();
+    initTelemetry({ enabled: true });
+    const exitCalls = onceSpy.mock.calls.filter(([event]) => event === 'exit');
+    expect(exitCalls).toHaveLength(2);
+  });
+});
+
+describe('emitTelemetry bypasses the _enabled guard and always emits', () => {
+  it('emits a zero-value snapshot to stderr even when telemetry is not initialised', () => {
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+
+    emitTelemetry();
+
+    expect(lines).toHaveLength(1);
+    const snap = JSON.parse(lines[0].trimEnd()) as Record<string, number>;
+    expect(snap.cacheHits).toBe(0);
+    expect(snap.toolCallCount).toBe(0);
   });
 });
 
