@@ -154,17 +154,25 @@ export function selectDiverseEntries(
   selected.push(seed);
   remaining.delete(seed);
 
+  // maxSims[i] = max cosine similarity of entry i to any already-selected entry.
+  // Updated incrementally (only against the last-selected entry each round) to
+  // keep the loop O(topK * N) rather than O(topK^2 * N).
+  const maxSims = new Map<number, number>();
+
   while (selected.length < topK && remaining.size > 0) {
+    // Extend the cache using only the most recently selected entry.
+    const lastSelected = selected[selected.length - 1];
+    for (const idx of remaining) {
+      const sim = cosineSimilarity(vecs[idx], vecs[lastSelected]);
+      const prev = maxSims.get(idx) ?? -Infinity;
+      if (sim > prev) maxSims.set(idx, sim);
+    }
+
+    // Pick the remaining entry with the lowest max-similarity — the most diverse.
     let bestIdx = -1;
     let minMaxSim = Infinity;
-
     for (const idx of remaining) {
-      // Score each candidate by its maximum similarity to any already-selected entry.
-      const maxSim = selected.reduce(
-        (max, s) => Math.max(max, cosineSimilarity(vecs[idx], vecs[s])),
-        -Infinity,
-      );
-      // The entry least similar to the selection set is the most diverse.
+      const maxSim = maxSims.get(idx) ?? -Infinity;
       if (maxSim < minMaxSim) {
         minMaxSim = maxSim;
         bestIdx = idx;
@@ -174,6 +182,7 @@ export function selectDiverseEntries(
     if (bestIdx !== -1) {
       selected.push(bestIdx);
       remaining.delete(bestIdx);
+      maxSims.delete(bestIdx);
     }
   }
 
