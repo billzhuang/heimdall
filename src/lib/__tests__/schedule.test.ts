@@ -47,6 +47,26 @@ describe('matchesCronField', () => {
     expect(matchesCronField(3, '1,3,5')).toBe(true);
     expect(matchesCronField(2, '1,3,5')).toBe(false);
   });
+
+  it('*/0 step always returns false (step must be > 0)', () => {
+    expect(matchesCronField(0, '*/0')).toBe(false);
+    expect(matchesCronField(1, '*/0')).toBe(false);
+    expect(matchesCronField(60, '*/0')).toBe(false);
+  });
+
+  it('comma list mixing exact and step patterns', () => {
+    expect(matchesCronField(1, '1,*/10')).toBe(true);
+    expect(matchesCronField(10, '1,*/10')).toBe(true);
+    expect(matchesCronField(20, '1,*/10')).toBe(true);
+    expect(matchesCronField(2, '1,*/10')).toBe(false);
+  });
+
+  it('comma list mixing range and exact patterns', () => {
+    // "1-3,7" → matches 1, 2, 3, 7
+    expect(matchesCronField(2, '1-3,7')).toBe(true);
+    expect(matchesCronField(7, '1-3,7')).toBe(true);
+    expect(matchesCronField(4, '1-3,7')).toBe(false);
+  });
 });
 
 describe('validateCronExpression', () => {
@@ -77,6 +97,36 @@ describe('validateCronExpression', () => {
 
   it('rejects out-of-range ranges', () => {
     expect(validateCronExpression('58-99 * * * *')).toMatch(/out of range/);
+  });
+
+  it('rejects inverted range (lo > hi)', () => {
+    expect(validateCronExpression('5-1 * * * *')).toMatch(/out of range/);
+  });
+
+  it('rejects day-of-month 0 (dom lower bound is 1)', () => {
+    expect(validateCronExpression('0 0 0 * *')).toMatch(/out of range/);
+  });
+
+  it('rejects month 0 (month lower bound is 1)', () => {
+    expect(validateCronExpression('0 0 1 0 *')).toMatch(/out of range/);
+  });
+
+  it('rejects month 13 (month upper bound is 12)', () => {
+    expect(validateCronExpression('0 0 1 13 *')).toMatch(/out of range/);
+  });
+
+  it('rejects */0 step (matches no values)', () => {
+    expect(validateCronExpression('*/0 * * * *')).toMatch(/matches no values/);
+  });
+
+  it('accepts comma-separated field values', () => {
+    expect(validateCronExpression('0,30 * * * *')).toBeUndefined();
+    expect(validateCronExpression('0 8,12,18 * * *')).toBeUndefined();
+  });
+
+  it('accepts range fields', () => {
+    expect(validateCronExpression('0 9-17 * * *')).toBeUndefined();
+    expect(validateCronExpression('0 0 1-15 * *')).toBeUndefined();
   });
 });
 
@@ -134,6 +184,48 @@ describe('nextFireTime', () => {
     const next = nextFireTime('0 9 1 * 1', from);
     expect(next.toISOString()).toBe('2024-01-08T09:00:00.000Z'); // next Monday
   });
+
+  it('crosses a year boundary when the cron only fires in January', () => {
+    // "0 0 1 1 *" fires at midnight on January 1st.
+    // From November 2024, next fire is January 1st 2025.
+    const from = new Date('2024-11-15T10:00:00Z');
+    const next = nextFireTime('0 0 1 1 *', from);
+    expect(next.toISOString()).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('fires on a specific month and day (March 15)', () => {
+    const from = new Date('2024-01-01T00:00:00Z');
+    const next = nextFireTime('0 8 15 3 *', from);
+    expect(next.toISOString()).toBe('2024-03-15T08:00:00.000Z');
+  });
+
+  it('fires on comma-separated minutes', () => {
+    // "0,30 * * * *" fires at :00 and :30 of every hour
+    const from = new Date('2024-01-15T10:25:00Z');
+    const next = nextFireTime('0,30 * * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T10:30:00.000Z');
+  });
+
+  it('fires with a range of hours (business hours)', () => {
+    // "0 9-17 * * *" fires at :00 of every hour from 9-17
+    const from = new Date('2024-01-15T10:30:00Z');
+    const next = nextFireTime('0 9-17 * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T11:00:00.000Z');
+  });
+
+  it('skips to the next in-range hour when current hour is outside range', () => {
+    // After 17:00, next fire is 09:00 the following day
+    const from = new Date('2024-01-15T18:00:00Z');
+    const next = nextFireTime('0 9-17 * * *', from);
+    expect(next.toISOString()).toBe('2024-01-16T09:00:00.000Z');
+  });
+
+  it('throws when expression never fires within a year', () => {
+    // Feb 30 never exists — should throw
+    expect(() => nextFireTime('0 0 30 2 *', new Date('2024-03-01T00:00:00Z'))).toThrow(
+      /no fires within one year/,
+    );
+  });
 });
 
 describe('formatDelay', () => {
@@ -151,5 +243,18 @@ describe('formatDelay', () => {
 
   it('returns 0s for zero', () => {
     expect(formatDelay(0)).toBe('0s');
+  });
+
+  it('formats hours only (no minutes or seconds)', () => {
+    expect(formatDelay(2 * 3_600_000)).toBe('2h');
+  });
+
+  it('formats hours and seconds (no minutes)', () => {
+    expect(formatDelay(1 * 3_600_000 + 45_000)).toBe('1h 45s');
+  });
+
+  it('rounds sub-second values to the nearest second', () => {
+    expect(formatDelay(1_500)).toBe('2s');
+    expect(formatDelay(1_499)).toBe('1s');
   });
 });
