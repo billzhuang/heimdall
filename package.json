@@ -9,6 +9,8 @@
   "scripts": {
     "dev": "flue dev --target node",
     "build": "flue build --target node",
+    "build:cloudflare": "flue build --target cloudflare",
+    "deploy:cloudflare": "npm run build:cloudflare && npx wrangler deploy --config dist/heimdall/wrangler.json",
     "connect": "flue connect heimdall local --target node",
     "prompt": "bin/heimdall",
     "watch": "tsx src/watch-mode.ts",
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
+    "wrangler": "^4.0.0",
     "@types/node": "^25.9.3",
     "@vitest/coverage-v8": "^4.1.9",
     "eslint": "^10.5.0",

@@ -1,0 +1,68 @@
+# Heimdall configuration for Cloudflare Workers deployment.
+#
+# Cloudflare Workers cannot spawn subprocesses (no execFile / child_process),
+# so all tools that shell out to external binaries are disabled here.
+# Only HTTP-based tools — which use fetch internally — are supported.
+#
+# Usage on Cloudflare Workers (no local filesystem):
+#   Cloudflare Workers cannot read files at runtime, so pass this config as raw YAML
+#   via the HEIMDALL_CONFIG_YAML environment variable.
+#
+#   Option A — inline in wrangler.jsonc [vars] (visible in source):
+#     "vars": { "HEIMDALL_CONFIG_YAML": "tools:\n  kubectl: false\n  ..." }
+#
+#   Option B — Wrangler secret (recommended; not stored in source):
+#     npx wrangler secret put HEIMDALL_CONFIG_YAML
+#     (paste the contents of this file when prompted)
+
+tools:
+  # Subprocess tools — NOT supported on Cloudflare Workers (require execFile).
+  kubectl: false
+  listContexts: false
+  listNamespaces: false
+  helmRelease: false
+  awsCli: false
+  trivyScan: false
+  cdkQuery: false
+
+  # HTTP-based tools — fully supported on Cloudflare Workers.
+  # Enable the ones you have infrastructure for; leave the rest false.
+  prometheusQuery: false   # set to true + configure prometheus.url below
+  kubecostQuery: false     # set to true + configure kubecost.url below
+  lokiQuery: false         # set to true + configure loki.url below
+  jaegerQuery: false       # set to true + configure jaeger.url below
+  datadogQuery: false      # set to true + configure datadog.apiKey / appKey
+  newRelicQuery: false     # set to true + configure newRelic.apiKey / accountId
+
+# Uncomment and fill in the base URL for each enabled observability backend.
+# Alternatively, set the corresponding environment variable (PROMETHEUS_URL, etc.)
+# and omit the section here — the tool reads the env var automatically.
+
+# prometheus:
+#   url: "https://prometheus.example.com"   # or set PROMETHEUS_URL env var
+#   timeoutMs: 10000
+
+# kubecost:
+#   url: "https://kubecost.example.com"     # or set KUBECOST_URL env var
+#   timeoutMs: 10000
+
+# loki:
+#   url: "https://loki.example.com"         # or set LOKI_URL env var
+#   timeoutMs: 15000
+
+# jaeger:
+#   url: "https://jaeger.example.com"       # or set JAEGER_URL env var
+#   timeoutMs: 10000
+
+# datadog:
+#   # API key and App key — set as Wrangler secrets, not here.
+#   # wrangler secret put DD_API_KEY
+#   # wrangler secret put DD_APP_KEY
+#   site: "datadoghq.com"
+#   timeoutMs: 15000
+
+# newRelic:
+#   # API key and account ID — set as Wrangler secrets, not here.
+#   # wrangler secret put NEW_RELIC_API_KEY
+#   # wrangler secret put NEW_RELIC_ACCOUNT_ID
+#   timeoutMs: 15000

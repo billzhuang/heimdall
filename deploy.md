@@ -1,6 +1,6 @@
-# Heimdall — AWS Deployment Guide
+# Heimdall — Deployment Guide
 
-This document covers the recommended AWS deployment strategies for Heimdall and
+This document covers the recommended deployment strategies for Heimdall and
 explains the tradeoffs between each option.
 
 ## TL;DR
@@ -261,3 +261,144 @@ want the full Heimdall feature set. Use **Lambda** (Option 2) only if you need a
 lightweight CI webhook and can live without watch/session/schedule modes. Use
 **Fargate** (Option 3) if you're already on EKS Fargate and want to avoid mixed
 node pool management. Use **EC2** (Option 4) for local dev or a quick trial.
+Use **Cloudflare** (Option 5) when you want a globally-distributed edge deployment
+with zero infrastructure management and only need HTTP-based observability tools.
+
+---
+
+## Option 5: Cloudflare Workers (edge / observability-only)
+
+Deploy Heimdall as a Cloudflare Durable Object via the
+[Flue Cloudflare target](https://blog.cloudflare.com/agents-platform-flue-sdk/).
+The Flue runtime maps each agent to a Durable Object class, giving you
+stateful, long-lived conversations at the edge with zero server management.
+
+### Limitations
+
+Cloudflare Workers **cannot** spawn subprocesses (`execFile` / `child_process`
+is not available). Tools that shell out to external binaries are therefore
+incompatible with the Workers runtime:
+
+| Tool | Cloudflare Workers |
+|------|--------------------|
+| `kubectl` | ❌ Requires subprocess |
+| `listContexts` / `listNamespaces` | ❌ Requires subprocess |
+| `helmRelease` | ❌ Requires subprocess |
+| `awsCli` | ❌ Requires subprocess |
+| `trivyScan` | ❌ Requires subprocess |
+| `cdkQuery` | ❌ Requires subprocess |
+| `prometheusQuery` | ✅ HTTP (fetch) |
+| `lokiQuery` | ✅ HTTP (fetch) |
+| `jaegerQuery` | ✅ HTTP (fetch) |
+| `datadogQuery` | ✅ HTTP (fetch) |
+| `newRelicQuery` | ✅ HTTP (fetch) |
+| `kubecostQuery` | ✅ HTTP (fetch) |
+
+**Use this deployment when** you want AI-powered analysis of metrics, logs, and
+traces from Prometheus/Loki/Jaeger/Datadog/New Relic without needing kubectl
+access to a live cluster.
+
+### Prerequisites
+
+```bash
+npm install          # installs wrangler from devDependencies
+npx wrangler login   # authenticate with your Cloudflare account
+```
+
+### Deployment steps
+
+```bash
+# 1. Build for Cloudflare Workers target
+npm run build:cloudflare
+
+# 2. (Optional) Set ANTHROPIC_API_KEY if you prefer Anthropic over Workers AI
+npx wrangler secret put ANTHROPIC_API_KEY
+
+# 3. Set API keys for any observability tools you enable
+npx wrangler secret put DD_API_KEY           # Datadog
+npx wrangler secret put DD_APP_KEY           # Datadog
+npx wrangler secret put NEW_RELIC_API_KEY    # New Relic
+npx wrangler secret put NEW_RELIC_ACCOUNT_ID # New Relic (required alongside API key)
+
+# 4. Deploy
+npm run deploy:cloudflare
+```
+
+`npm run deploy:cloudflare` runs `flue build --target cloudflare` and then
+`npx wrangler deploy --config dist/heimdall/wrangler.json`. Flue generates the
+final `wrangler.json` (with Durable Object bindings) at build time; always deploy
+from that generated config, not the source-root `wrangler.jsonc`.
+
+### Configuration
+
+Cloudflare Workers have no local filesystem, so `HEIMDALL_CONFIG` (file path)
+does not work. Instead, pass the raw YAML content via `HEIMDALL_CONFIG_YAML`.
+The repo ships `heimdall.config.cloudflare.yaml` as a ready-to-use template.
+
+**Option A — Wrangler secret (recommended):**
+
+```bash
+npx wrangler secret put HEIMDALL_CONFIG_YAML
+# paste the contents of heimdall.config.cloudflare.yaml when prompted
+```
+
+**Option B — inline in `wrangler.jsonc` vars (visible in source, OK for non-sensitive config):**
+
+```jsonc
+"vars": {
+  "HEIMDALL_CONFIG_YAML": "tools:\n  kubectl: false\n  listContexts: false\n  listNamespaces: false\n  helmRelease: false\n  awsCli: false\n  trivyScan: false\n  cdkQuery: false\n  prometheusQuery: true\nprometheus:\n  url: \"https://prometheus.example.com\"\n"
+}
+```
+
+Edit `heimdall.config.cloudflare.yaml` to enable the HTTP-based observability
+tools you have before pasting, then redeploy.
+
+### Model selection
+
+By default `wrangler.jsonc` uses **Cloudflare Workers AI** — no external API
+key is required, and usage is billed through your Workers AI plan:
+
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "HEIMDALL_MODEL": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+}
+```
+
+To use an Anthropic model instead, update `wrangler.jsonc` and add the key:
+
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "HEIMDALL_MODEL": "anthropic/claude-sonnet-4-6"
+}
+```
+
+```bash
+npx wrangler secret put ANTHROPIC_API_KEY
+```
+
+### Architecture: hybrid Cloudflare + in-cluster agent
+
+For full kubectl access combined with edge delivery, run Heimdall in two tiers:
+
+```
+User request
+    │
+    ▼
+Cloudflare Worker (edge)
+  • Receives webhook / API call
+  • Routes to in-cluster Heimdall via service URL
+    │
+    ▼
+EKS Pod (in-cluster Heimdall)
+  • Full kubectl + all tools
+  • Responds with structured diagnosis
+    │
+    ▼
+Cloudflare Worker
+  • Formats and returns the response
+```
+
+In this setup the Cloudflare Worker acts as an authenticated API gateway,
+while the EKS pod (Option 1) performs the actual cluster diagnosis.

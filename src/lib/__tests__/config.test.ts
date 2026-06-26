@@ -375,4 +375,133 @@ describe('loadConfig', () => {
       expect(config.tools.newRelicQuery).toBe(false);
     });
   });
+
+  describe('HEIMDALL_CONFIG_YAML env var', () => {
+    afterEach(() => {
+      delete process.env.HEIMDALL_CONFIG_YAML;
+    });
+
+    it('loads config from raw YAML string when HEIMDALL_CONFIG_YAML is set', () => {
+      process.env.HEIMDALL_CONFIG_YAML = [
+        'tools:',
+        '  kubectl: false',
+        '  prometheusQuery: true',
+        'prometheus:',
+        '  url: "https://prometheus.example.com"',
+      ].join('\n');
+      const config = loadConfig();
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.prometheusQuery).toBe(true);
+      expect(config.prometheus?.url).toBe('https://prometheus.example.com');
+    });
+
+    it('explicit configPath argument takes priority over HEIMDALL_CONFIG_YAML', () => {
+      process.env.HEIMDALL_CONFIG_YAML = 'tools:\n  kubectl: false\n';
+      const configPath = join(tmpDir, 'override.yaml');
+      writeFileSync(configPath, 'tools:\n  kubectl: true\n  prometheusQuery: true\n');
+      const config = loadConfig(configPath);
+      // File overrides env var.
+      expect(config.tools.kubectl).toBe(true);
+      expect(config.tools.prometheusQuery).toBe(true);
+    });
+
+    it('returns defaults when HEIMDALL_CONFIG_YAML contains invalid YAML', () => {
+      process.env.HEIMDALL_CONFIG_YAML = ': bad: yaml: [unclosed';
+      const config = loadConfig();
+      expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
+    });
+
+    it('returns defaults when HEIMDALL_CONFIG_YAML is a scalar not a mapping', () => {
+      process.env.HEIMDALL_CONFIG_YAML = 'just a string';
+      const config = loadConfig();
+      expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
+    });
+  });
+
+  describe('Cloudflare Workers config', () => {
+    it('disables all subprocess tools and leaves HTTP tools configurable', () => {
+      const configPath = join(tmpDir, 'heimdall.config.cloudflare.yaml');
+      writeFileSync(
+        configPath,
+        [
+          'tools:',
+          '  kubectl: false',
+          '  listContexts: false',
+          '  listNamespaces: false',
+          '  helmRelease: false',
+          '  awsCli: false',
+          '  trivyScan: false',
+          '  cdkQuery: false',
+          '  prometheusQuery: true',
+          '  lokiQuery: true',
+          '  jaegerQuery: false',
+          '  datadogQuery: false',
+          '  newRelicQuery: false',
+          '  kubecostQuery: false',
+        ].join('\n'),
+      );
+      const config = loadConfig(configPath);
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.listContexts).toBe(false);
+      expect(config.tools.listNamespaces).toBe(false);
+      expect(config.tools.helmRelease).toBe(false);
+      expect(config.tools.awsCli).toBe(false);
+      expect(config.tools.trivyScan).toBe(false);
+      expect(config.tools.cdkQuery).toBe(false);
+      expect(config.tools.prometheusQuery).toBe(true);
+      expect(config.tools.lokiQuery).toBe(true);
+    });
+
+    it('accepts a cloudflare config with prometheus and loki URLs', () => {
+      const configPath = join(tmpDir, 'heimdall.config.cloudflare.yaml');
+      writeFileSync(
+        configPath,
+        [
+          'tools:',
+          '  kubectl: false',
+          '  prometheusQuery: true',
+          '  lokiQuery: true',
+          'prometheus:',
+          '  url: "https://prometheus.example.com"',
+          '  timeoutMs: 10000',
+          'loki:',
+          '  url: "https://loki.example.com"',
+          '  timeoutMs: 15000',
+        ].join('\n'),
+      );
+      const config = loadConfig(configPath);
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.prometheusQuery).toBe(true);
+      expect(config.tools.lokiQuery).toBe(true);
+      expect(config.prometheus?.url).toBe('https://prometheus.example.com');
+      expect(config.loki?.url).toBe('https://loki.example.com');
+    });
+
+    it('explicitly disabling subprocess tools in config is the required safe pattern for Cloudflare', () => {
+      const configPath = join(tmpDir, 'heimdall.config.cloudflare.yaml');
+      // Minimal config disabling only subprocess tools; HTTP tools remain at defaults.
+      writeFileSync(
+        configPath,
+        [
+          'tools:',
+          '  kubectl: false',
+          '  listContexts: false',
+          '  listNamespaces: false',
+          '  helmRelease: false',
+          '  awsCli: false',
+          '  trivyScan: false',
+          '  cdkQuery: false',
+        ].join('\n'),
+      );
+      const config = loadConfig(configPath);
+      // Subprocess tools are explicitly disabled.
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.awsCli).toBe(false);
+      expect(config.tools.trivyScan).toBe(false);
+      expect(config.tools.cdkQuery).toBe(false);
+      // HTTP tools remain at their schema defaults (false unless explicitly enabled).
+      expect(config.tools.prometheusQuery).toBe(false);
+      expect(config.tools.datadogQuery).toBe(false);
+    });
+  });
 });
