@@ -1,0 +1,106 @@
+name: Heimdall SRE — Example Usage
+
+# This file shows three common patterns for using the Heimdall GitHub Action:
+#
+#   1. Post-deploy diagnosis    — trigger after a deployment completes
+#   2. Scheduled triage         — periodic cluster health sweep on a cron
+#   3. PR-triggered diagnosis   — comment "@heimdall diagnose X" on a PR
+#
+# Copy the relevant job into your own workflow file and supply the required
+# secrets (ANTHROPIC_API_KEY, KUBECONFIG_B64).
+
+on:
+  # Uncomment the trigger(s) you want:
+  # workflow_dispatch: {}
+  # schedule:
+  #   - cron: '0 */6 * * *'   # every 6 hours
+  # deployment_status: {}
+  push:
+    branches: ['_example_only_never_triggers']  # placeholder — disable by default
+
+jobs:
+  # ── 1. One-shot post-deploy diagnosis ────────────────────────────────────
+  post-deploy-diagnosis:
+    name: Post-deploy cluster diagnosis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # needed to post findings as a PR comment
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Heimdall (prompt mode)
+        id: heimdall
+        uses: billzhuang/heimdall@main
+        with:
+          mode: prompt
+          prompt: >
+            We just deployed a new version of the api service to the prod namespace.
+            Are there any signs of a degraded rollout — CrashLoopBackOff, high
+            restart counts, OOMKilled, or Pending pods?
+          kubeconfig:        ${{ secrets.KUBECONFIG_B64 }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          fail-on-severity:  critical   # fail the workflow for critical findings
+
+      # Post the answer as a PR comment when triggered by a pull_request event.
+      - name: Comment diagnosis on PR
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        env:
+          HEIMDALL_SUMMARY: ${{ steps.heimdall.outputs.summary }}
+          HEIMDALL_SEVERITY: ${{ steps.heimdall.outputs.severity }}
+        with:
+          script: |
+            const severity = process.env.HEIMDALL_SEVERITY || 'info';
+            const summary  = process.env.HEIMDALL_SUMMARY  || '(no summary)';
+            const emoji = { critical: '🔴', warning: '🟡', info: '🔵', ok: '🟢' }[severity] || '🔵';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## ${emoji} Heimdall — ${severity.toUpperCase()}\n\n${summary}`,
+            });
+
+  # ── 2. Scheduled cluster triage ──────────────────────────────────────────
+  scheduled-triage:
+    name: Scheduled triage sweep
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Heimdall triage
+        uses: billzhuang/heimdall@main
+        with:
+          mode:              triage
+          all-namespaces:    'true'
+          kubeconfig:        ${{ secrets.KUBECONFIG_B64 }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          fail-on-severity:  warning
+
+  # ── 3. Scheduled triage with namespace scope and Prometheus ──────────────
+  production-triage:
+    name: Production namespace triage (with Prometheus)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Heimdall triage (prod namespace + Prometheus)
+        uses: billzhuang/heimdall@main
+        with:
+          mode:              triage
+          namespace:         prod
+          kubeconfig:        ${{ secrets.KUBECONFIG_B64 }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Enable Prometheus tool and point it at your monitoring stack:
+          config: |
+            tools:
+              kubectl: true
+              prometheusQuery: true
+            prometheus:
+              url: http://prometheus.monitoring.svc.cluster.local:9090

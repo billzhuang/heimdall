@@ -1,0 +1,165 @@
+name: 'Heimdall Kubernetes SRE'
+description: 'AI-powered, read-only Kubernetes SRE agent — diagnose cluster issues in CI/CD pipelines'
+author: 'billzhuang'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  mode:
+    description: |
+      Run mode:
+        prompt        — one-shot diagnosis (requires `prompt`)
+        triage        — whole-cluster health sweep
+        schedule-once — run the configured triage schedule once and exit
+    required: false
+    default: 'prompt'
+
+  prompt:
+    description: 'Diagnostic question to ask Heimdall (required for prompt mode)'
+    required: false
+    default: ''
+
+  namespace:
+    description: 'Kubernetes namespace to scope (triage mode only)'
+    required: false
+    default: ''
+
+  all-namespaces:
+    description: 'Triage all namespaces (triage mode only; overrides namespace)'
+    required: false
+    default: 'false'
+
+  kubeconfig:
+    description: |
+      Base64-encoded kubeconfig. Decoded and written to ~/.kube/config.
+      Use secrets.KUBECONFIG_B64 to keep it out of the log.
+    required: false
+    default: ''
+
+  anthropic-api-key:
+    description: |
+      Anthropic API key. Falls back to the ANTHROPIC_API_KEY environment variable
+      already present in the runner (e.g. from a repo/org secret).
+    required: false
+    default: ''
+
+  model:
+    description: |
+      LLM model override in provider/model format.
+      Examples: anthropic/claude-opus-4-8, anthropic/claude-haiku-4-5-20251001
+      Defaults to the Heimdall built-in default (anthropic/claude-sonnet-4-6).
+    required: false
+    default: ''
+
+  config:
+    description: |
+      YAML content for heimdall.config.yaml. Written to a temporary file and
+      passed to Heimdall via HEIMDALL_CONFIG. Use this to enable optional tools
+      (Prometheus, Loki, etc.) or set a namespace lockdown.
+    required: false
+    default: ''
+
+  fail-on-severity:
+    description: |
+      Fail the action step when Heimdall finds issues at or above this level.
+      Accepted values: critical | warning | info | ok | '' (never fail).
+      Example: fail-on-severity: critical
+    required: false
+    default: ''
+
+  post-summary:
+    description: 'Write findings to the GitHub job summary (GITHUB_STEP_SUMMARY)'
+    required: false
+    default: 'true'
+
+outputs:
+  severity:
+    description: 'Detected severity level: critical | warning | info | ok'
+    value: ${{ steps.heimdall.outputs.severity }}
+
+  summary:
+    description: 'High-level summary from the agent (prompt mode only)'
+    value: ${{ steps.heimdall.outputs.summary }}
+
+  answer:
+    description: 'Full Markdown answer from the agent (prompt mode only)'
+    value: ${{ steps.heimdall.outputs.answer }}
+
+  remediation-steps:
+    description: 'Newline-separated remediation steps (prompt mode only)'
+    value: ${{ steps.heimdall.outputs.remediation-steps }}
+
+  suggested-commands:
+    description: 'Newline-separated suggested kubectl commands (prompt mode only)'
+    value: ${{ steps.heimdall.outputs.suggested-commands }}
+
+runs:
+  using: 'composite'
+  steps:
+    # ── Runtime ─────────────────────────────────────────────────────────────
+    - name: Set up Node.js 22
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v4
+
+    # ── Credentials & config ─────────────────────────────────────────────────
+    - name: Write kubeconfig
+      if: inputs.kubeconfig != ''
+      shell: bash
+      env:
+        _KUBECONFIG_B64: ${{ inputs.kubeconfig }}
+      run: |
+        mkdir -p ~/.kube
+        printf '%s' "${_KUBECONFIG_B64}" | base64 --decode > ~/.kube/config
+        chmod 600 ~/.kube/config
+
+    - name: Write Heimdall config
+      if: inputs.config != ''
+      id: write-config
+      shell: bash
+      env:
+        _CONFIG_CONTENT: ${{ inputs.config }}
+      run: |
+        CONFIG_PATH="${RUNNER_TEMP}/heimdall.config.yaml"
+        printf '%s' "${_CONFIG_CONTENT}" > "${CONFIG_PATH}"
+        echo "config-path=${CONFIG_PATH}" >> "$GITHUB_OUTPUT"
+
+    # ── Install Heimdall ─────────────────────────────────────────────────────
+    - name: Install Heimdall dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci
+
+    # ── Run ─────────────────────────────────────────────────────────────────
+    - name: Run Heimdall
+      id: heimdall
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        # Allow explicit input key to override the ambient env var.
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key != '' && inputs.anthropic-api-key || env.ANTHROPIC_API_KEY }}
+        HEIMDALL_MODEL:    ${{ inputs.model }}
+        HEIMDALL_CONFIG:   ${{ steps.write-config.outputs.config-path }}
+        # Pass action inputs to the runner script via env vars (no shell injection).
+        _HEIMDALL_ACTION_MODE:           ${{ inputs.mode }}
+        _HEIMDALL_ACTION_PROMPT:         ${{ inputs.prompt }}
+        _HEIMDALL_ACTION_NAMESPACE:      ${{ inputs.namespace }}
+        _HEIMDALL_ACTION_ALL_NAMESPACES: ${{ inputs.all-namespaces }}
+        _HEIMDALL_ACTION_FAIL_ON:        ${{ inputs.fail-on-severity }}
+        _HEIMDALL_ACTION_POST_SUMMARY:   ${{ inputs.post-summary }}
+      run: |
+        node_modules/.bin/tsx src/lib/github-action-runner.ts
+
+    # ── Post job summary ─────────────────────────────────────────────────────
+    - name: Post job summary
+      if: inputs.post-summary == 'true' && steps.heimdall.outputs.summary-markdown != ''
+      shell: bash
+      env:
+        _SUMMARY_MD: ${{ steps.heimdall.outputs.summary-markdown }}
+      run: |
+        printf '%s\n' "${_SUMMARY_MD}" >> "$GITHUB_STEP_SUMMARY"
