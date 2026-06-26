@@ -231,35 +231,32 @@ describe('isTelemetryEnabled', () => {
 
 describe('double-registration guard (_exitHandlerRegistered)', () => {
   it('registers the exit handler only once across multiple initTelemetry calls', () => {
-    const onceSpy = vi.spyOn(process, 'once');
+    const onceSpy = vi.spyOn(process, 'once').mockImplementation(() => process);
     initTelemetry({ enabled: true });
     initTelemetry({ enabled: true });
     initTelemetry({ enabled: true });
     const exitCalls = onceSpy.mock.calls.filter(([event]) => event === 'exit');
     expect(exitCalls).toHaveLength(1);
-    onceSpy.mockRestore();
   });
 
   it('re-registers the exit handler after a full reset', () => {
-    const onceSpy = vi.spyOn(process, 'once');
+    const onceSpy = vi.spyOn(process, 'once').mockImplementation(() => process);
     initTelemetry({ enabled: true });
     _resetTelemetry();
     initTelemetry({ enabled: true });
     const exitCalls = onceSpy.mock.calls.filter(([event]) => event === 'exit');
     expect(exitCalls).toHaveLength(2);
-    onceSpy.mockRestore();
   });
 });
 
-describe('emitTelemetry when disabled', () => {
-  it('still emits a zero-value snapshot to stderr even when not enabled', () => {
+describe('emitTelemetry bypasses the _enabled guard and always emits', () => {
+  it('emits a zero-value snapshot to stderr even when telemetry is not initialised', () => {
     const lines: string[] = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
       lines.push(String(chunk));
       return true;
     });
 
-    // telemetry is not initialised (_enabled = false from _resetTelemetry in beforeEach)
     emitTelemetry();
 
     expect(lines).toHaveLength(1);
