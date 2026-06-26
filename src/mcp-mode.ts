@@ -156,7 +156,7 @@ export function createMcpServer(): Server {
     })),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const { name, arguments: args } = request.params;
     const tool = enabledTools.find((t) => t.name === name);
 
@@ -194,7 +194,7 @@ export function createMcpServer(): Server {
         validatedArgs = (args ?? {}) as Record<string, unknown>;
       }
 
-      const result = await tool.run({ input: validatedArgs });
+      const result = await tool.run({ input: validatedArgs, signal: extra.signal });
       const text = typeof result === 'string' ? result : JSON.stringify(result ?? '');
 
       return { content: [{ type: 'text' as const, text }] };
