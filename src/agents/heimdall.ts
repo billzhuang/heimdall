@@ -96,7 +96,10 @@ function loadBaselinesSync(filePath: string): BaselineEntry[] {
         return [];
       }
     });
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      process.stderr.write(`[heimdall] Warning: could not read baseline file: ${err instanceof Error ? err.message : String(err)}\n`);
+    }
     return [];
   }
 }
