@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const { runDatadogQuery } = vi.hoisted(() => ({ runDatadogQuery: vi.fn() }));
 vi.mock('../../lib/datadog.ts', () => ({ runDatadogQuery }));
 
-import { makeDatadogQuery } from '../datadog.ts';
+import { makeDatadogQuery, datadogPlugin } from '../datadog.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -135,6 +137,47 @@ describe('makeDatadogQuery — tool metadata', () => {
     expect(runDatadogQuery).toHaveBeenCalledWith(
       expect.objectContaining({ queryType: 'logs', query: 'service:payments status:error', limit: 50 }),
       expect.anything(),
+    );
+  });
+
+  it('forwards compiled regex redaction rules to runDatadogQuery', async () => {
+    runDatadogQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = makeDatadogQuery(undefined, rules);
+    await tool.run({ input: BASE_PARAMS });
+    expect(runDatadogQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: rules }),
+    );
+  });
+
+  it('forwards regexRedactionRules as undefined when none are provided', async () => {
+    runDatadogQuery.mockResolvedValue('ok');
+    const tool = makeDatadogQuery({});
+    await tool.run({ input: BASE_PARAMS });
+    expect(runDatadogQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: undefined }),
+    );
+  });
+});
+
+describe('datadogPlugin', () => {
+  it('key is "datadogQuery"', () => {
+    expect(datadogPlugin.key).toBe('datadogQuery');
+  });
+
+  it('factory passes datadog config and rules through to runDatadogQuery', async () => {
+    runDatadogQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /AKIA[0-9A-Z]{16}/g }];
+    const config = {
+      datadog: { apiKey: 'test-api', appKey: 'test-app', site: 'datadoghq.eu', timeoutMs: 5000 },
+    } as unknown as HeimdallConfig;
+    const tool = datadogPlugin.factory(config, rules);
+    await tool.run({ input: BASE_PARAMS });
+    expect(runDatadogQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ apiKey: 'test-api', appKey: 'test-app', site: 'datadoghq.eu', timeoutMs: 5000, regexRedactionRules: rules }),
     );
   });
 });
