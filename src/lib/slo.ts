@@ -60,14 +60,66 @@ type PrometheusInstantResponse = {
   data?: { result?: Array<{ value?: [number, string] }> };
 };
 
+/** Discriminated result type for `parsePrometheusScalar`. */
+export type ParsedScalar =
+  | { ok: true; value: number }
+  | { ok: false; error: string };
+
+/**
+ * Parse a raw Prometheus instant-query JSON response and extract the first
+ * scalar value from the result vector.
+ *
+ * Returns `{ ok: true, value }` on success, or `{ ok: false, error }` when
+ * the response is malformed, empty, or the parsed value is NaN.  This is a
+ * pure function with no I/O, making it independently testable without mocking
+ * fetch.
+ */
+export function parsePrometheusScalar(raw: string): ParsedScalar {
+  let parsed: PrometheusInstantResponse;
+  try {
+    parsed = JSON.parse(raw) as PrometheusInstantResponse;
+  } catch {
+    return { ok: false, error: `Failed to parse Prometheus response: ${raw.slice(0, 120)}` };
+  }
+
+  if (parsed.status === 'success' && parsed.data?.result?.length) {
+    const rawValue = parsed.data.result[0]?.value?.[1];
+    if (rawValue !== undefined) {
+      const value = parseFloat(rawValue);
+      if (!isNaN(value)) return { ok: true, value };
+    }
+  }
+
+  return { ok: false, error: 'No metric data returned for this SLO.' };
+}
+
+/**
+ * Compute burn rate, remaining budget, and breach status from a raw metric
+ * value and an error budget fraction.
+ *
+ * Pure function — no I/O, safe to unit-test directly.
+ *
+ * @param currentValue  Raw error rate / non-compliance fraction from Prometheus.
+ * @param budget        SLO error budget as a fraction (e.g. 0.001 for 0.1%).
+ */
+export function computeSloMetrics(
+  currentValue: number,
+  budget: number,
+): { burnRate: number; remainingBudget: number; breaching: boolean } {
+  // Guard against zero budget to avoid division by zero; treat it as "no budget
+  // allocated" — burn rate is meaningless, so we return 0.
+  const burnRate = budget > 0 ? Math.max(0, currentValue) / budget : 0;
+  const remainingBudget = Math.max(0, 1 - burnRate);
+  const breaching = burnRate > 1;
+  return { burnRate, remainingBudget, breaching };
+}
+
 /**
  * Evaluate a single SLO against live Prometheus data.
  *
- * Queries the `slo.metric` PromQL expression as an instant query, extracts the
- * first vector result value, and computes:
- *   burnRate       = currentValue / slo.budget
- *   remainingBudget = max(0, 1 − burnRate)
- *   breaching      = burnRate > 1
+ * Queries the `slo.metric` PromQL expression as an instant query and delegates
+ * response parsing to `parsePrometheusScalar` and the burn-rate math to
+ * `computeSloMetrics`.
  *
  * NOTE: burnRate and remainingBudget are derived from the *instantaneous* rate
  * returned by the PromQL expression (typically a short-window rate like
@@ -80,56 +132,26 @@ export async function evaluateSLO(
   prometheusConfig: PrometheusConfig,
   slo: SloDefinition,
 ): Promise<SloResult> {
+  const errResult = (error: string): SloResult => ({
+    name: slo.name,
+    burnRate: 0,
+    remainingBudget: 1,
+    breaching: false,
+    error,
+  });
+
   let raw: string;
   try {
     raw = await runPrometheusQuery('instant', { query: slo.metric }, prometheusConfig);
   } catch (err) {
-    return {
-      name: slo.name,
-      burnRate: 0,
-      remainingBudget: 1,
-      breaching: false,
-      error: `Failed to query Prometheus: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    return errResult(
+      `Failed to query Prometheus: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
-  let currentValue: number | undefined;
-  let parsed: PrometheusInstantResponse;
-  try {
-    parsed = JSON.parse(raw) as PrometheusInstantResponse;
-  } catch {
-    return {
-      name: slo.name,
-      burnRate: 0,
-      remainingBudget: 1,
-      breaching: false,
-      error: `Failed to parse Prometheus response: ${raw.slice(0, 120)}`,
-    };
-  }
+  const parsed = parsePrometheusScalar(raw);
+  if (!parsed.ok) return errResult(parsed.error);
 
-  if (parsed.status === 'success' && parsed.data?.result?.length) {
-    const rawValue = parsed.data?.result?.[0]?.value?.[1];
-    if (rawValue !== undefined) {
-      currentValue = parseFloat(rawValue);
-    }
-  }
-
-  if (currentValue === undefined || isNaN(currentValue)) {
-    return {
-      name: slo.name,
-      burnRate: 0,
-      remainingBudget: 1,
-      breaching: false,
-      error: 'No metric data returned for this SLO.',
-    };
-  }
-
-  // Burn rate: how many times faster than allowed we're consuming the error budget.
-  // Clamp to 0 to guard against metrics that return negative values.
-  const burnRate = slo.budget > 0 ? Math.max(0, currentValue) / slo.budget : 0;
-  // Remaining budget as a fraction of total budget.
-  const remainingBudget = Math.max(0, 1 - burnRate);
-  const breaching = burnRate > 1;
-
-  return { name: slo.name, burnRate, remainingBudget, breaching, currentValue };
+  const { burnRate, remainingBudget, breaching } = computeSloMetrics(parsed.value, slo.budget);
+  return { name: slo.name, burnRate, remainingBudget, breaching, currentValue: parsed.value };
 }

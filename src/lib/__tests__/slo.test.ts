@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { evaluateSLO } from '../slo.ts';
-import type { SloDefinition } from '../slo.ts';
+import { evaluateSLO, parsePrometheusScalar, computeSloMetrics } from '../slo.ts';
+import type { SloDefinition, ParsedScalar } from '../slo.ts';
 import type { PrometheusConfig } from '../prometheus.ts';
 import { mockFetch } from './test-helpers.ts';
 
@@ -166,5 +166,120 @@ describe('evaluateSLO — various SLO configurations', () => {
     expect(result.burnRate).toBeCloseTo(0.4, 5);
     expect(result.breaching).toBe(false);
     expect(result.remainingBudget).toBeCloseTo(0.6, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parsePrometheusScalar — pure parsing, no I/O
+// ---------------------------------------------------------------------------
+
+describe('parsePrometheusScalar', () => {
+  it('extracts the scalar value from a well-formed vector response', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ metric: {}, value: [1700000000, '0.0023'] }] },
+    });
+    const result = parsePrometheusScalar(raw);
+    expect(result.ok).toBe(true);
+    expect((result as Extract<ParsedScalar, { ok: true }>).value).toBeCloseTo(0.0023, 6);
+  });
+
+  it('returns ok:false for invalid JSON', () => {
+    const result = parsePrometheusScalar('not-json');
+    expect(result.ok).toBe(false);
+    expect((result as Extract<ParsedScalar, { ok: false }>).error).toMatch(/Failed to parse/i);
+  });
+
+  it('returns ok:false when result array is empty', () => {
+    const raw = JSON.stringify({ status: 'success', data: { result: [] } });
+    expect(parsePrometheusScalar(raw).ok).toBe(false);
+  });
+
+  it('returns ok:false when status is not "success"', () => {
+    const raw = JSON.stringify({ status: 'error', data: { result: [] } });
+    expect(parsePrometheusScalar(raw).ok).toBe(false);
+  });
+
+  it('returns ok:false when the value string is NaN', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ metric: {}, value: [1700000000, 'NaN'] }] },
+    });
+    expect(parsePrometheusScalar(raw).ok).toBe(false);
+  });
+
+  it('handles integer-valued metrics (e.g. "0")', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ metric: {}, value: [1700000000, '0'] }] },
+    });
+    const result = parsePrometheusScalar(raw);
+    expect(result.ok).toBe(true);
+    expect((result as Extract<ParsedScalar, { ok: true }>).value).toBe(0);
+  });
+
+  it('returns ok:false when data is missing entirely', () => {
+    const raw = JSON.stringify({ status: 'success' });
+    expect(parsePrometheusScalar(raw).ok).toBe(false);
+  });
+
+  it('truncates the raw string in the error message to ≤120 chars', () => {
+    const raw = 'x'.repeat(200);
+    const result = parsePrometheusScalar(raw);
+    expect(result.ok).toBe(false);
+    const err = (result as Extract<ParsedScalar, { ok: false }>).error;
+    expect(err.length).toBeLessThanOrEqual('Failed to parse Prometheus response: '.length + 120);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeSloMetrics — pure math, no I/O
+// ---------------------------------------------------------------------------
+
+describe('computeSloMetrics', () => {
+  it('returns burnRate 1.0, remainingBudget 0, breaching false when value equals budget', () => {
+    const result = computeSloMetrics(0.001, 0.001);
+    expect(result.burnRate).toBeCloseTo(1.0, 10);
+    expect(result.remainingBudget).toBeCloseTo(0, 10);
+    expect(result.breaching).toBe(false);
+  });
+
+  it('returns breaching true when value exceeds budget', () => {
+    const result = computeSloMetrics(0.005, 0.001);
+    expect(result.burnRate).toBeCloseTo(5.0, 5);
+    expect(result.breaching).toBe(true);
+    expect(result.remainingBudget).toBe(0);
+  });
+
+  it('returns breaching false and remainingBudget > 0 when value is under budget', () => {
+    const result = computeSloMetrics(0.0005, 0.001);
+    expect(result.burnRate).toBeCloseTo(0.5, 5);
+    expect(result.breaching).toBe(false);
+    expect(result.remainingBudget).toBeCloseTo(0.5, 5);
+  });
+
+  it('clamps burnRate to 0 for a negative metric value', () => {
+    const result = computeSloMetrics(-0.002, 0.001);
+    expect(result.burnRate).toBe(0);
+    expect(result.remainingBudget).toBe(1);
+    expect(result.breaching).toBe(false);
+  });
+
+  it('returns burnRate 0 when budget is zero (no division by zero)', () => {
+    const result = computeSloMetrics(0.01, 0);
+    expect(result.burnRate).toBe(0);
+    expect(result.breaching).toBe(false);
+  });
+
+  it('returns burnRate 0 and remainingBudget 1 for a zero error rate', () => {
+    const result = computeSloMetrics(0, 0.001);
+    expect(result.burnRate).toBe(0);
+    expect(result.remainingBudget).toBe(1);
+  });
+
+  it('clamps remainingBudget to 0 when burn rate is very high', () => {
+    const result = computeSloMetrics(1.0, 0.001); // 1000x budget
+    expect(result.remainingBudget).toBe(0);
+    expect(result.breaching).toBe(true);
   });
 });
