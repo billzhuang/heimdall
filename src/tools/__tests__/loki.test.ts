@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const { runLokiQuery } = vi.hoisted(() => ({ runLokiQuery: vi.fn() }));
 vi.mock('../../lib/loki.ts', () => ({ runLokiQuery }));
 
-import { makeLokiQuery } from '../loki.ts';
+import { makeLokiQuery, lokiPlugin } from '../loki.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -123,5 +125,57 @@ describe('makeLokiQuery — tool metadata and params forwarding', () => {
       }),
       expect.anything(),
     );
+  });
+
+  it('forwards compiled regex redaction rules to runLokiQuery', async () => {
+    runLokiQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = makeLokiQuery(undefined, rules);
+    await tool.run({ input: { query: '{app="api"}' } });
+    expect(runLokiQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: rules }),
+    );
+  });
+
+  it('forwards regexRedactionRules as undefined when none are provided', async () => {
+    runLokiQuery.mockResolvedValue('ok');
+    const tool = makeLokiQuery({});
+    await tool.run({ input: { query: '{app="api"}' } });
+    expect(runLokiQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: undefined }),
+    );
+  });
+});
+
+describe('lokiPlugin', () => {
+  it('key is "lokiQuery"', () => {
+    expect(lokiPlugin.key).toBe('lokiQuery');
+  });
+
+  it('factory passes loki config, rules, and namespace lock through to makeLokiQuery', async () => {
+    runLokiQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /AKIA[0-9A-Z]{16}/g }];
+    const config = {
+      loki: { url: 'http://loki-test:3100', timeoutMs: 5000 },
+      namespace: { locked: 'prod-ns' },
+    } as unknown as HeimdallConfig;
+    const tool = lokiPlugin.factory(config, rules);
+    expect(tool.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    await tool.run({ input: { query: '{namespace="prod-ns"}' } });
+    expect(runLokiQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ url: 'http://loki-test:3100', timeoutMs: 5000, regexRedactionRules: rules, lockedNamespace: 'prod-ns' }),
+    );
+  });
+
+  it('factory works when namespace.locked is undefined', async () => {
+    runLokiQuery.mockResolvedValue('ok');
+    const config = {
+      loki: { url: 'http://loki:3100' },
+    } as unknown as HeimdallConfig;
+    const tool = lokiPlugin.factory(config, []);
+    expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
   });
 });
