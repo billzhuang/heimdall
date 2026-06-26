@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const { runJaegerQuery } = vi.hoisted(() => ({ runJaegerQuery: vi.fn() }));
 vi.mock('../../lib/jaeger.ts', () => ({ runJaegerQuery }));
 
-import { makeJaegerQuery } from '../jaeger.ts';
+import { makeJaegerQuery, jaegerPlugin } from '../jaeger.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -103,6 +105,47 @@ describe('makeJaegerQuery — tool metadata and params forwarding', () => {
         tags: 'error=true',
       }),
       expect.anything(),
+    );
+  });
+
+  it('forwards compiled regex redaction rules to runJaegerQuery', async () => {
+    runJaegerQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = makeJaegerQuery(undefined, rules);
+    await tool.run({ input: { service: 'api' } });
+    expect(runJaegerQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: rules }),
+    );
+  });
+
+  it('forwards regexRedactionRules as undefined when none are provided', async () => {
+    runJaegerQuery.mockResolvedValue('ok');
+    const tool = makeJaegerQuery({});
+    await tool.run({ input: { service: 'api' } });
+    expect(runJaegerQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: undefined }),
+    );
+  });
+});
+
+describe('jaegerPlugin', () => {
+  it('key is "jaegerQuery"', () => {
+    expect(jaegerPlugin.key).toBe('jaegerQuery');
+  });
+
+  it('factory passes jaeger config and rules through to runJaegerQuery', async () => {
+    runJaegerQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /AKIA[0-9A-Z]{16}/g }];
+    const config = {
+      jaeger: { url: 'http://jaeger-test:16686', timeoutMs: 5000 },
+    } as unknown as HeimdallConfig;
+    const tool = jaegerPlugin.factory(config, rules);
+    await tool.run({ input: { service: 'checkout' } });
+    expect(runJaegerQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ url: 'http://jaeger-test:16686', timeoutMs: 5000, regexRedactionRules: rules }),
     );
   });
 });
