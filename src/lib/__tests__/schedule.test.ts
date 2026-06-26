@@ -55,7 +55,6 @@ describe('matchesCronField', () => {
   });
 
   it('comma list mixing exact and step patterns', () => {
-    // "1,*/10" → matches 1, 10, 20, 30, 40, 50
     expect(matchesCronField(1, '1,*/10')).toBe(true);
     expect(matchesCronField(10, '1,*/10')).toBe(true);
     expect(matchesCronField(20, '1,*/10')).toBe(true);
