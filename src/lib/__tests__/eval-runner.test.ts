@@ -413,6 +413,86 @@ describe('runScenario', () => {
     expect(result.failures.some(f => f.includes('spawn ENOENT'))).toBe(true);
   });
 
+  it('writes empty mock file when scenario.mocks is undefined', async () => {
+    const scenarioNoMocks = { description: 'no mocks', prompt: 'check the cluster' } as EvalScenario;
+    const finding = { summary: 'ok', answer: 'ok', severity: 'info', suggestedCommands: [] };
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ stdoutData: JSON.stringify(finding) }),
+    );
+    const result = await runScenario('/bin/heimdall', scenarioNoMocks);
+    expect(result.passed).toBe(true);
+  });
+
+  it('uses stdout in error message when stderr is empty on non-zero exit', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ exitCode: 1, stdoutData: 'stdout-only error detail' }),
+    );
+    const result = await runScenario('/bin/heimdall', MINIMAL_SCENARIO);
+    expect(result.passed).toBe(false);
+    expect(result.failures.some(f => f.includes('stdout-only error detail'))).toBe(true);
+  });
+
+  it('handles finding with undefined summary and answer when checking keywords', async () => {
+    const finding = { severity: 'warning', suggestedCommands: [] };
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ stdoutData: JSON.stringify(finding) }),
+    );
+    const result = await runScenario('/bin/heimdall', {
+      ...MINIMAL_SCENARIO,
+      expectedKeywords: ['oomkill'],
+    });
+    expect(result.passed).toBe(false);
+    expect(result.failures.some(f => f.includes('oomkill'))).toBe(true);
+  });
+
+  it('handles non-Error value thrown by the child process error event', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      setImmediate(() => {
+        childEmitter.emit('error', 'plain string error, not an Error instance');
+      });
+      return { stdout, stderr, kill: () => {}, on: childEmitter.on.bind(childEmitter), once: childEmitter.once.bind(childEmitter) } as unknown as ReturnType<typeof spawn>;
+    });
+    const result = await runScenario('/bin/heimdall', MINIMAL_SCENARIO);
+    expect(result.passed).toBe(false);
+    expect(result.failures.some(f => f.includes('plain string error'))).toBe(true);
+  });
+
+  it('settled guard ignores second resolve when close fires twice', async () => {
+    const finding = { summary: 'ok', answer: 'ok', severity: 'info', suggestedCommands: [] };
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      setImmediate(() => {
+        stdout.emit('data', Buffer.from(JSON.stringify(finding)));
+        childEmitter.emit('close', 0);
+        childEmitter.emit('close', 0); // second fire hits settled=true guard
+      });
+      return { stdout, stderr, kill: () => {}, on: childEmitter.on.bind(childEmitter), once: childEmitter.once.bind(childEmitter) } as unknown as ReturnType<typeof spawn>;
+    });
+    const result = await runScenario('/bin/heimdall', MINIMAL_SCENARIO);
+    expect(result.passed).toBe(true);
+  });
+
+  it('settled guard ignores second reject when close fires twice with non-zero code', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      setImmediate(() => {
+        stderr.emit('data', Buffer.from('error output'));
+        childEmitter.emit('close', 1);
+        childEmitter.emit('close', 1); // second fire hits settled=true guard
+      });
+      return { stdout, stderr, kill: () => {}, on: childEmitter.on.bind(childEmitter), once: childEmitter.once.bind(childEmitter) } as unknown as ReturnType<typeof spawn>;
+    });
+    const result = await runScenario('/bin/heimdall', MINIMAL_SCENARIO);
+    expect(result.passed).toBe(false);
+  });
+
   it('passes spawn --json and -p flags', async () => {
     let capturedArgs: string[] = [];
     (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce((_bin: string, args: string[]) => {
