@@ -135,6 +135,12 @@ describe('findingToOutputs', () => {
     const outputs = findingToOutputs(baseFinding);
     expect(outputs['validity-score']).toBe('');
   });
+
+  it('serialises validity score of zero as "0" not empty string', () => {
+    const finding: OneShotFinding = { ...baseFinding, validityScore: 0 };
+    const outputs = findingToOutputs(finding);
+    expect(outputs['validity-score']).toBe('0');
+  });
 });
 
 describe('renderJobSummary', () => {
@@ -212,6 +218,23 @@ describe('renderJobSummary', () => {
     expect(md).toContain('Powered by');
     expect(md).toContain('Heimdall');
   });
+
+  it('renders validity score line when validityScore is provided', () => {
+    const finding: OneShotFinding = { ...baseFinding, validityScore: 0.92 };
+    const md = renderJobSummary(finding);
+    expect(md).toContain('*Validity score: 0.92*');
+  });
+
+  it('renders validity score line when validityScore is 0', () => {
+    const finding: OneShotFinding = { ...baseFinding, validityScore: 0 };
+    const md = renderJobSummary(finding);
+    expect(md).toContain('*Validity score: 0*');
+  });
+
+  it('omits validity score line when validityScore is undefined', () => {
+    const md = renderJobSummary(baseFinding);
+    expect(md).not.toContain('Validity score');
+  });
 });
 
 describe('detectTriageSeverity', () => {
@@ -250,6 +273,12 @@ describe('detectTriageSeverity', () => {
   it('matches keyword at start of line with leading whitespace', () => {
     expect(detectTriageSeverity('  critical node down')).toBe('critical');
     expect(detectTriageSeverity('\n  warning: high load')).toBe('warning');
+    expect(detectTriageSeverity('  info: cluster healthy')).toBe('info');
+  });
+
+  it('does not match info as a prefix of a longer word', () => {
+    expect(detectTriageSeverity('information: see docs')).toBe('ok');
+    expect(detectTriageSeverity('informed decision made')).toBe('ok');
   });
 });
 
