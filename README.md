@@ -314,7 +314,7 @@ server:
   apiKey: ${HEIMDALL_API_KEY}   # or set HEIMDALL_API_KEY env var directly
 ```
 
-`GET /api/health` is always unauthenticated so Kubernetes liveness probes work without credentials.
+`GET /api/health` is always unauthenticated so Kubernetes liveness probes work without credentials. All other endpoints (including `GET /api/openapi.json`) require a `Bearer` token when `HEIMDALL_API_KEY` is set.
 
 ### MCP server mode
 
@@ -333,19 +333,6 @@ Claude Desktop config (`~/.config/claude/claude_desktop_config.json`):
     "heimdall": {
       "command": "/path/to/heimdall/bin/heimdall",
       "args": ["mcp"]
-    }
-  }
-}
-```
-
-Or with the pre-built bundle (after `npm run build`):
-
-```json
-{
-  "mcpServers": {
-    "heimdall": {
-      "command": "node",
-      "args": ["/path/to/heimdall/dist/mcp-mode.mjs"]
     }
   }
 }
@@ -862,7 +849,7 @@ tools:
   cdkQuery: true
 ```
 
-Requires the CDK CLI (`cdk`) on PATH and AWS credentials. The `cdk-safety.ts` policy allows only informational subcommands: `ls`, `list`, `synth`, `synthesize`, `diff`, `metadata`, `context`, `notices`, `docs`, `doc`, `version`, `doctor`, `drift`. Mutating subcommands (`deploy`, `destroy`, `bootstrap`, `watch`, `import`, `migrate`, `gc`, `rollback`) are always blocked.
+Requires the CDK CLI (`cdk`) on PATH and AWS credentials. The `cdk-safety.ts` policy allows only informational subcommands: `ls`, `list`, `synth`, `synthesize`, `diff`, `metadata`, `context`, `notices`, `docs`, `doc`, `version`, `doctor`, `drift`. Mutating subcommands (`deploy`, `destroy`, `bootstrap`, `watch`, `import`, `migrate`, `gc`, `rollback`, `acknowledge`, `ack`) are always blocked.
 
 ### SLO evaluation
 
