@@ -56,11 +56,33 @@ describe('compileRules', () => {
     expect(rules[0].re.flags.split('i').length - 1).toBe(1);
   });
 
-  it('deduplicates when extraFlags contains `g`, preventing a SyntaxError', () => {
-    // `(?g)` would previously produce flags='gg' which throws SyntaxError
+  it('deduplicates when extraFlags contains `g`, preventing a SyntaxError, and rule compiles correctly', () => {
+    // `(?g)` would produce flags='gg' which could throw SyntaxError without dedup
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    expect(() => compileRules([{ name: 'dup_g', pattern: '(?g)SECRET' }])).not.toThrow();
+    const rules = compileRules([{ name: 'dup_g', pattern: '(?g)SECRET' }]);
+    // Must compile (not throw) AND produce a working rule
+    expect(rules).toHaveLength(1);
+    expect(rules[0].re.flags).toContain('g');
     warnSpy.mockRestore();
+  });
+
+  it('strips the sticky flag y and warns because it conflicts with global redaction', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rules = compileRules([{ name: 'sticky', pattern: '(?y)TOKEN\\d+' }]);
+    expect(rules).toHaveLength(1);
+    expect(rules[0].re.flags).not.toContain('y');
+    expect(rules[0].re.flags).toContain('g');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("sticky flag 'y'"));
+    warnSpy.mockRestore();
+  });
+
+  it('sticky-flag rule redacts all occurrences (not just the first)', () => {
+    // Without the y-stripping fix, /TOKEN\d+/gy only replaces the first match
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rules = compileRules([{ name: 'tok', pattern: '(?y)TOKEN\\d+' }]);
+    warnSpy.mockRestore();
+    const result = applyRedaction('TOKEN1 TOKEN2 TOKEN3', rules);
+    expect(result).toBe('[REDACTED:tok] [REDACTED:tok] [REDACTED:tok]');
   });
 
   it('skips a pattern with nested quantifiers (potential ReDoS) and logs a warning', () => {

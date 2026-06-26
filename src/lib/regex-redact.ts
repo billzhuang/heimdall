@@ -75,7 +75,17 @@ function compileSingleRule(rule: RedactionRule): CompiledRedactionRule | null {
     return null;
   }
   // Deduplicate flags via Set so `(?ii)` or a user-supplied `g` can't cause a SyntaxError.
-  const flags = Array.from(new Set('g' + extraFlags)).join('');
+  // The sticky flag `y` conflicts with global `g` in String.prototype.replace: with `/gy`,
+  // replace stops after the first non-contiguous match, leaving later secrets unredacted.
+  // Strip `y` and warn so redaction is always exhaustive.
+  let flagSet = new Set('g' + extraFlags);
+  if (flagSet.has('y')) {
+    flagSet.delete('y');
+    console.warn(
+      `[heimdall] Redaction rule "${rule.name}": sticky flag 'y' is incompatible with global redaction and has been removed`,
+    );
+  }
+  const flags = Array.from(flagSet).join('');
   try {
     return { name: rule.name, re: new RegExp(pattern, flags) };
   } catch {
