@@ -504,4 +504,195 @@ describe('loadConfig', () => {
       expect(config.tools.datadogQuery).toBe(false);
     });
   });
+
+  describe('redactSecrets flag', () => {
+    it('defaults to true when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.redactSecrets).toBe(true);
+    });
+
+    it('can be disabled explicitly', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'redactSecrets: false\n');
+      const config = loadConfig(configPath);
+      expect(config.redactSecrets).toBe(false);
+    });
+  });
+
+  describe('namespace config block', () => {
+    it('defaults to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.namespace).toBeUndefined();
+    });
+
+    it('loads namespace.locked from config', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'namespace:\n  locked: prod-payments\n');
+      const config = loadConfig(configPath);
+      expect(config.namespace?.locked).toBe('prod-payments');
+    });
+  });
+
+  describe('loki config block', () => {
+    it('defaults to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.loki).toBeUndefined();
+    });
+
+    it('loads loki url and defaults timeoutMs to 15000', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'loki:\n  url: http://loki:3100\n');
+      const config = loadConfig(configPath);
+      expect(config.loki?.url).toBe('http://loki:3100');
+      expect(config.loki?.timeoutMs).toBe(15_000);
+    });
+  });
+
+  describe('jaeger config block', () => {
+    it('defaults to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.jaeger).toBeUndefined();
+    });
+
+    it('loads jaeger url and custom timeoutMs', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'jaeger:\n  url: http://jaeger:16686\n  timeoutMs: 8000\n');
+      const config = loadConfig(configPath);
+      expect(config.jaeger?.url).toBe('http://jaeger:16686');
+      expect(config.jaeger?.timeoutMs).toBe(8_000);
+    });
+  });
+
+  describe('datadog config block', () => {
+    it('defaults to undefined when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.datadog).toBeUndefined();
+    });
+
+    it('loads datadog apiKey, appKey, and site', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(
+        configPath,
+        'datadog:\n  apiKey: dd-api-key\n  appKey: dd-app-key\n  site: datadoghq.eu\n',
+      );
+      const config = loadConfig(configPath);
+      expect(config.datadog?.apiKey).toBe('dd-api-key');
+      expect(config.datadog?.appKey).toBe('dd-app-key');
+      expect(config.datadog?.site).toBe('datadoghq.eu');
+    });
+
+    it('defaults datadog timeoutMs to 15000 when not specified', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'datadog:\n  apiKey: dd-api-key\n');
+      const config = loadConfig(configPath);
+      expect(config.datadog?.timeoutMs).toBe(15_000);
+    });
+  });
+
+  describe('slos config array', () => {
+    it('defaults to empty array when not present', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.slos).toEqual([]);
+    });
+
+    it('loads a single SLO entry with all fields', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(
+        configPath,
+        [
+          'slos:',
+          '  - name: API availability',
+          '    metric: sum(rate(http_requests_total{status=~"5.."}[5m]))',
+          '    target: 0.999',
+          '    window: 30d',
+          '    budget: 0.001',
+        ].join('\n'),
+      );
+      const config = loadConfig(configPath);
+      expect(config.slos).toHaveLength(1);
+      expect(config.slos[0].name).toBe('API availability');
+      expect(config.slos[0].target).toBe(0.999);
+      expect(config.slos[0].budget).toBe(0.001);
+      expect(config.slos[0].window).toBe('30d');
+    });
+  });
+
+  describe('server config block', () => {
+    it('defaults port to 3000 and host to 127.0.0.1 when absent', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.server?.port).toBe(3000);
+      expect(config.server?.host).toBe('127.0.0.1');
+    });
+
+    it('loads custom port and host from config', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'server:\n  port: 8080\n  host: 0.0.0.0\n');
+      const config = loadConfig(configPath);
+      expect(config.server?.port).toBe(8080);
+      expect(config.server?.host).toBe('0.0.0.0');
+    });
+  });
+
+  describe('watch config block', () => {
+    it('defaults cooldownSeconds to 300 when watch block is present but cooldownSeconds is absent', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'watch:\n  webhook: http://slack.example.com/hook\n');
+      const config = loadConfig(configPath);
+      expect(config.watch?.cooldownSeconds).toBe(300);
+    });
+
+    it('loads custom cooldownSeconds', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'watch:\n  cooldownSeconds: 60\n');
+      const config = loadConfig(configPath);
+      expect(config.watch?.cooldownSeconds).toBe(60);
+    });
+  });
+
+  describe('schedule.triage config block', () => {
+    it('schedule is undefined when not present in config', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.schedule).toBeUndefined();
+    });
+
+    it('defaults schedule.triage.enabled to false and cron to 6-hourly when block is present without values', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, 'schedule:\n  triage:\n');
+      const config = loadConfig(configPath);
+      expect(config.schedule?.triage?.enabled).toBe(false);
+      expect(config.schedule?.triage?.cron).toBe('0 */6 * * *');
+    });
+
+    it('loads schedule.triage with enabled and custom cron', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(
+        configPath,
+        'schedule:\n  triage:\n    enabled: true\n    cron: "0 */2 * * *"\n    allNamespaces: true\n',
+      );
+      const config = loadConfig(configPath);
+      expect(config.schedule?.triage?.enabled).toBe(true);
+      expect(config.schedule?.triage?.cron).toBe('0 */2 * * *');
+      expect(config.schedule?.triage?.allNamespaces).toBe(true);
+    });
+  });
+
+  describe('learning.rag config block', () => {
+    it('defaults rag.enabled to false and topK to 5 when not set', () => {
+      const config = loadConfig(join(tmpDir, 'nonexistent.yaml'));
+      expect(config.learning?.rag?.enabled).toBe(false);
+      expect(config.learning?.rag?.topK).toBe(5);
+    });
+
+    it('loads rag.enabled, topK, and minSimilarity from config', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(
+        configPath,
+        'learning:\n  rag:\n    enabled: true\n    topK: 10\n    minSimilarity: 0.7\n',
+      );
+      const config = loadConfig(configPath);
+      expect(config.learning?.rag?.enabled).toBe(true);
+      expect(config.learning?.rag?.topK).toBe(10);
+      expect(config.learning?.rag?.minSimilarity).toBe(0.7);
+    });
+  });
 });
