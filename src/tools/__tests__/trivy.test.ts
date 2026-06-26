@@ -6,7 +6,9 @@ vi.mock('../../lib/trivy.ts', () => ({
   NO_OUTPUT_MESSAGE: '(trivy produced no output)',
 }));
 
-import { makeTrivyScan, trivyScan } from '../trivy.ts';
+import { makeTrivyScan, trivyScan, trivyScanPlugin } from '../trivy.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 beforeEach(() => runTrivy.mockReset());
 
@@ -106,5 +108,50 @@ describe('makeTrivyScan', () => {
     const tool = makeTrivyScan();
     const result = await tool.run({ input: { scanType: 'image', target: 'dangerous:image' } });
     expect(result).toMatch(/^BLOCKED:/);
+  });
+
+  it('forwards compiled regex redaction rules to runTrivy', async () => {
+    runTrivy.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = makeTrivyScan(undefined, rules);
+    await tool.run({ input: { scanType: 'image', target: 'nginx:1.25' } });
+    expect(runTrivy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: rules }),
+    );
+  });
+
+  it('forwards regexRedactionRules as undefined when none are provided', async () => {
+    runTrivy.mockResolvedValue('ok');
+    const tool = makeTrivyScan();
+    await tool.run({ input: { scanType: 'image', target: 'nginx:1.25' } });
+    expect(runTrivy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: undefined }),
+    );
+  });
+});
+
+describe('trivyScanPlugin', () => {
+  it('key is "trivyScan"', () => {
+    expect(trivyScanPlugin.key).toBe('trivyScan');
+  });
+
+  it('factory passes audit config and rules through to runTrivy', async () => {
+    runTrivy.mockResolvedValue('ok');
+    const auditConfig = { enabled: true, file: '/tmp/audit.log' };
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /AKIA[0-9A-Z]{16}/g }];
+    const tool = trivyScanPlugin.factory({ audit: auditConfig } as unknown as HeimdallConfig, rules);
+    await tool.run({ input: { scanType: 'image', target: 'nginx:1.25' } });
+    expect(runTrivy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ audit: auditConfig, regexRedactionRules: rules }),
+    );
   });
 });
