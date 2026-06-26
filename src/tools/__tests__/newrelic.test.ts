@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const { runNewRelicQuery } = vi.hoisted(() => ({ runNewRelicQuery: vi.fn() }));
 vi.mock('../../lib/newrelic.ts', () => ({ runNewRelicQuery }));
 
-import { makeNewRelicQuery } from '../newrelic.ts';
+import { makeNewRelicQuery, newRelicPlugin } from '../newrelic.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -153,5 +155,46 @@ describe('makeNewRelicQuery — parameter forwarding', () => {
     runNewRelicQuery.mockResolvedValue('raw tool output');
     const tool = makeNewRelicQuery({});
     expect(await tool.run({ input: BASE_PARAMS })).toBe('raw tool output');
+  });
+
+  it('forwards compiled regex redaction rules to runNewRelicQuery', async () => {
+    runNewRelicQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = makeNewRelicQuery(undefined, rules);
+    await tool.run({ input: BASE_PARAMS });
+    expect(runNewRelicQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: rules }),
+    );
+  });
+
+  it('forwards regexRedactionRules as undefined when none are provided', async () => {
+    runNewRelicQuery.mockResolvedValue('ok');
+    const tool = makeNewRelicQuery({});
+    await tool.run({ input: BASE_PARAMS });
+    expect(runNewRelicQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: undefined }),
+    );
+  });
+});
+
+describe('newRelicPlugin', () => {
+  it('key is "newRelicQuery"', () => {
+    expect(newRelicPlugin.key).toBe('newRelicQuery');
+  });
+
+  it('factory passes newRelic config and rules through to runNewRelicQuery', async () => {
+    runNewRelicQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /NRAK-[0-9A-Z]{40}/g }];
+    const config = {
+      newRelic: { apiKey: 'test-api', accountId: '12345', timeoutMs: 5000 },
+    } as unknown as HeimdallConfig;
+    const tool = newRelicPlugin.factory(config, rules);
+    await tool.run({ input: BASE_PARAMS });
+    expect(runNewRelicQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ apiKey: 'test-api', accountId: '12345', timeoutMs: 5000, regexRedactionRules: rules }),
+    );
   });
 });
