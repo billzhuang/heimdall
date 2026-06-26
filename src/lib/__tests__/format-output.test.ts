@@ -100,6 +100,15 @@ describe('parseOneShotOutput', () => {
     expect('model' in result).toBe(false);
   });
 
+  it('uses raw.length as bodyEnd when Thinking Summary present but Answer absent', () => {
+    // Exercises the false branch of the ternary at line 125.
+    const raw = `Thinking Summary:\n- step one\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.summary).toBe('- step one');
+    // No Answer: section → answer stays as raw.trim()
+    expect(result.answer).toBe('Thinking Summary:\n- step one');
+  });
+
   it('is case-insensitive for section headers', () => {
     const raw = `thinking summary:\n- note\n\nanswer:\nthe answer\n`;
     const result = parseOneShotOutput(raw);
@@ -200,6 +209,13 @@ describe('extractKubectlCommands', () => {
   it('flushes a trailing continuation when the last line ends with backslash', () => {
     // The block ends mid-continuation — the partial command is still emitted.
     const text = '```bash\nkubectl get pods \\\n  -n prod \\\n```';
+    expect(extractKubectlCommands(text)).toEqual(['kubectl get pods -n prod']);
+  });
+
+  it('flushes pending continuation when closing fence follows immediately after backslash (no trailing newline)', () => {
+    // No trailing \n before ```, so the split yields no empty last element.
+    // The post-loop guard at extractCommandsFromLines is the only flush path.
+    const text = '```bash\nkubectl get pods \\\n  -n prod \\```';
     expect(extractKubectlCommands(text)).toEqual(['kubectl get pods -n prod']);
   });
 
@@ -504,5 +520,41 @@ describe('structured RCA fields', () => {
     const raw = `Answer:\nRun \`kubectl get pods -n prod\`.\n\nRemediation Steps:\n1. Apply the fix\n`;
     const result = parseOneShotOutput(raw);
     expect(result.suggestedCommands).toEqual(['kubectl get pods -n prod']);
+  });
+
+  it('omits causalChain when Causal Chain section body has only empty bullet markers', () => {
+    // parseBulletList("- ".trim() = "-") returns [] → false branch of items.length > 0.
+    const raw = `Answer:\nok\n\nCausal Chain:\n- \n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.causalChain).toBeUndefined();
+  });
+
+  it('omits remediationSteps when Remediation Steps section body has only empty bullet markers', () => {
+    const raw = `Answer:\nok\n\nRemediation Steps:\n- \n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.remediationSteps).toBeUndefined();
+  });
+
+  it('returns null from extractRcaSection when section body is empty (adjacent RCA headers)', () => {
+    // Causal Chain header is immediately followed by Evidence header → body is empty.
+    // extractRcaSection reaches the "".trim() || null path (right-hand side).
+    const raw = `Answer:\nok\n\nCausal Chain:\nEvidence:\n- key: value\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.causalChain).toBeUndefined();
+    expect(result.evidence).toEqual({ key: 'value' });
+  });
+
+  it('omits evidence entries where value is empty', () => {
+    // Exercises the false branch of "if (key && value)" in parseEvidenceMap.
+    const raw = `Answer:\nok\n\nEvidence:\n- empty-value: \n- good: works\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.evidence).toEqual({ good: 'works' });
+  });
+
+  it('extracts RCA sections when Answer section is absent (else branch + firstRca non-null)', () => {
+    // No Answer: in raw → else block; Causal Chain is an RCA header → firstRca non-null.
+    const raw = `Causal Chain:\n- memory leak in api\n`;
+    const result = parseOneShotOutput(raw);
+    expect(result.causalChain).toEqual(['memory leak in api']);
   });
 });
