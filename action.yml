@@ -95,6 +95,10 @@ outputs:
     description: 'Newline-separated suggested kubectl commands (prompt mode only)'
     value: ${{ steps.heimdall.outputs.suggested-commands }}
 
+  summary-markdown:
+    description: 'Rendered GitHub Markdown job summary (all modes)'
+    value: ${{ steps.heimdall.outputs.summary-markdown }}
+
 runs:
   using: 'composite'
   steps:
@@ -155,11 +159,4 @@ runs:
       run: |
         node_modules/.bin/tsx src/lib/github-action-runner.ts
 
-    # ── Post job summary ─────────────────────────────────────────────────────
-    - name: Post job summary
-      if: inputs.post-summary == 'true' && steps.heimdall.outputs.summary-markdown != ''
-      shell: bash
-      env:
-        _SUMMARY_MD: ${{ steps.heimdall.outputs.summary-markdown }}
-      run: |
-        printf '%s\n' "${_SUMMARY_MD}" >> "$GITHUB_STEP_SUMMARY"
+
