@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile, rm } from 'node:fs/promises';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { writeFile, rm, appendFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, appendFile: vi.fn().mockImplementation(actual.appendFile) };
+});
 import {
   buildEmptyCheckpoint,
   saveCheckpoint,
@@ -99,6 +104,41 @@ describe('saveCheckpoint / loadCheckpoint', () => {
 
   it('rethrows non-ENOENT errors', async () => {
     await expect(loadCheckpoint('/dev/null/impossible')).rejects.toThrow();
+  });
+
+  it('creates parent directory when it does not exist', async () => {
+    const newDir = join(tmpdir(), `drift-newdir-${Date.now()}`);
+    const filePath = join(newDir, 'sub', 'checkpoints.jsonl');
+    try {
+      const cp: ClusterCheckpoint = {
+        timestamp: '2026-01-01T00:00:00.000Z',
+        namespaces: ['default'],
+        workloads: [],
+        nodes: [],
+      };
+      await saveCheckpoint(cp, filePath);
+      const loaded = await loadCheckpoint(filePath);
+      expect(loaded?.timestamp).toBe('2026-01-01T00:00:00.000Z');
+    } finally {
+      await rm(newDir, { recursive: true, force: true });
+    }
+  });
+
+  it('re-throws non-ENOENT errors from appendFile', async () => {
+    vi.mocked(appendFile).mockRejectedValueOnce(
+      Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+    );
+    const cp: ClusterCheckpoint = {
+      timestamp: '2026-01-01T00:00:00.000Z',
+      namespaces: [],
+      workloads: [],
+      nodes: [],
+    };
+    try {
+      await expect(saveCheckpoint(cp, tmpFile)).rejects.toMatchObject({ code: 'EACCES' });
+    } finally {
+      vi.mocked(appendFile).mockClear();
+    }
   });
 });
 
@@ -293,6 +333,10 @@ describe('parseNamespacesFromJson', () => {
     expect(parseNamespacesFromJson(JSON.stringify({ items: [] }))).toEqual([]);
   });
 
+  it('returns empty array when items field is absent', () => {
+    expect(parseNamespacesFromJson(JSON.stringify({}))).toEqual([]);
+  });
+
   it('skips items with no metadata name', () => {
     const raw = JSON.stringify({ items: [{ metadata: {} }, { metadata: { name: 'prod' } }] });
     expect(parseNamespacesFromJson(raw)).toEqual(['prod']);
@@ -319,6 +363,10 @@ describe('parseWorkloadsFromJson', () => {
 
   it('returns empty array on parse error', () => {
     expect(parseWorkloadsFromJson('not-json')).toEqual([]);
+  });
+
+  it('returns empty array when items field is absent', () => {
+    expect(parseWorkloadsFromJson(JSON.stringify({}))).toEqual([]);
   });
 
   it('skips items missing name or namespace', () => {
@@ -381,6 +429,10 @@ describe('parseNodesFromJson', () => {
 
   it('returns empty array on parse error', () => {
     expect(parseNodesFromJson('not-json')).toEqual([]);
+  });
+
+  it('returns empty array when items field is absent', () => {
+    expect(parseNodesFromJson(JSON.stringify({}))).toEqual([]);
   });
 
   it('skips items missing a name', () => {
