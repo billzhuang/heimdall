@@ -39,6 +39,11 @@ describe('tagsMatch', () => {
   it('matches a tag that is a whole word adjacent to punctuation', () => {
     expect(tagsMatch(['api'], 'the api is down')).toBe(true);
   });
+
+  it('returns false when query is empty and tags are non-empty', () => {
+    expect(tagsMatch(['oom'], '')).toBe(false);
+    expect(tagsMatch(['latency', 'api'], '')).toBe(false);
+  });
 });
 
 // ── loadRunbooks ─────────────────────────────────────────────────────────────
@@ -157,6 +162,16 @@ describe('loadRunbooks', () => {
     writeFileSync(join(dir, 'b.md'), 'overflow content that must not exceed cap');
     const result = loadRunbooks(dir, [{ path: 'a.md' }, { path: 'b.md' }]);
     expect(result.length).toBeLessThanOrEqual(8_000);
+  });
+
+  it('stops loading subsequent runbooks when the character budget is exhausted after the first', () => {
+    const dir = makeTmpDir();
+    // header '\n\n### Runbook: x.md\n\n' = 21 chars; body fills the rest: 8000 - 21 = 7979
+    writeFileSync(join(dir, 'x.md'), 'a'.repeat(7979));
+    writeFileSync(join(dir, 'y.md'), 'should not appear in output');
+    const result = loadRunbooks(dir, [{ path: 'x.md' }, { path: 'y.md' }]);
+    expect(result).not.toContain('should not appear in output');
+    expect(result.length).toBe(8_000);
   });
 
   it('resolves paths relative to configDir', () => {
