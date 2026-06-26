@@ -227,6 +227,11 @@ describe('runKubectl (policy enforcement)', () => {
     expect(await runKubectl('auth reconcile -f rbac.yaml')).toMatch(/^BLOCKED:/);
   });
 
+  it('returns error when only "kubectl" is given with no subcommand', async () => {
+    const result = await runKubectl('kubectl');
+    expect(result).toMatch(/no kubectl subcommand provided/i);
+  });
+
   // The allow path (get/describe/auth can-i not blocked) is asserted in
   // kubectl-safety.test.ts against validateCommand, without spawning kubectl —
   // executing an allowed command here would depend on a live cluster and the
@@ -615,6 +620,16 @@ describe('runKubectl (exec paths)', () => {
     expect(capturedTimeout).toBe(30_000);
   });
 
+  it('uses the default timeout for wait command with no --timeout flag', async () => {
+    let capturedTimeout: number | undefined;
+    stubExec((_cmd, _args, opts, cb) => {
+      capturedTimeout = (opts as { timeout?: number }).timeout;
+      cb(null, { stdout: 'condition met', stderr: '' });
+    });
+    await runKubectl('wait --for=condition=Ready pod/web');
+    expect(capturedTimeout).toBe(30_000);
+  });
+
   // --- In-cluster: KUBECONFIG deleted from env ---
 
   it('removes KUBECONFIG from env when running in-cluster', async () => {
@@ -627,5 +642,92 @@ describe('runKubectl (exec paths)', () => {
     });
     await runKubectl('get pods');
     expect(capturedEnv?.KUBECONFIG).toBeUndefined();
+  });
+
+  // --- Error paths: extractExecError fallbacks ---
+
+  it('falls back to err.stdout when err.stderr is an empty string on failure', async () => {
+    const err = Object.assign(new Error('exit 1'), { stderr: '', stdout: 'stdout-only detail' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as Error, { stdout: '', stderr: '' }));
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/kubectl exited with an error/i);
+    expect(result).toContain('stdout-only detail');
+  });
+
+  it('falls back to err.message when err.stderr and err.stdout are both empty strings', async () => {
+    const err = Object.assign(new Error('timeout'), { stderr: '', stdout: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as Error, { stdout: '', stderr: '' }));
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/kubectl exited with an error/i);
+    expect(result).toContain('timeout');
+  });
+
+  it('falls back to String(err) when err.stderr, err.stdout, and err.message are all empty', async () => {
+    const err = Object.assign(new Error(), { stderr: '', stdout: '', message: '' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as Error, { stdout: '', stderr: '' }));
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/kubectl exited with an error|Error/i);
+  });
+
+  it('handles a non-object thrown error (e.g. plain string)', async () => {
+    stubExec((_cmd, _args, _opts, cb) => cb('plain-string-error' as unknown as Error, { stdout: '', stderr: '' }));
+    const result = await runKubectl('get pods');
+    expect(result).toMatch(/kubectl exited with an error/i);
+    expect(result).toContain('plain-string-error');
+  });
+
+  // --- Namespace lockdown ---
+
+  it('blocks commands targeting a different namespace under lockdown', async () => {
+    const result = await runKubectl('get pods -n staging', { lockedNamespace: 'prod' });
+    expect(result).toMatch(/^BLOCKED:/);
+    expect(result).toContain('staging');
+  });
+
+  it('injects --namespace flag and executes when no namespace is specified under lockdown', async () => {
+    stubExec((_cmd, args, _opts, cb) => {
+      cb(null, { stdout: 'pod-list', stderr: '' });
+    });
+    const result = await runKubectl('get pods', { lockedNamespace: 'prod' });
+    expect(result).toBe('pod-list');
+  });
+
+  // --- redactSecrets: false on error and cache hit ---
+
+  it('does not redact on error output when redactSecrets is false', async () => {
+    const err = Object.assign(new Error('exit 1'), { stderr: 'SENSITIVE data exposed' });
+    stubExec((_cmd, _args, _opts, cb) => cb(err as Error, { stdout: '', stderr: '' }));
+    const result = await runKubectl('get pods', { redactSecrets: false });
+    expect(result).toContain('SENSITIVE data exposed');
+  });
+
+  // --- Cache TTL invalid value ---
+
+  it('uses default TTL when HEIMDALL_KUBECTL_CACHE_TTL is not a valid positive number', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = 'not-a-number';
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '{"items":[]}', stderr: '' }));
+    const result = await runKubectl('get pods -o json');
+    expect(result).toBe('{"items":[]}');
+  });
+
+  // --- Caching with --context flag already in argv (skips effectiveContext lookup) ---
+
+  it('serves cached result without kubeconfig lookup when --context flag is already in argv', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '60';
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '{"items":[]}', stderr: '' }));
+    await runKubectl('get pods --context=prod -o json');
+    await runKubectl('get pods --context=prod -o json');
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+  });
+
+  // --- In-cluster caching: effectiveContext set to IN_CLUSTER_CONTEXT ---
+
+  it('caches get -o json using the in-cluster sentinel as the effective context', async () => {
+    process.env.KUBERNETES_SERVICE_HOST = '10.0.0.1';
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '60';
+    stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '{"items":[]}', stderr: '' }));
+    await runKubectl('get pods -o json');
+    await runKubectl('get pods -o json');
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
   });
 });
