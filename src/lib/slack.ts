@@ -18,11 +18,9 @@ export interface SlackConfig {
   timeoutMs: number;
 }
 
-/** Maximum characters for a Slack section text block (API limit is 3 001; we use 2 000 for safety). */
+/** Slack Block Kit section text limit is 3 000 chars; 2 000 leaves headroom for mrkdwn escaping. */
 export const MAX_SLACK_TEXT_CHARS = 2_000;
-/** Maximum bullet lines extracted from the Thinking Summary section. */
 export const MAX_BULLET_LINES = 3;
-/** Maximum suggested kubectl commands shown in the notification. */
 export const MAX_SUGGESTED_COMMANDS = 3;
 
 const SEVERITY_EMOJI: Record<string, string> = {
