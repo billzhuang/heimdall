@@ -67,6 +67,15 @@ describe('createSession', () => {
     expect(a.id).not.toBe(b.id);
   });
 
+  it('creates the session directory when it does not yet exist', () => {
+    const newDir = join(tmpDir, 'nested', 'sessions');
+    process.env['HEIMDALL_SESSION_DIR'] = newDir;
+    const s = createSession({});
+    const loaded = loadSession(s.id);
+    expect(loaded.id).toBe(s.id);
+    process.env['HEIMDALL_SESSION_DIR'] = tmpDir;
+  });
+
   it('writes a JSON file that loadSession can read back', () => {
     const s = createSession({ name: 'roundtrip' });
     const loaded = loadSession(s.id);
@@ -90,6 +99,21 @@ describe('loadSession', () => {
     const record = createSession({});
     const [file] = readdirSync(tmpDir).filter((f) => f.endsWith('.json'));
     writeFileSync(join(tmpDir, file!), '{"foo":"bar"}', 'utf-8');
+    expect(() => loadSession(record.id)).toThrow(/Invalid session record structure/);
+  });
+
+  it('throws "Failed to parse session" when file contains unparseable content', () => {
+    const record = createSession({});
+    const [file] = readdirSync(tmpDir).filter((f) => f.endsWith('.json'));
+    writeFileSync(join(tmpDir, file!), 'not valid json }{', 'utf-8');
+    expect(() => loadSession(record.id)).toThrow(/Failed to parse session/);
+  });
+
+  it('throws for a session record where name is a non-string type', () => {
+    const record = createSession({});
+    const [file] = readdirSync(tmpDir).filter((f) => f.endsWith('.json'));
+    const corrupt = { id: record.id, serverUrl: 'http://x', createdAt: record.createdAt, lastPromptAt: null, name: 42 };
+    writeFileSync(join(tmpDir, file!), JSON.stringify(corrupt), 'utf-8');
     expect(() => loadSession(record.id)).toThrow(/Invalid session record structure/);
   });
 });
@@ -158,6 +182,12 @@ describe('listSessions', () => {
     // Write a corrupt file directly.
     writeFileSync(join(tmpDir, 'corrupt.json'), 'not-json', 'utf-8');
     expect(() => listSessions()).not.toThrow();
+    expect(listSessions()).toHaveLength(1);
+  });
+
+  it('silently skips structurally invalid (but parseable) JSON files', () => {
+    createSession({});
+    writeFileSync(join(tmpDir, 'wrong-shape.json'), '{"unexpected":"fields"}', 'utf-8');
     expect(listSessions()).toHaveLength(1);
   });
 
