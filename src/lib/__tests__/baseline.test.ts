@@ -196,6 +196,21 @@ describe('upsertBaseline', () => {
       await rm(tmpFile, { force: true });
     }
   });
+
+  it('treats a missing occurrences field as 0 when incrementing', async () => {
+    // Simulates legacy JSONL data where the field was absent: undefined ?? 0 = 0, then +1 = 1.
+    const raw = {
+      key: 'prod/default/Pod/api', cluster: 'prod', namespace: 'default', kind: 'Pod',
+      name: 'api', firstSeen: '2026-01-01T00:00:00.000Z', lastSeen: '2026-01-01T00:00:00.000Z',
+      summary: 'old', dismissed: false,
+      // occurrences intentionally absent
+    };
+    await writeFile(tmpFile, JSON.stringify(raw) + '\n', 'utf8');
+    await upsertBaseline('prod', 'default', 'Pod', 'api', 'updated', tmpFile);
+    const entries = await readBaselines(tmpFile);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].occurrences).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -284,6 +299,18 @@ describe('buildBaselineContext', () => {
     const ctx = buildBaselineContext([entry]);
     expect(ctx.toLowerCase()).toContain('historical');
   });
+
+  it('falls back to "unknown" when firstSeen or lastSeen is not a string', () => {
+    // Covers the false arms of the typeof guards in the template literal.
+    const entry = {
+      key: 'x', cluster: 'c', namespace: 'ns', kind: 'Pod', name: 'p',
+      firstSeen: 12345 as unknown as string,
+      lastSeen: null as unknown as string,
+      occurrences: 1, summary: 'test', dismissed: false,
+    } as BaselineEntry;
+    const ctx = buildBaselineContext([entry]);
+    expect(ctx).toContain('unknown');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -368,6 +395,62 @@ describe('parseTriageFindings', () => {
     expect(findings[0].kind).toBe('Node');
     expect(findings[0].name).toBe('worker-1');
     expect(findings[0].namespace).toBe('cluster');
+  });
+
+  it('breaks inner scan and skips push when a second Severity marker appears before Resource', () => {
+    // The j-loop hits a second **Severity** line → break (branch 210 arm true).
+    // kind/name remain empty → finding not pushed (branch 229 arm false).
+    const text = [
+      '- **Severity**: critical',  // i=0
+      '- **Severity**: warning',   // j=1: Severity test → break; then i=1 processes this
+      '- **Resource**: Pod/api in prod',
+      '- **Message**: crashing',
+    ].join('\n');
+    const findings = parseTriageFindings(text);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].severity).toBe('warning');
+    expect(findings.every((f) => f.severity !== 'critical')).toBe(true);
+  });
+
+  it('skips non-resource lines before finding Resource (covers resMatch-null and non-message paths)', () => {
+    // j=1 is a plain text line: enters !kind block but resMatch=null (branch 213 arm false),
+    // then enters !summary block but msgMatch=null (branch 222 arm false),
+    // then kind&&summary both empty → no early break (branch 226 arm false).
+    const text = [
+      '- **Severity**: critical',
+      'Node details: see runbook',  // non-Resource, non-Message line
+      '- **Resource**: Pod/api in prod',
+      '- **Message**: OOMKilled',
+    ].join('\n');
+    const findings = parseTriageFindings(text);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].kind).toBe('Pod');
+    expect(findings[0].summary).toContain('OOMKilled');
+  });
+
+  it('handles Message appearing before Resource (summary-already-set path)', () => {
+    // j=1 sets summary; j=2 sets kind via continue; j=3 has !summary=false (branch 220 arm false).
+    const text = [
+      '- **Severity**: critical',
+      '- **Message**: crashing',               // sets summary at j=1
+      '- **Resource**: Pod/api in prod',        // sets kind at j=2 via continue
+      '- **Suggested remediation**: kubectl delete pod api -n prod', // j=3: !summary=false
+    ].join('\n');
+    const findings = parseTriageFindings(text);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].summary).toBe('crashing');
+  });
+
+  it('uses fallback summary when Resource is found but Message is absent', () => {
+    // summary stays '' → findings.push uses the || fallback string (branch 230 arm false).
+    const text = [
+      '- **Severity**: critical',
+      '- **Resource**: Pod/api in prod',
+      '- **Suggested remediation**: kubectl delete pod api -n prod',
+    ].join('\n');
+    const findings = parseTriageFindings(text);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].summary).toMatch(/critical.*Pod\/api/i);
   });
 });
 
