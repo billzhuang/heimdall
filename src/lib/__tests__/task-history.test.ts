@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -84,11 +84,15 @@ describe('appendTaskHistoryEntry / readTaskHistory', () => {
   });
 
   it('skips malformed JSONL lines without crashing', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const good = buildTaskHistoryEntry('ok', 'm', 'info', 's');
     await writeFile(tmpFile, `not-valid-json\n${JSON.stringify(good)}\n{broken\n`, 'utf8');
     const entries = await readTaskHistory(tmpFile);
     expect(entries).toHaveLength(1);
     expect(entries[0].prompt).toBe('ok');
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('malformed JSONL'));
+    warnSpy.mockRestore();
   });
 
   it('skips blank lines', async () => {
@@ -96,6 +100,12 @@ describe('appendTaskHistoryEntry / readTaskHistory', () => {
     await writeFile(tmpFile, `\n\n${JSON.stringify(e)}\n\n`, 'utf8');
     const entries = await readTaskHistory(tmpFile);
     expect(entries).toHaveLength(1);
+  });
+
+  it('returns empty array for a whitespace-only file', async () => {
+    await writeFile(tmpFile, '   \n\t\n  \n', 'utf8');
+    const entries = await readTaskHistory(tmpFile);
+    expect(entries).toEqual([]);
   });
 
   it('rethrows non-ENOENT errors from readFile', async () => {
@@ -163,6 +173,27 @@ describe('buildTaskHistoryContext', () => {
       { id: 'b', timestamp: 't', prompt: 'p2', model: 'm', severity: 'critical', summary: 's2' },
     ];
     const out = buildTaskHistoryContext(entries);
+    expect(out).toContain('### 1.');
+    expect(out).toContain('### 2.');
+  });
+
+  it('returns placeholder when maxEntries is 0 (guards the slice(-0)=slice(0) pitfall)', () => {
+    const entries: TaskHistoryEntry[] = [
+      { id: 'a', timestamp: 't', prompt: 'p1', model: 'm', severity: 'info', summary: 's1' },
+    ];
+    // entries.slice(-0) === entries.slice(0) → would return all entries without the fix
+    const out = buildTaskHistoryContext(entries, 0);
+    expect(out).toBe('No task history entries yet.');
+  });
+
+  it('returns all entries when maxEntries exceeds the array length', () => {
+    const entries: TaskHistoryEntry[] = [
+      { id: 'a', timestamp: 't', prompt: 'p1', model: 'm', severity: 'info', summary: 's1' },
+      { id: 'b', timestamp: 't', prompt: 'p2', model: 'm', severity: 'warning', summary: 's2' },
+    ];
+    const out = buildTaskHistoryContext(entries, 100);
+    expect(out).toContain('p1');
+    expect(out).toContain('p2');
     expect(out).toContain('### 1.');
     expect(out).toContain('### 2.');
   });
