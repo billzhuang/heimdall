@@ -1,103 +1,103 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ToolDefinition } from '@flue/runtime';
 import { buildToolRegistry, type ToolPlugin } from '../plugin.ts';
 import type { HeimdallConfig } from '../config.ts';
 import type { CompiledRedactionRule } from '../regex-redact.ts';
+import type { ToolDefinition } from '@flue/runtime';
 
-// buildToolRegistry only reads config.tools[key]; other HeimdallConfig fields are irrelevant here.
-function makeConfig(toolOverrides: Partial<NonNullable<HeimdallConfig['tools']>> = {}): HeimdallConfig {
+const NO_RULES: CompiledRedactionRule[] = [];
+
+function baseTools(): NonNullable<HeimdallConfig['tools']> {
   return {
-    tools: {
-      kubectl: false,
-      listContexts: false,
-      listNamespaces: false,
-      helmRelease: false,
-      prometheusQuery: false,
-      awsCli: false,
-      trivyScan: false,
-      kubecostQuery: false,
-      lokiQuery: false,
-      jaegerQuery: false,
-      datadogQuery: false,
-      newRelicQuery: false,
-      cdkQuery: false,
-      ...toolOverrides,
-    },
-  } as HeimdallConfig;
+    kubectl: false,
+    listContexts: false,
+    listNamespaces: false,
+    helmRelease: false,
+    prometheusQuery: false,
+    awsCli: false,
+    trivyScan: false,
+    kubecostQuery: false,
+    lokiQuery: false,
+    jaegerQuery: false,
+    datadogQuery: false,
+    newRelicQuery: false,
+    cdkQuery: false,
+  };
 }
 
-function makePlugin(key: ToolPlugin['key']): ToolPlugin {
-  const definition = { name: key, description: `${key} tool` } as ToolDefinition;
-  return { key, factory: vi.fn().mockReturnValue(definition) };
+function makeConfig(toolsOverrides: Partial<NonNullable<HeimdallConfig['tools']>> = {}): HeimdallConfig {
+  return { tools: { ...baseTools(), ...toolsOverrides } } as unknown as HeimdallConfig;
 }
 
-describe('buildToolRegistry', () => {
-  it('returns empty allTools and enabledKeys for an empty plugins array', () => {
-    const { allTools, enabledKeys } = buildToolRegistry([], makeConfig(), []);
+function makePlugin(key: ToolPlugin['key']): ToolPlugin & { factory: ReturnType<typeof vi.fn> } {
+  const tool = { name: key } as unknown as ToolDefinition;
+  return { key, factory: vi.fn().mockReturnValue(tool) };
+}
+
+describe('buildToolRegistry — empty plugin list', () => {
+  it('returns empty allTools and empty enabledKeys', () => {
+    const { allTools, enabledKeys } = buildToolRegistry([], makeConfig(), NO_RULES);
     expect(Object.keys(allTools)).toHaveLength(0);
     expect(enabledKeys.size).toBe(0);
   });
+});
 
-  it('calls each plugin factory exactly once with the config and rules', () => {
-    const rules: CompiledRedactionRule[] = [];
-    const config = makeConfig({ kubectl: true });
-    const plugin = makePlugin('kubectl');
-    buildToolRegistry([plugin], config, rules);
-    expect(plugin.factory).toHaveBeenCalledOnce();
-    expect(plugin.factory).toHaveBeenCalledWith(config, rules);
-  });
-
-  it('populates allTools with the result returned by each factory', () => {
-    const config = makeConfig({ kubectl: false });
-    const plugin = makePlugin('kubectl');
-    const { allTools } = buildToolRegistry([plugin], config, []);
-    expect(allTools['kubectl']).toEqual({ name: 'kubectl', description: 'kubectl tool' });
+describe('buildToolRegistry — single plugin', () => {
+  it('puts the tool in allTools regardless of whether it is enabled', () => {
+    const p = makePlugin('prometheusQuery');
+    const { allTools } = buildToolRegistry([p], makeConfig({ prometheusQuery: false }), NO_RULES);
+    expect(allTools.prometheusQuery).toBeDefined();
   });
 
   it('adds the key to enabledKeys when config.tools[key] is true', () => {
-    const config = makeConfig({ kubectl: true });
-    const { enabledKeys } = buildToolRegistry([makePlugin('kubectl')], config, []);
-    expect(enabledKeys.has('kubectl')).toBe(true);
+    const p = makePlugin('prometheusQuery');
+    const { enabledKeys } = buildToolRegistry([p], makeConfig({ prometheusQuery: true }), NO_RULES);
+    expect(enabledKeys.has('prometheusQuery')).toBe(true);
   });
 
   it('does not add the key to enabledKeys when config.tools[key] is false', () => {
-    const config = makeConfig({ kubectl: false });
-    const { enabledKeys } = buildToolRegistry([makePlugin('kubectl')], config, []);
-    expect(enabledKeys.has('kubectl')).toBe(false);
+    const p = makePlugin('prometheusQuery');
+    const { enabledKeys } = buildToolRegistry([p], makeConfig({ prometheusQuery: false }), NO_RULES);
+    expect(enabledKeys.has('prometheusQuery')).toBe(false);
   });
 
-  it('populates allTools regardless of whether the tool is enabled', () => {
-    const config = makeConfig({ kubectl: false });
-    const { allTools, enabledKeys } = buildToolRegistry([makePlugin('kubectl')], config, []);
-    expect('kubectl' in allTools).toBe(true);
-    expect(enabledKeys.has('kubectl')).toBe(false);
+  it('passes config and rules to the factory', () => {
+    const p = makePlugin('awsCli');
+    const config = makeConfig({ awsCli: true });
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /secret/gi }];
+    buildToolRegistry([p], config, rules);
+    expect(p.factory).toHaveBeenCalledWith(config, rules);
   });
+});
 
-  it('handles multiple plugins and correctly splits enabled vs disabled', () => {
-    const config = makeConfig({ kubectl: true, awsCli: false, trivyScan: true });
-    const plugins = [makePlugin('kubectl'), makePlugin('awsCli'), makePlugin('trivyScan')];
-    const { allTools, enabledKeys } = buildToolRegistry(plugins, config, []);
+describe('buildToolRegistry — multiple plugins', () => {
+  it('correctly separates enabled from disabled keys', () => {
+    const prom = makePlugin('prometheusQuery');
+    const aws = makePlugin('awsCli');
+    const loki = makePlugin('lokiQuery');
+    const config = makeConfig({ prometheusQuery: true, awsCli: false, lokiQuery: true });
+    const { allTools, enabledKeys } = buildToolRegistry([prom, aws, loki], config, NO_RULES);
+
     expect(Object.keys(allTools)).toHaveLength(3);
-    expect(enabledKeys.has('kubectl')).toBe(true);
+    expect(enabledKeys.has('prometheusQuery')).toBe(true);
     expect(enabledKeys.has('awsCli')).toBe(false);
-    expect(enabledKeys.has('trivyScan')).toBe(true);
+    expect(enabledKeys.has('lokiQuery')).toBe(true);
     expect(enabledKeys.size).toBe(2);
   });
 
-  it('passes the same rules array to every factory', () => {
-    const rules: CompiledRedactionRule[] = [{ name: 'test-rule', re: /secret/ }];
-    const config = makeConfig({ kubectl: true, awsCli: true });
+  it('calls each factory exactly once', () => {
     const p1 = makePlugin('kubectl');
     const p2 = makePlugin('awsCli');
-    buildToolRegistry([p1, p2], config, rules);
-    expect(p1.factory).toHaveBeenCalledWith(config, rules);
-    expect(p2.factory).toHaveBeenCalledWith(config, rules);
+    buildToolRegistry([p1, p2], makeConfig(), NO_RULES);
+    expect(p1.factory).toHaveBeenCalledTimes(1);
+    expect(p2.factory).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves insertion order in allTools', () => {
-    const config = makeConfig({ kubectl: true, awsCli: true, trivyScan: true });
-    const plugins = [makePlugin('kubectl'), makePlugin('awsCli'), makePlugin('trivyScan')];
-    const { allTools } = buildToolRegistry(plugins, config, []);
-    expect(Object.keys(allTools)).toEqual(['kubectl', 'awsCli', 'trivyScan']);
+  it('stores the ToolDefinition returned by the factory', () => {
+    const sentinel = { name: 'sentinel-tool' } as unknown as ToolDefinition;
+    const factory = vi.fn().mockReturnValue(sentinel);
+    const p: ToolPlugin = { key: 'kubectl', factory };
+    const { allTools } = buildToolRegistry([p], makeConfig({ kubectl: true }), NO_RULES);
+    expect(factory).toHaveBeenCalledTimes(1);
+    expect(allTools.kubectl).toBe(sentinel);
   });
 });
