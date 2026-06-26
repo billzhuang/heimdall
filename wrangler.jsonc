@@ -1,0 +1,76 @@
+{
+  // Cloudflare Workers configuration for Heimdall.
+  //
+  // Build:  npm run build:cloudflare
+  // Deploy: npm run deploy:cloudflare
+  //
+  // Flue generates DO classes, bindings, and wrangler.json for the
+  // Cloudflare target. Deploy from the generated config, not this file:
+  //   npx wrangler deploy --config dist/heimdall/wrangler.json
+  //
+  // This file is the source-root declaration: Worker name, compatibility
+  // settings, Durable Object migration history, and application vars.
+  // Flue merges its generated bindings into dist/heimdall/wrangler.json at
+  // build time — do NOT hand-author FLUE_* bindings here.
+  //
+  // ⚠️  CLOUDFLARE WORKERS LIMITATIONS — read before deploying:
+  //
+  //   node:fs is NOT available in the Cloudflare Workers runtime even with
+  //   nodejs_compat. Heimdall's loadConfig() calls existsSync/readFileSync
+  //   at module load time, so a full production Cloudflare deployment
+  //   requires either:
+  //     a) A Workers-compatible config loader (reads from env vars / KV,
+  //        not the filesystem), or
+  //     b) Keeping all tools at their schema defaults (kubectl:true etc.),
+  //        accepting that subprocess tools will fail gracefully when invoked
+  //        (kubectl binary is not available in Workers).
+  //
+  //   HTTP-based tools (prometheusQuery, lokiQuery, jaegerQuery,
+  //   datadogQuery, newRelicQuery, kubecostQuery) work on Cloudflare.
+  //   Subprocess tools (kubectl, listContexts, listNamespaces, helmRelease,
+  //   awsCli, trivyScan, cdkQuery) do not — they require execFile.
+  //
+  //   Track the Workers-compatible config loader: TOO-198.
+
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "heimdall",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Durable Object migration history — append a new entry for every new
+  // agent or workflow class; never rewrite deployed entries.
+  //
+  // Generated Flue classes:
+  //   FlueRegistry      — internal Flue index DO (required in every deploy)
+  //   FlueHeimdallAgent — generated from src/agents/heimdall.ts
+  //
+  // Use new_sqlite_classes (not legacy new_classes) for all Flue-generated
+  // agent classes.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FlueRegistry", "FlueHeimdallAgent"]
+    }
+  ],
+
+  "vars": {
+    // Model selection.
+    //
+    // Option A — Cloudflare Workers AI (no external API key; Workers AI billing):
+    //   "HEIMDALL_MODEL": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    //
+    // Option B — Anthropic (requires ANTHROPIC_API_KEY secret):
+    //   "HEIMDALL_MODEL": "anthropic/claude-sonnet-4-6"
+    //   Then run: npx wrangler secret put ANTHROPIC_API_KEY
+    "HEIMDALL_MODEL": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+  }
+
+  // Required secrets — set via: npx wrangler secret put <NAME>
+  // Never commit secret values to this file.
+  //
+  // ANTHROPIC_API_KEY   — required when using "anthropic/" model provider
+  // DD_API_KEY          — required when datadogQuery tool is enabled
+  // DD_APP_KEY          — required when datadogQuery tool is enabled
+  // NEW_RELIC_API_KEY   — required when newRelicQuery tool is enabled
+  // NEW_RELIC_ACCOUNT_ID — required when newRelicQuery tool is enabled
+}

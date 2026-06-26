@@ -301,8 +301,8 @@ access to a live cluster.
 ### Prerequisites
 
 ```bash
-npm install -g wrangler   # Cloudflare's CLI
-wrangler login            # authenticate with your Cloudflare account
+npm install          # installs wrangler from devDependencies
+npx wrangler login   # authenticate with your Cloudflare account
 ```
 
 ### Deployment steps
@@ -312,62 +312,58 @@ wrangler login            # authenticate with your Cloudflare account
 npm run build:cloudflare
 
 # 2. (Optional) Set ANTHROPIC_API_KEY if you prefer Anthropic over Workers AI
-wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
 
 # 3. Set API keys for any observability tools you enable
-wrangler secret put DD_API_KEY          # Datadog
-wrangler secret put DD_APP_KEY          # Datadog
-wrangler secret put NEW_RELIC_API_KEY   # New Relic
+npx wrangler secret put DD_API_KEY           # Datadog
+npx wrangler secret put DD_APP_KEY           # Datadog
+npx wrangler secret put NEW_RELIC_API_KEY    # New Relic
+npx wrangler secret put NEW_RELIC_ACCOUNT_ID # New Relic (required alongside API key)
 
 # 4. Deploy
 npm run deploy:cloudflare
 ```
 
-The deploy command runs `flue build --target cloudflare` (which emits
-`dist/worker.mjs`) and then calls `wrangler deploy` using `wrangler.toml`.
+`npm run deploy:cloudflare` runs `flue build --target cloudflare` and then
+`npx wrangler deploy --config dist/heimdall/wrangler.json`. Flue generates the
+final `wrangler.json` (with Durable Object bindings) at build time; always deploy
+from that generated config, not the source-root `wrangler.jsonc`.
 
 ### Configuration
 
-The repo ships with `heimdall.config.cloudflare.yaml` — a ready-to-use config
-that disables all subprocess tools and leaves HTTP tools ready to enable. Set the
-`HEIMDALL_CONFIG` environment variable to point at it:
+> **Note:** Cloudflare Workers' `nodejs_compat` flag does **not** polyfill
+> `node:fs`. Heimdall's `loadConfig()` uses `existsSync`/`readFileSync` at module
+> load time and will throw on CF Workers. Subprocess tools (kubectl, awsCli, etc.)
+> are listed as disabled in `wrangler.jsonc` comments for reference only — the
+> actual config loading from a YAML file is not supported on Workers. Track the
+> Workers-compatible config loader: TOO-198.
 
-```bash
-# In wrangler.toml [vars] or via wrangler secret put:
-HEIMDALL_CONFIG = "heimdall.config.cloudflare.yaml"
-```
-
-Then edit `heimdall.config.cloudflare.yaml` to enable the HTTP tools you have:
-
-```yaml
-tools:
-  prometheusQuery: true
-  lokiQuery: true
-  # ... etc
-
-prometheus:
-  url: "https://prometheus.example.com"
-```
+Heimdall's model and other runtime settings can be changed via `wrangler.jsonc`
+`vars` or Wrangler secrets without a code change.
 
 ### Model selection
 
-By default `wrangler.toml` uses **Cloudflare Workers AI** — no external API
+By default `wrangler.jsonc` uses **Cloudflare Workers AI** — no external API
 key is required, and usage is billed through your Workers AI plan:
 
-```toml
-[vars]
-HEIMDALL_MODEL = "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "HEIMDALL_MODEL": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+}
 ```
 
-To use an Anthropic model instead, update `wrangler.toml` and add the key:
+To use an Anthropic model instead, update `wrangler.jsonc` and add the key:
 
-```toml
-[vars]
-HEIMDALL_MODEL = "anthropic/claude-sonnet-4-6"
+```jsonc
+// wrangler.jsonc
+"vars": {
+  "HEIMDALL_MODEL": "anthropic/claude-sonnet-4-6"
+}
 ```
 
 ```bash
-wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put ANTHROPIC_API_KEY
 ```
 
 ### Architecture: hybrid Cloudflare + in-cluster agent

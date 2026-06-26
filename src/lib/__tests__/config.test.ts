@@ -435,7 +435,7 @@ describe('loadConfig', () => {
       expect(config.loki?.url).toBe('https://loki.example.com');
     });
 
-    it('all subprocess tools default to disabled — safe base for Cloudflare', () => {
+    it('explicitly disabling subprocess tools in config is the required safe pattern for Cloudflare', () => {
       const configPath = join(tmpDir, 'heimdall.config.cloudflare.yaml');
       // Minimal config disabling only subprocess tools; HTTP tools remain at defaults.
       writeFileSync(
