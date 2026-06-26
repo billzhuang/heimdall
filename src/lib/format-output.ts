@@ -250,10 +250,10 @@ const CRITICAL_SIGNAL_RE = /\b(?:critical|outage|unavailable)\b/;
  * e.g. "no warning events", "without errors", "no crashloopbackoff".
  */
 const NEGATION_SUPPRESS_RE =
-  /\b(?:no|without)\s+(?:warnings?|errors?|fail(?:ed|ing)?|degraded|back-?off|crashloop(?:backoff)?|oomkilled?)\b/;
+  /\b(?:no|without)\s+(?:warnings?|errors?|fail(?:s|ed|ing|ures?)?|degraded|back-?off|crashloop(?:backoff)?|oomkilled?)\b/;
 
 const WARNING_SIGNAL_RE =
-  /\b(?:warning|degraded|oomkilled?|crashloop(?:backoff)?|back-?off|failed|failing|error)\b/;
+  /\b(?:warning|degraded|oomkilled?|crashloop(?:backoff)?|back-?off|fail(?:s|ed|ing|ures?)?|error)\b/;
 
 /**
  * Infer a severity level from answer text using keyword matching.

@@ -342,6 +342,26 @@ describe('inferSeverity', () => {
     expect(inferSeverity('The liveness probe is failing.')).toBe('warning');
   });
 
+  it('returns "warning" for text containing "failure"', () => {
+    expect(inferSeverity('Deployment failure detected.')).toBe('warning');
+  });
+
+  it('returns "warning" for text containing "failures"', () => {
+    expect(inferSeverity('Multiple pod failures in the last hour.')).toBe('warning');
+  });
+
+  it('returns "warning" for text containing "fails"', () => {
+    expect(inferSeverity('The readiness probe fails on every attempt.')).toBe('warning');
+  });
+
+  it('returns "info" for "no failures" (negation suppresses false positive)', () => {
+    expect(inferSeverity('All checks passed with no failures.')).toBe('info');
+  });
+
+  it('returns "info" for "no failure" (negation suppresses false positive)', () => {
+    expect(inferSeverity('Deployment completed with no failure.')).toBe('info');
+  });
+
   it('prioritises "critical" over "warning" keywords when both are present', () => {
     expect(inferSeverity('Critical outage causing errors and failures.')).toBe('critical');
   });
