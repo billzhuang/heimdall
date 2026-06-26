@@ -519,13 +519,13 @@ resource "kubernetes_service_v1" "heimdall" {
 
     port {
       name        = "http"
-      port        = 80
+      port        = var.service_port
       target_port = 3000
       protocol    = "TCP"
     }
 
-    type = "ClusterIP"
+    type = var.service_type
   }
 
-  depends_on = [kubernetes_deployment.heimdall]
+  depends_on = [kubernetes_namespace.heimdall]
 }

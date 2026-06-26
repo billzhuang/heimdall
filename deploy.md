@@ -52,7 +52,7 @@ kubectl apply -f deploy/service.yaml
 After the pod is ready, verify the health endpoint:
 
 ```bash
-kubectl run -it --rm curl --image=curlimages/curl --restart=Never -- \
+kubectl run --rm curl --image=curlimages/curl --restart=Never -- \
   curl -sf http://heimdall.heimdall/api/health
 ```
 
