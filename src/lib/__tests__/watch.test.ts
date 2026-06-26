@@ -92,6 +92,16 @@ describe('parseEventLine', () => {
       expect(parseEventLine(wrapped)).not.toBeNull();
     }
   });
+
+  it('returns null when metadata is null', () => {
+    const raw = JSON.stringify({ kind: 'Event', reason: 'BackOff', message: 'x', metadata: null, involvedObject: {} });
+    expect(parseEventLine(raw)).toBeNull();
+  });
+
+  it('returns null when involvedObject is null', () => {
+    const raw = JSON.stringify({ kind: 'Event', reason: 'BackOff', message: 'x', metadata: {}, involvedObject: null });
+    expect(parseEventLine(raw)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -156,6 +166,12 @@ describe('matchesWatchFilter', () => {
     expect(matchesWatchFilter(makeEvent({ metadata: { namespace: 'prod' }, reason: 'BackOff' }), config)).toBe(false);
     // right reason, wrong namespace
     expect(matchesWatchFilter(makeEvent({ metadata: { namespace: 'staging' }, reason: 'OOMKilled' }), config)).toBe(false);
+  });
+
+  it('uses empty string as namespace when both metadata and involvedObject namespace are absent', () => {
+    const event = makeEvent({ metadata: { name: 'e' }, involvedObject: { kind: 'Pod', name: 'x' } });
+    // '' is not in ['prod'], so the event is rejected
+    expect(matchesWatchFilter(event, { namespaces: ['prod'] })).toBe(false);
   });
 });
 
@@ -238,6 +254,21 @@ describe('formatFinding', () => {
     expect(parsed.reason).toBe('BackOff');
     expect(parsed.diagnosis).toBe('diag');
   });
+
+  it('uses "unknown" namespace when both metadata and involvedObject namespace are absent', () => {
+    const event = makeEvent({ metadata: { name: 'e' }, involvedObject: { kind: 'Pod', name: 'x' } });
+    expect(formatFinding(event, 'ts').namespace).toBe('unknown');
+  });
+
+  it('uses "Unknown" objectKind when involvedObject.kind is absent', () => {
+    const event = makeEvent({ involvedObject: { name: 'x', namespace: 'default' } });
+    expect(formatFinding(event, 'ts').objectKind).toBe('Unknown');
+  });
+
+  it('uses "unknown" objectName when involvedObject.name is absent', () => {
+    const event = makeEvent({ involvedObject: { kind: 'Pod', namespace: 'default' } });
+    expect(formatFinding(event, 'ts').objectName).toBe('unknown');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -301,6 +332,16 @@ describe('eventCooldownKey', () => {
     const a = makeEvent({ involvedObject: { kind: 'Pod', name: 'pod-1' } });
     const b = makeEvent({ involvedObject: { kind: 'Pod', name: 'pod-2' } });
     expect(eventCooldownKey(a)).not.toBe(eventCooldownKey(b));
+  });
+
+  it('uses "Unknown" for kind when involvedObject.kind is absent', () => {
+    const event = makeEvent({ involvedObject: { name: 'x', namespace: 'default' } });
+    expect(eventCooldownKey(event)).toBe('default/Unknown/x/BackOff');
+  });
+
+  it('uses "unknown" for name when involvedObject.name is absent', () => {
+    const event = makeEvent({ involvedObject: { kind: 'Pod', namespace: 'default' } });
+    expect(eventCooldownKey(event)).toBe('default/Pod/unknown/BackOff');
   });
 });
 
@@ -395,6 +436,20 @@ describe('shouldDiagnose', () => {
     shouldDiagnose(original, state, 1_000, 300);
     // Even immediately after, the recreated pod with a different uid is a fresh key
     expect(shouldDiagnose(recreated, state, 1_001, 300)).toBe(true);
+  });
+
+  it('evicts multiple oldest entries when state exceeds MAX_COOLDOWN_ENTRIES by more than one', () => {
+    const state: CooldownState = new Map();
+    const now = 1_000_000;
+    const cooldown = 300;
+    // 10_002 unexpired entries: expiry scan finds nothing, so inner eviction loop
+    // must iterate more than once before size drops below the cap.
+    for (let i = 0; i < 10_002; i++) {
+      state.set(`active-${i}`, now - 10_000);
+    }
+    shouldDiagnose(makeEvent(), state, now, cooldown);
+    expect(state.size).toBeLessThanOrEqual(10_000);
+    expect(state.has(eventCooldownKey(makeEvent()))).toBe(true);
   });
 });
 
