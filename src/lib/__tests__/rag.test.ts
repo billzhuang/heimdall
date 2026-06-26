@@ -341,7 +341,7 @@ describe('selectDiverseEntries', () => {
     ];
     const result = selectDiverseEntries(history, 1);
     expect(result).toHaveLength(1);
-    expect(result[0].id).toBe(history[history.length - 1].id);
+    expect(result[0]).toBe(history[history.length - 1]);
   });
 
   it('returns diverse entries (not all on the same topic)', () => {
