@@ -164,3 +164,31 @@ export function detectTriageSeverity(report: string): ActionSeverity {
   if (/(?:^|\n)\s*info(?=[:\s,.]|$)/.test(lower))     return 'info';
   return 'ok';
 }
+
+/** All valid literal values accepted by the `fail-on-severity` action input. */
+export const VALID_FAIL_ON_SEVERITIES: readonly ActionSeverity[] = ['critical', 'warning', 'info', 'ok'];
+
+export type FailOnDecision =
+  | { ok: true }
+  | { ok: false; reason: 'invalid-value'; value: string }
+  | { ok: false; reason: 'threshold-met'; found: ActionSeverity; threshold: ActionSeverity };
+
+/**
+ * Pure helper that decides whether a GitHub Action should fail given a
+ * `failOn` threshold string and the detected `found` severity.
+ *
+ * Returns `{ ok: true }` when no failure is warranted, or a discriminated
+ * union describing _why_ the action should fail so the caller can emit the
+ * appropriate message and exit.
+ */
+export function evaluateFailOn(failOn: string, found: ActionSeverity): FailOnDecision {
+  const trimmed = failOn.trim();
+  if (!trimmed) return { ok: true };
+  const lower = trimmed.toLowerCase();
+  if (!(VALID_FAIL_ON_SEVERITIES as readonly string[]).includes(lower)) {
+    return { ok: false, reason: 'invalid-value', value: failOn };
+  }
+  return severityAtLeast(found, lower as ActionSeverity)
+    ? { ok: false, reason: 'threshold-met', found, threshold: lower as ActionSeverity }
+    : { ok: true };
+}
