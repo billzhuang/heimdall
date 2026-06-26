@@ -28,6 +28,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { HeimdallConfig } from './lib/config.ts';
+import { upsertBaseline, resolveBaselineFilePath, inferDiagnosisSeverity, truncateSummary } from './lib/baseline.ts';
 import { resolveModel } from './lib/model.ts';
 import {
   parseEventLine,
@@ -112,6 +113,7 @@ async function runWatchStream(
   cooldownSeconds: number,
   signal: AbortSignal,
   eventSink: EventSink | null,
+  baselineFile: string | null,
   model?: string,
 ): Promise<void> {
   const kubectl = spawn('kubectl', kubectlArgs, {
@@ -178,6 +180,19 @@ async function runWatchStream(
 
     process.stdout.write(JSON.stringify(finding) + '\n');
 
+    // Write a baseline entry so recurring events are recognised in future runs.
+    if (baselineFile) {
+      const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
+      const severity = inferDiagnosisSeverity(diagnosis);
+      const summary = truncateSummary(`[${event.reason}] ${diagnosis}`);
+      try {
+        await upsertBaseline(clusterName, ns, event.involvedObject.kind ?? 'Unknown', event.involvedObject.name ?? 'unknown', summary, baselineFile);
+      } catch (err: unknown) {
+        process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${err instanceof Error ? err.message : String(err)}\n`);
+      }
+      void severity; // severity captured for future filtering; currently all watch events are recorded
+    }
+
     if (watchCfg?.webhook) {
       postWebhook(watchCfg.webhook, finding).catch((err: unknown) => {
         process.stderr.write(`[heimdall-watch] Webhook error: ${String(err)}\n`);
@@ -202,6 +217,13 @@ export async function runWatchMode(model?: string): Promise<void> {
   const cooldownSeconds = watchCfg?.cooldownSeconds ?? 300;
   const maxAttempts = watchCfg?.maxReconnectAttempts ?? null;
   const cooldownState: CooldownState = new Map();
+
+  const baselineFile = config.learning?.enabled !== false
+    ? (() => {
+        const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
+        return resolveBaselineFilePath(config.learning?.baselineFile, configDir);
+      })()
+    : null;
 
   // Watch a single namespace explicitly, or all namespaces (-A).
   const kubectlArgs =
@@ -239,7 +261,7 @@ export async function runWatchMode(model?: string): Promise<void> {
     const streamStartMs = Date.now();
 
     try {
-      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink, model);
+      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink, baselineFile, model);
     } catch (err: unknown) {
       if (controller.signal.aborted) break;
       const detail = err instanceof Error ? err.message : String(err);

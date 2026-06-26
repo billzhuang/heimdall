@@ -243,6 +243,10 @@ const LearningSchema = v.nullish(
     // In container/lambda deployments where the local filesystem is ephemeral, set this
     // to a path on a mounted persistent volume, or use HEIMDALL_LEARNING_LOG env var.
     logFile: v.nullish(v.string()),
+    // Path for the anomaly baseline JSONL store. Defaults to scenarios/baselines.jsonl.
+    // Baselines accumulate recurring critical/warning findings across triage and watch runs,
+    // so the agent can recognise known patterns without re-investigating from scratch.
+    baselineFile: v.nullish(v.string()),
     // RAG-based semantic retrieval over task history (disabled by default).
     rag: RagSchema,
   }),
