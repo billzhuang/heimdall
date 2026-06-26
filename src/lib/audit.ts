@@ -21,24 +21,24 @@ export interface AuditEntry {
 export async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | undefined): Promise<void> {
   try {
     if (!audit?.enabled) return;
-    const line = JSON.stringify(entry);
-    if (audit.file) {
-      try {
-        await appendFile(audit.file, line + '\n', 'utf8');
-      } catch (err) {
-        if ((err as { code?: string }).code === 'ENOENT') {
-          try {
-            await mkdir(dirname(audit.file), { recursive: true });
-            await appendFile(audit.file, line + '\n', 'utf8');
-          } catch {
-            process.stderr.write(line + '\n');
-          }
-        } else {
-          process.stderr.write(line + '\n');
-        }
+    const line = JSON.stringify(entry) + '\n';
+    if (!audit.file) {
+      process.stderr.write(line);
+      return;
+    }
+    try {
+      await appendFile(audit.file, line, 'utf8');
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'ENOENT') {
+        process.stderr.write(line);
+        return;
       }
-    } else {
-      process.stderr.write(line + '\n');
+      try {
+        await mkdir(dirname(audit.file), { recursive: true });
+        await appendFile(audit.file, line, 'utf8');
+      } catch {
+        process.stderr.write(line);
+      }
     }
   } catch {
     // Audit failures must never disrupt the main execution path.
