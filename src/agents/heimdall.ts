@@ -13,7 +13,7 @@
  */
 import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
-import { initTelemetry, isTelemetryEnabled, recordToolCall } from '../lib/telemetry.ts';
+import { initTelemetry, isTelemetryEnabled, recordToolCall, startOtelExport } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
 import { kubectlPlugin } from '../tools/kubectl.ts';
 import { listContextsPlugin, listNamespacesPlugin } from '../tools/kubeconfig.ts';
@@ -42,6 +42,7 @@ const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
 
 initTelemetry(config.telemetry ?? { enabled: false });
+startOtelExport(config.otel ?? { enabled: false });
 
 const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
 const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);

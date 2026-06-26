@@ -188,8 +188,17 @@ export function parseOtelHeaders(raw: string): Record<string, string> {
   for (const pair of raw.split(',')) {
     const eq = pair.indexOf('=');
     if (eq < 0) continue;
-    const key = decodeURIComponent(pair.slice(0, eq).trim());
-    const value = decodeURIComponent(pair.slice(eq + 1).trim());
+    const rawKey = pair.slice(0, eq).trim();
+    const rawValue = pair.slice(eq + 1).trim();
+    let key: string;
+    let value: string;
+    try {
+      key = decodeURIComponent(rawKey);
+      value = decodeURIComponent(rawValue);
+    } catch {
+      key = rawKey;
+      value = rawValue;
+    }
     if (key) result[key] = value;
   }
   return result;
@@ -233,7 +242,7 @@ export function buildOtlpPayload(
           asInt: Math.round(value),
           attributes: [],
         }],
-        aggregationTemporality: 2, // AGGREGATION_TEMPORALITY_DELTA
+        aggregationTemporality: 2, // AGGREGATION_TEMPORALITY_CUMULATIVE
         isMonotonic: true,
       },
     };
@@ -302,6 +311,7 @@ export async function pushOtlpMetrics(
     if (!res.ok) {
       process.stderr.write(`[heimdall-otel] OTLP push failed: HTTP ${res.status}\n`);
     }
+    await res.text(); // drain body to release the socket
   } catch (err) {
     process.stderr.write(`[heimdall-otel] OTLP push error: ${String(err)}\n`);
   } finally {
@@ -376,7 +386,8 @@ export function formatPrometheusMetrics(
   snapshot: TelemetrySnapshot,
   serviceName = 'heimdall',
 ): string {
-  const label = `{service="${serviceName}"}`;
+  const escapedService = serviceName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const label = `{service="${escapedService}"}`;
   const lines: string[] = [];
 
   const metrics: Array<[string, 'counter' | 'gauge', string, number]> = [

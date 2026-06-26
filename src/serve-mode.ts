@@ -232,6 +232,7 @@ export function createServeApp(
   agentFn: (prompt: string, model: string) => Promise<string> = runAgentDiagnose,
   serveDefaultModel?: string,
   apiKey?: string | null,
+  metricsServiceName?: string,
 ): Hono {
   const app = new Hono();
 
@@ -259,7 +260,7 @@ export function createServeApp(
   // Prometheus metrics endpoint — always public (no auth) so scrapers work without credentials.
   app.get('/metrics', (c) => {
     const snapshot = getTelemetrySnapshot();
-    const body = formatPrometheusMetrics(snapshot);
+    const body = formatPrometheusMetrics(snapshot, metricsServiceName);
     return c.text(body, 200, {
       'Content-Type': 'text/plain; version=0.0.4; charset=utf-8',
     });
@@ -408,7 +409,11 @@ Examples:
   const rawApiKey = process.env['HEIMDALL_API_KEY'] ?? config.server?.apiKey;
   const apiKey = rawApiKey && rawApiKey.trim() ? rawApiKey.trim() : undefined;
 
-  const app = createServeApp(runAgentDiagnose, modelArg, apiKey);
+  const metricsServiceName =
+    config.otel?.serviceName?.trim() ||
+    process.env['OTEL_SERVICE_NAME']?.trim() ||
+    undefined;
+  const app = createServeApp(runAgentDiagnose, modelArg, apiKey, metricsServiceName);
 
   serve({ fetch: app.fetch, port, hostname: host }, (info) => {
     process.stderr.write(

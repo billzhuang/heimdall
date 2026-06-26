@@ -324,6 +324,12 @@ describe('parseOtelHeaders', () => {
     const result = parseOtelHeaders('X-Token=a=b=c');
     expect(result['X-Token']).toBe('a=b=c');
   });
+
+  it('falls back to raw key/value on malformed percent-encoding', () => {
+    // %XY is not valid percent-encoding; decodeURIComponent throws URIError
+    const result = parseOtelHeaders('Authorization=Bearer%XYtoken');
+    expect(result['Authorization']).toBe('Bearer%XYtoken');
+  });
 });
 
 describe('formatPrometheusMetrics', () => {
@@ -377,6 +383,12 @@ describe('formatPrometheusMetrics', () => {
   it('defaults service name to "heimdall" when not provided', () => {
     const output = formatPrometheusMetrics(snapshot);
     expect(output).toContain('{service="heimdall"}');
+  });
+
+  it('escapes double-quotes and backslashes in service name', () => {
+    const output = formatPrometheusMetrics(snapshot, 'svc"with"quotes');
+    expect(output).toContain('{service="svc\\"with\\"quotes"}');
+    expect(output).not.toContain('{service="svc"with"quotes"}');
   });
 });
 
@@ -499,7 +511,7 @@ describe('pushOtlpMetrics', () => {
   });
 
   it('POSTs to endpoint/v1/metrics with JSON content-type', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     await pushOtlpMetrics('http://localhost:4318', {}, snapshot, 'heimdall', 0, 60_000);
@@ -515,7 +527,7 @@ describe('pushOtlpMetrics', () => {
   });
 
   it('appends /v1/metrics when endpoint has trailing slash', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     await pushOtlpMetrics('http://localhost:4318/', {}, snapshot, 'heimdall', 0, 60_000);
@@ -525,7 +537,7 @@ describe('pushOtlpMetrics', () => {
   });
 
   it('forwards custom auth headers', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     await pushOtlpMetrics(
@@ -542,7 +554,7 @@ describe('pushOtlpMetrics', () => {
   });
 
   it('logs to stderr on non-OK HTTP response (does not throw)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503, text: vi.fn().mockResolvedValue('') }));
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     await expect(
@@ -597,7 +609,7 @@ describe('startOtelExport / stopOtelExport', () => {
   });
 
   it('pushes metrics at each interval tick', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     startOtelExport({ enabled: true, endpoint: 'http://otel:4318', exportIntervalMs: 10_000 });
@@ -611,7 +623,7 @@ describe('startOtelExport / stopOtelExport', () => {
   });
 
   it('stopOtelExport halts further pushes', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     startOtelExport({ enabled: true, endpoint: 'http://otel:4318', exportIntervalMs: 5_000 });
@@ -625,7 +637,7 @@ describe('startOtelExport / stopOtelExport', () => {
 
   it('reads endpoint from OTEL_EXPORTER_OTLP_ENDPOINT env var', async () => {
     process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] = 'http://env-collector:4318';
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     startOtelExport({ enabled: false });
@@ -638,7 +650,7 @@ describe('startOtelExport / stopOtelExport', () => {
 
   it('uses OTEL_SERVICE_NAME env var for service name in payload', async () => {
     process.env['OTEL_SERVICE_NAME'] = 'custom-sre-agent';
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     startOtelExport({ enabled: true, endpoint: 'http://otel:4318', exportIntervalMs: 1_000 });
@@ -654,7 +666,7 @@ describe('startOtelExport / stopOtelExport', () => {
   });
 
   it('second startOtelExport call is a no-op when already running', async () => {
-    const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
     vi.stubGlobal('fetch', mockFetch);
 
     startOtelExport({ enabled: true, endpoint: 'http://otel:4318', exportIntervalMs: 5_000 });
