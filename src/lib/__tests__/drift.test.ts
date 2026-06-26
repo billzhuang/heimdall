@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { writeFile, rm, appendFile } from 'node:fs/promises';
+import { writeFile, rm, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, appendFile: vi.fn().mockImplementation(actual.appendFile) };
+  return {
+    ...actual,
+    appendFile: vi.fn().mockImplementation(actual.appendFile),
+    mkdir: vi.fn().mockImplementation(actual.mkdir),
+  };
 });
 import {
   buildEmptyCheckpoint,
@@ -140,6 +144,24 @@ describe('saveCheckpoint / loadCheckpoint', () => {
       vi.mocked(appendFile).mockClear();
     }
   });
+
+  it('always calls mkdir before appendFile (mkdir-first strategy)', async () => {
+    const cp: ClusterCheckpoint = {
+      timestamp: '2026-01-01T00:00:00.000Z',
+      namespaces: ['default'],
+      workloads: [],
+      nodes: [],
+    };
+    vi.mocked(mkdir).mockClear();
+    vi.mocked(appendFile).mockClear();
+    await saveCheckpoint(cp, tmpFile);
+    expect(vi.mocked(mkdir)).toHaveBeenCalledOnce();
+    expect(vi.mocked(appendFile)).toHaveBeenCalledOnce();
+    // mkdir must be called before appendFile
+    const mkdirOrder = vi.mocked(mkdir).mock.invocationCallOrder[0];
+    const appendOrder = vi.mocked(appendFile).mock.invocationCallOrder[0];
+    expect(mkdirOrder).toBeLessThan(appendOrder);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -260,6 +282,24 @@ describe('detectDrift', () => {
     };
     const findings = detectDrift(current, base);
     expect(findings.some((f) => f.type === 'new_workload' && f.resource.startsWith('DaemonSet'))).toBe(true);
+  });
+
+  it('treats a workload moving namespace as a deleted + new workload', () => {
+    const current: ClusterCheckpoint = {
+      ...base,
+      timestamp: '2026-01-02T00:00:00.000Z',
+      workloads: [
+        // api moved from prod → staging; db unchanged
+        { kind: 'Deployment', namespace: 'staging', name: 'api' },
+        { kind: 'StatefulSet', namespace: 'prod', name: 'db' },
+      ],
+    };
+    const findings = detectDrift(current, base);
+    const types = findings.map((f) => f.type);
+    expect(types).toContain('deleted_workload');
+    expect(types).toContain('new_workload');
+    expect(findings.some((f) => f.type === 'deleted_workload' && f.resource.includes('prod'))).toBe(true);
+    expect(findings.some((f) => f.type === 'new_workload' && f.resource.includes('staging'))).toBe(true);
   });
 });
 
