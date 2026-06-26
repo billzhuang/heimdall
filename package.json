@@ -22,6 +22,7 @@
     "schedule": "tsx src/schedule-mode.ts",
     "mcp": "tsx src/mcp-mode.ts",
     "serve": "tsx src/serve-mode.ts",
+    "agentcore": "tsx src/agentcore-handler.ts",
     "session": "tsx src/session-mode.ts",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",

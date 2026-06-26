@@ -1,0 +1,83 @@
+# Dockerfile.agentcore — AWS Bedrock AgentCore Runtime container image for Heimdall.
+#
+# Implements the AgentCore container protocol:
+#   GET  /ping        → 200 OK  (liveness / health check)
+#   POST /invocations → AI K8s diagnosis (AgentCore invocation payload format)
+#
+# The container listens on port 8080, which is the AgentCore runtime default.
+# Authentication is handled by IAM at the AgentCore control plane — the app
+# itself does not implement SigV4 verification.
+#
+# Differences from the main Dockerfile:
+#   - Entry point: src/agentcore-handler.ts (not serve-mode / dist/server.mjs)
+#   - Listens on port 8080 (AgentCore default) instead of 3000
+#   - Binds to 0.0.0.0 so the AgentCore sidecar can reach the container
+#   - All dependencies (including tsx) are installed for TypeScript execution
+#
+# Usage — see deploy.md §"Option 6: AWS Bedrock AgentCore Runtime":
+#   docker build -f Dockerfile.agentcore -t heimdall-agentcore .
+#   docker push <account>.dkr.ecr.<region>.amazonaws.com/heimdall-agentcore:latest
+
+# ─── Stage 1: build ───────────────────────────────────────────────────────────
+# Pin to immutable digest; update intentionally when pulling in base-image security patches.
+FROM node:22-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2 AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build
+
+# ─── Stage 2: runtime ─────────────────────────────────────────────────────────
+FROM node:22-slim@sha256:d9f850096136edbc402debdd8729579a288aac64574ada0ff4db26b6ae58b0b2
+
+# Install kubectl and helm (same pinned versions as the main Dockerfile).
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    KUBECTL_VERSION=$(curl --fail -sL https://dl.k8s.io/release/stable.txt) && \
+    ARCH=$(dpkg --print-architecture) && \
+    curl --fail -sLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl" && \
+    curl --fail -sLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl.sha256" && \
+    echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check && \
+    chmod +x kubectl && mv kubectl /usr/local/bin/kubectl && \
+    rm kubectl.sha256 && \
+    HELM_VERSION=v3.17.3 && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    curl --fail -sLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    sha256sum --check "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" && \
+    tar -zxf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" && \
+    mv "linux-${ARCH}/helm" /usr/local/bin/helm && \
+    rm -rf "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" "helm-${HELM_VERSION}-linux-${ARCH}.tar.gz.sha256sum" "linux-${ARCH}" && \
+    apt-get purge -y curl && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install all dependencies including tsx (needed to run TypeScript source directly).
+# tsx is a devDependency but required for the agentcore entry point.
+COPY --from=builder /app/package*.json ./
+RUN npm ci
+
+# Copy built Flue bundle (used by runAgentDiagnose subprocess)
+COPY --from=builder /app/dist ./dist
+
+# Copy source (agentcore-handler.ts and its imports run via tsx)
+COPY --from=builder /app/src ./src
+
+# Copy the CLI binary (spawned by runAgentDiagnose to run the agent)
+COPY --from=builder /app/bin ./bin
+
+# Copy the default tool config
+COPY --from=builder /app/heimdall.config.yaml ./
+
+# Run as non-root
+RUN useradd --system --no-create-home heimdall && chown -R heimdall:heimdall /app
+USER heimdall
+
+# AgentCore runtime default port. Override with AGENTCORE_PORT env var if needed.
+EXPOSE 8080
+
+# Start the AgentCore HTTP server (GET /ping + POST /invocations on port 8080).
+CMD ["npx", "tsx", "src/agentcore-handler.ts"]
