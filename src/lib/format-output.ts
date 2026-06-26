@@ -243,7 +243,6 @@ export function extractKubectlCommands(text: string): string[] {
   return commands;
 }
 
-/** Matches text that indicates a critical-severity condition. */
 const CRITICAL_SIGNAL_RE = /\b(?:critical|outage|unavailable)\b/;
 
 /**
@@ -253,7 +252,6 @@ const CRITICAL_SIGNAL_RE = /\b(?:critical|outage|unavailable)\b/;
 const NEGATION_SUPPRESS_RE =
   /\b(?:no|without)\s+(?:warnings?|errors?|fail(?:ed|ing)?|degraded|back-?off|crashloop(?:backoff)?|oomkilled?)\b/;
 
-/** Matches text that indicates a warning-severity condition. */
 const WARNING_SIGNAL_RE =
   /\b(?:warning|degraded|oomkilled?|crashloop(?:backoff)?|back-?off|failed|failing|error)\b/;
 
