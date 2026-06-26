@@ -50,6 +50,11 @@ describe('isGetSecretCommand', () => {
     expect(isGetSecretCommand(['--context=prod', 'get', 'pods'])).toBe(false);
   });
 
+  it('skips value-taking global flags without = before "get" (bare --context)', () => {
+    expect(isGetSecretCommand(['--context', 'prod-cluster', 'get', 'secret', 'foo'])).toBe(true);
+    expect(isGetSecretCommand(['--context', 'prod-cluster', 'get', 'pods'])).toBe(false);
+  });
+
   it('handles value-taking flags that shift resource position (--request-timeout bypass fix)', () => {
     // Without the fix, --request-timeout consumes its value token, but if not in the set
     // the value '5s' would be treated as the resource type and return false.
@@ -160,6 +165,24 @@ describe('redactSecretValues — JSON', () => {
     expect(redactSecretValues(broken, argv('json'))).toBe(broken);
   });
 
+  it('passes through JSON array output unchanged (containsSecret returns false for arrays)', () => {
+    const arr = '[{"kind":"Secret","data":{"key":"dmFsdWU="}}]';
+    expect(redactSecretValues(arr, ['get', 'secret', '-o', 'json'])).toBe(arr);
+  });
+
+  it('handles non-string Secret data values (number and null)', () => {
+    const secretWithMixedTypes = JSON.stringify({
+      apiVersion: 'v1',
+      kind: 'Secret',
+      data: { numeric: 42, missing: null },
+    });
+    const result = redactSecretValues(secretWithMixedTypes, argv('json'));
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    const data = parsed['data'] as Record<string, string>;
+    expect(data['numeric']).toMatch(/^<redacted: \d+ bytes>$/);
+    expect(data['missing']).toMatch(/^<redacted: \d+ bytes>$/);
+  });
+
   it('byte count for base64 is approximately correct', () => {
     // "test" base64 = "dGVzdA==" → 4 bytes
     const output = secretJson({ password: 'dGVzdA==' });
@@ -226,6 +249,14 @@ data:
   it('passes through invalid YAML unchanged', () => {
     const broken = ': invalid: [yaml';
     expect(redactSecretValues(broken, argv('yaml'))).toBe(broken);
+  });
+
+  it('handles multi-doc YAML containing a null document alongside a Secret', () => {
+    const multiDoc =
+      `null\n---\napiVersion: v1\nkind: Secret\nmetadata:\n  name: s\ndata:\n  key: dmFsdWU=\n`;
+    const result = redactSecretValues(multiDoc, argv('yaml'));
+    expect(result).toMatch(/<redacted: \d+ bytes>/);
+    expect(result).not.toContain('dmFsdWU=');
   });
 
   it('redacts multiple Secrets in a multi-document YAML stream', () => {
