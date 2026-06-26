@@ -3,7 +3,9 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const { runPrometheusQuery } = vi.hoisted(() => ({ runPrometheusQuery: vi.fn() }));
 vi.mock('../../lib/prometheus.ts', () => ({ runPrometheusQuery }));
 
-import { makePrometheusQuery } from '../prometheus.ts';
+import { makePrometheusQuery, prometheusPlugin } from '../prometheus.ts';
+import type { CompiledRedactionRule } from '../../lib/regex-redact.ts';
+import type { HeimdallConfig } from '../../lib/config.ts';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -96,6 +98,50 @@ describe('makePrometheusQuery — tool metadata and params forwarding', () => {
         step: '30s',
       }),
       expect.anything(),
+    );
+  });
+
+  it('forwards compiled regex redaction rules to runPrometheusQuery', async () => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'token', re: /bearer \S+/gi }];
+    const tool = makePrometheusQuery(undefined, rules);
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
+    expect(runPrometheusQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: rules }),
+    );
+  });
+
+  it('forwards regexRedactionRules as undefined when none are provided', async () => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const tool = makePrometheusQuery({});
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
+    expect(runPrometheusQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ regexRedactionRules: undefined }),
+    );
+  });
+});
+
+describe('prometheusPlugin', () => {
+  it('key is "prometheusQuery"', () => {
+    expect(prometheusPlugin.key).toBe('prometheusQuery');
+  });
+
+  it('factory passes prometheus config and rules through to runPrometheusQuery', async () => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const rules: CompiledRedactionRule[] = [{ name: 'secret', re: /AKIA[0-9A-Z]{16}/g }];
+    const config = {
+      prometheus: { url: 'http://prom-test:9090', timeoutMs: 5000 },
+    } as unknown as HeimdallConfig;
+    const tool = prometheusPlugin.factory(config, rules);
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
+    expect(runPrometheusQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ url: 'http://prom-test:9090', timeoutMs: 5000, regexRedactionRules: rules }),
     );
   });
 });
