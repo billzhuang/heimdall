@@ -185,9 +185,11 @@ async function runWatchStream(
       const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
       const severity = inferDiagnosisSeverity(diagnosis);
       const summary = truncateSummary(`[${event.reason}] ${diagnosis}`);
-      upsertBaseline(clusterName, ns, event.involvedObject.kind ?? 'Unknown', event.involvedObject.name ?? 'unknown', summary, baselineFile).catch((err: unknown) => {
+      try {
+        await upsertBaseline(clusterName, ns, event.involvedObject.kind ?? 'Unknown', event.involvedObject.name ?? 'unknown', summary, baselineFile);
+      } catch (err: unknown) {
         process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${err instanceof Error ? err.message : String(err)}\n`);
-      });
+      }
       void severity; // severity captured for future filtering; currently all watch events are recorded
     }
 

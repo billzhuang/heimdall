@@ -368,9 +368,14 @@ describe('truncateSummary', () => {
 // resolveBaselineFilePath
 // ---------------------------------------------------------------------------
 describe('resolveBaselineFilePath', () => {
-  it('returns configured path when provided', () => {
+  it('returns configured absolute path unchanged', () => {
     const result = resolveBaselineFilePath('/custom/path/baselines.jsonl', '/any/dir');
     expect(result).toBe('/custom/path/baselines.jsonl');
+  });
+
+  it('resolves relative configured path against defaultDir', () => {
+    const result = resolveBaselineFilePath('data/baselines.jsonl', '/home/user/heimdall');
+    expect(result).toBe('/home/user/heimdall/data/baselines.jsonl');
   });
 
   it('returns default path under scenarios/ when not configured', () => {
