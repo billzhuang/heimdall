@@ -339,10 +339,10 @@ describe('parsePagerDutyV2Payload', () => {
 
   it('passes through urgency values that are neither high nor low unchanged', () => {
     const payload = {
-      messages: [{ data: { incident: { id: 'P1', title: 'Test', urgency: 'critical', service: { name: 'svc' } } } }],
+      messages: [{ data: { incident: { id: 'P1', title: 'Test', urgency: 'custom', service: { name: 'svc' } } } }],
     };
     const alerts = parsePagerDutyV2Payload(payload);
-    expect(alerts[0].severity).toBe('critical');
+    expect(alerts[0].severity).toBe('custom');
   });
 });
 
