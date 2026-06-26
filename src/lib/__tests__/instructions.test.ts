@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SUBAGENT_INSTRUCTIONS, buildInstructions } from '../instructions.ts';
+import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions } from '../instructions.ts';
 import { DEFAULT_MODEL } from '../model.ts';
 
 
@@ -587,5 +587,78 @@ describe('certificate-inspector subagent', () => {
     const inst = SUBAGENT_INSTRUCTIONS['certificate-inspector'];
     expect(inst).toMatch(/read-only/i);
     expect(inst).toMatch(/Thinking Summary/);
+  });
+});
+
+describe('SUBAGENT_DESCRIPTIONS', () => {
+  it('has exactly the same keys as SUBAGENT_INSTRUCTIONS', () => {
+    const descKeys = Object.keys(SUBAGENT_DESCRIPTIONS).sort();
+    const instKeys = Object.keys(SUBAGENT_INSTRUCTIONS).sort();
+    expect(descKeys).toEqual(instKeys);
+  });
+
+  it('every description is a non-empty string', () => {
+    for (const [name, desc] of Object.entries(SUBAGENT_DESCRIPTIONS)) {
+      expect(typeof desc).toBe('string');
+      expect(desc.length).toBeGreaterThan(0);
+      void name;
+    }
+  });
+
+  it('datadog-investigator description references Datadog', () => {
+    expect(SUBAGENT_DESCRIPTIONS['datadog-investigator']).toMatch(/Datadog/i);
+  });
+
+  it('golden-signals-investigator description references all four signals', () => {
+    const desc = SUBAGENT_DESCRIPTIONS['golden-signals-investigator'];
+    expect(desc).toMatch(/latency/i);
+    expect(desc).toMatch(/error rate/i);
+    expect(desc).toMatch(/saturation/i);
+  });
+});
+
+describe('buildInstructions — datadog-investigator conditional', () => {
+  it('includes datadog-investigator when datadogQuery is enabled', () => {
+    const out = buildInstructions(new Set(['kubectl', 'datadogQuery']));
+    expect(out).toContain('datadog-investigator');
+  });
+
+  it('omits datadog-investigator when datadogQuery is disabled', () => {
+    const out = buildInstructions(new Set(['kubectl']));
+    expect(out).not.toContain('datadog-investigator');
+  });
+});
+
+describe('buildInstructions — section ordering', () => {
+  it('places runbook context before past incident precedents', () => {
+    const out = buildInstructions(undefined, null, 'runbook steps', 'prior incident');
+    const rbPos = out.indexOf('## Runbook context');
+    const ragPos = out.indexOf('## Past incident precedents');
+    expect(rbPos).toBeGreaterThan(-1);
+    expect(ragPos).toBeGreaterThan(-1);
+    expect(rbPos).toBeLessThan(ragPos);
+  });
+
+  it('places past incident precedents before recurring anomaly baselines', () => {
+    const out = buildInstructions(undefined, null, undefined, 'rag context', undefined, 'baseline anomalies');
+    const ragPos = out.indexOf('## Past incident precedents');
+    const basePos = out.indexOf('## Recurring anomaly baselines');
+    expect(ragPos).toBeGreaterThan(-1);
+    expect(basePos).toBeGreaterThan(-1);
+    expect(ragPos).toBeLessThan(basePos);
+  });
+});
+
+describe('buildInstructions — multiple SLOs in table', () => {
+  it('includes all SLO names when two SLOs are configured', () => {
+    const slos = [
+      { name: 'API availability', metric: 'metric_a', target: 0.999, window: '30d', budget: 0.001 },
+      { name: 'p99 latency', metric: 'metric_b', target: 0.995, window: '7d', budget: 0.005 },
+    ];
+    const out = buildInstructions(undefined, null, undefined, undefined, slos);
+    expect(out).toContain('API availability');
+    expect(out).toContain('p99 latency');
+    expect(out).toContain('metric_a');
+    expect(out).toContain('metric_b');
   });
 });
