@@ -45,7 +45,7 @@ export function makeJaegerQuery(
       'start/end accept ISO8601 timestamps, relative durations (e.g. "-1h", "-30m"), or Unix second epoch. ' +
       'Defaults: limit=20, start=last hour (when Jaeger enforces a default). ' +
       'minDuration uses Jaeger duration format: "1s", "500ms", "1.5s".',
-    parameters: v.object({
+    input: v.object({
       service: v.pipe(
         v.string(),
         v.description(
@@ -93,7 +93,7 @@ export function makeJaegerQuery(
         ),
       ),
     }),
-    execute: async ({ service, operation, start, end, limit, minDuration, tags }) =>
+    run: async ({ input: { service, operation, start, end, limit, minDuration, tags } }) =>
       runJaegerQuery({ service, operation, start, end, limit, minDuration, tags }, config),
   });
 }

@@ -40,21 +40,21 @@ describe('kubectl tool', () => {
 
   it('forwards args and context to runKubectl and returns its result', async () => {
     runKubectl.mockResolvedValue('pod/web   Running');
-    const out = await kubectl.execute({ args: 'get pods', context: 'prod' });
+    const out = await kubectl.run({ input: { args: 'get pods', context: 'prod' } });
     expect(out).toBe('pod/web   Running');
     expect(runKubectl).toHaveBeenCalledWith('get pods', { context: 'prod' });
   });
 
   it('passes a blocked result straight through', async () => {
     runKubectl.mockResolvedValue('BLOCKED: Destructive command');
-    expect(await kubectl.execute({ args: 'delete pod web' })).toMatch(/^BLOCKED:/);
+    expect(await kubectl.run({ input: { args: 'delete pod web' } })).toMatch(/^BLOCKED:/);
   });
 });
 
 describe('list_namespaces tool', () => {
   it('formats the namespace list returned by runKubectl', async () => {
     runKubectl.mockResolvedValue('default kube-system kube-public');
-    const out = await listNamespaces.execute({ context: 'prod' });
+    const out = await listNamespaces.run({ input: { context: 'prod' } });
     expect(out).toMatch(/Namespaces \(3\)/);
     expect(out).toMatch(/kube-system/);
     expect(runKubectl).toHaveBeenCalledWith(
@@ -65,12 +65,12 @@ describe('list_namespaces tool', () => {
 
   it('reports empty when the command produced no output (not fake namespaces)', async () => {
     runKubectl.mockResolvedValue('(command produced no output)');
-    expect(await listNamespaces.execute({})).toMatch(/No namespaces found/);
+    expect(await listNamespaces.run({ input: {} })).toMatch(/No namespaces found/);
   });
 
   it('surfaces a blocked/error result verbatim instead of parsing it', async () => {
     runKubectl.mockResolvedValue('kubectl exited with an error:\nconnection refused');
-    expect(await listNamespaces.execute({})).toMatch(/kubectl exited/);
+    expect(await listNamespaces.run({ input: {} })).toMatch(/kubectl exited/);
   });
 });
 
@@ -100,7 +100,7 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
   });
 
   it('lists contexts and marks the current one', async () => {
-    const out = await listContexts.execute({});
+    const out = await listContexts.run({ input: {} });
     expect(out).toMatch(/Contexts \(2\)/);
     expect(out).toMatch(/\* prod \(current\)/);
     expect(out).toMatch(/staging/);
@@ -109,7 +109,7 @@ describe('list_contexts tool (real kubeconfig parsing)', () => {
   it('reports when no contexts are found', async () => {
     process.env.KUBECONFIG = join(dir, 'missing');
     try {
-      expect(await listContexts.execute({})).toMatch(/No kubeconfig contexts found/);
+      expect(await listContexts.run({ input: {} })).toMatch(/No kubeconfig contexts found/);
     } finally {
       process.env.KUBECONFIG = cfg;
     }

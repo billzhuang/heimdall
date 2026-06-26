@@ -22,7 +22,7 @@ describe('makeTrivyScan', () => {
   it('runs an image scan with no extra args by default', async () => {
     runTrivy.mockResolvedValue('0 vulnerabilities');
     const tool = makeTrivyScan();
-    const result = await tool.execute({ scanType: 'image', target: 'nginx:1.25' });
+    const result = await tool.run({ input: { scanType: 'image', target: 'nginx:1.25' } });
     expect(result).toBe('0 vulnerabilities');
     expect(runTrivy).toHaveBeenCalledWith('image', 'nginx:1.25', [], expect.anything());
   });
@@ -30,7 +30,7 @@ describe('makeTrivyScan', () => {
   it('adds --severity flag when severity is provided', async () => {
     runTrivy.mockResolvedValue('2 HIGH vulns');
     const tool = makeTrivyScan();
-    await tool.execute({ scanType: 'image', target: 'nginx:1.25', severity: 'CRITICAL,HIGH' });
+    await tool.run({ input: { scanType: 'image', target: 'nginx:1.25', severity: 'CRITICAL,HIGH' } });
     expect(runTrivy).toHaveBeenCalledWith(
       'image',
       'nginx:1.25',
@@ -42,7 +42,7 @@ describe('makeTrivyScan', () => {
   it('adds --format flag when format is provided', async () => {
     runTrivy.mockResolvedValue('{}');
     const tool = makeTrivyScan();
-    await tool.execute({ scanType: 'image', target: 'nginx:1.25', format: 'json' });
+    await tool.run({ input: { scanType: 'image', target: 'nginx:1.25', format: 'json' } });
     expect(runTrivy).toHaveBeenCalledWith(
       'image',
       'nginx:1.25',
@@ -54,7 +54,7 @@ describe('makeTrivyScan', () => {
   it('adds --ignore-unfixed flag when ignoreUnfixed is true', async () => {
     runTrivy.mockResolvedValue('fixed only');
     const tool = makeTrivyScan();
-    await tool.execute({ scanType: 'image', target: 'nginx:1.25', ignoreUnfixed: true });
+    await tool.run({ input: { scanType: 'image', target: 'nginx:1.25', ignoreUnfixed: true } });
     expect(runTrivy).toHaveBeenCalledWith(
       'image',
       'nginx:1.25',
@@ -66,7 +66,7 @@ describe('makeTrivyScan', () => {
   it('adds --scanners flag for fs scans to disable secret scanning', async () => {
     runTrivy.mockResolvedValue('ok');
     const tool = makeTrivyScan();
-    await tool.execute({ scanType: 'fs', target: '/app' });
+    await tool.run({ input: { scanType: 'fs', target: '/app' } });
     expect(runTrivy).toHaveBeenCalledWith(
       'fs',
       '/app',
@@ -78,7 +78,7 @@ describe('makeTrivyScan', () => {
   it('does NOT add --scanners flag for non-fs scans', async () => {
     runTrivy.mockResolvedValue('ok');
     const tool = makeTrivyScan();
-    await tool.execute({ scanType: 'image', target: 'myimage:latest' });
+    await tool.run({ input: { scanType: 'image', target: 'myimage:latest' } });
     const extraArgs = runTrivy.mock.calls[0][2] as string[];
     expect(extraArgs).not.toContain('vuln,misconfig');
   });
@@ -86,13 +86,13 @@ describe('makeTrivyScan', () => {
   it('accumulates multiple extra flags when provided together', async () => {
     runTrivy.mockResolvedValue('ok');
     const tool = makeTrivyScan();
-    await tool.execute({
+    await tool.run({ input: {
       scanType: 'image',
       target: 'myimage:latest',
       severity: 'CRITICAL',
       format: 'sarif',
       ignoreUnfixed: true,
-    });
+    } });
     const extraArgs = runTrivy.mock.calls[0][2] as string[];
     expect(extraArgs).toContain('--severity');
     expect(extraArgs).toContain('CRITICAL');
@@ -104,7 +104,7 @@ describe('makeTrivyScan', () => {
   it('passes blocked result straight through', async () => {
     runTrivy.mockResolvedValue('BLOCKED: Destructive scan type detected');
     const tool = makeTrivyScan();
-    const result = await tool.execute({ scanType: 'image', target: 'dangerous:image' });
+    const result = await tool.run({ input: { scanType: 'image', target: 'dangerous:image' } });
     expect(result).toMatch(/^BLOCKED:/);
   });
 });

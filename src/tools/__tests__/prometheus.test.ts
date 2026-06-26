@@ -14,7 +14,7 @@ describe('makePrometheusQuery — URL precedence', () => {
   it('uses prometheusConfig.url when provided', async () => {
     runPrometheusQuery.mockResolvedValue('vector result');
     const tool = makePrometheusQuery({ url: 'http://custom-prom:9090' });
-    await tool.execute({ queryType: 'instant', query: 'up' });
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
     expect(runPrometheusQuery).toHaveBeenCalledWith(
       'instant',
       expect.anything(),
@@ -26,7 +26,7 @@ describe('makePrometheusQuery — URL precedence', () => {
     runPrometheusQuery.mockResolvedValue('vector result');
     vi.stubEnv('PROMETHEUS_URL', 'http://env-prom:9090');
     const tool = makePrometheusQuery({});
-    await tool.execute({ queryType: 'instant', query: 'up' });
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
     expect(runPrometheusQuery).toHaveBeenCalledWith(
       'instant',
       expect.anything(),
@@ -38,7 +38,7 @@ describe('makePrometheusQuery — URL precedence', () => {
     runPrometheusQuery.mockResolvedValue('vector result');
     vi.stubEnv('PROMETHEUS_URL', '');
     const tool = makePrometheusQuery(null);
-    await tool.execute({ queryType: 'instant', query: 'up' });
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
     expect(runPrometheusQuery).toHaveBeenCalledWith(
       'instant',
       expect.anything(),
@@ -51,7 +51,7 @@ describe('makePrometheusQuery — timeout precedence', () => {
   it('uses config timeoutMs when provided', async () => {
     runPrometheusQuery.mockResolvedValue('ok');
     const tool = makePrometheusQuery({ timeoutMs: 5000 });
-    await tool.execute({ queryType: 'instant', query: 'up' });
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
     expect(runPrometheusQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -62,7 +62,7 @@ describe('makePrometheusQuery — timeout precedence', () => {
   it('defaults to 10000ms when timeoutMs is absent', async () => {
     runPrometheusQuery.mockResolvedValue('ok');
     const tool = makePrometheusQuery({});
-    await tool.execute({ queryType: 'instant', query: 'up' });
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
     expect(runPrometheusQuery).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -79,13 +79,13 @@ describe('makePrometheusQuery — tool metadata and params forwarding', () => {
   it('passes queryType and query params to runPrometheusQuery', async () => {
     runPrometheusQuery.mockResolvedValue('range result');
     const tool = makePrometheusQuery({});
-    const result = await tool.execute({
+    const result = await tool.run({ input: {
       queryType: 'range',
       query: 'rate(http_requests_total[5m])',
       start: '2024-01-01T00:00:00Z',
       end: '2024-01-01T01:00:00Z',
       step: '30s',
-    });
+    } });
     expect(result).toBe('range result');
     expect(runPrometheusQuery).toHaveBeenCalledWith(
       'range',

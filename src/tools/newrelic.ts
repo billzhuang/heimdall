@@ -57,7 +57,7 @@ export function makeNewRelicQuery(
       '  Use `query` for an additional WHERE clause filter (e.g. "priority = \'CRITICAL\'").\n' +
       '  Use `from` to set the lookback window (default: last 24 hours).\n\n' +
       '`from`/`to` accept ISO8601 timestamps, relative durations ("-1h", "-30m", "-2d"), or Unix seconds.',
-    parameters: v.object({
+    input: v.object({
       queryType: v.pipe(
         v.picklist(['metrics', 'apm', 'alerts']),
         v.description(
@@ -92,7 +92,7 @@ export function makeNewRelicQuery(
         v.description('Maximum number of results to return (default 100, max 2000).'),
       ),
     }),
-    execute: async ({ queryType, query, from, to, limit }) =>
+    run: async ({ input: { queryType, query, from, to, limit } }) =>
       runNewRelicQuery({ queryType, query, from, to, limit }, config),
   });
 }

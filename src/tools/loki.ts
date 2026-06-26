@@ -49,7 +49,7 @@ export function makeLokiQuery(
       'start/end accept ISO8601 timestamps or relative durations (e.g. "-1h", "-30m", "-2d"). ' +
       'Defaults: start="-1h", end=now, limit=100, direction=backward (newest first).' +
       lockdownNote,
-    parameters: v.object({
+    input: v.object({
       query: v.pipe(
         v.string(),
         v.description(
@@ -74,7 +74,7 @@ export function makeLokiQuery(
         v.description('Maximum number of log lines to return (default 100).'),
       ),
     }),
-    execute: async ({ query, start, end, limit }) =>
+    run: async ({ input: { query, start, end, limit } }) =>
       runLokiQuery({ query, start, end, limit }, config),
   });
 }

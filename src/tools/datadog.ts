@@ -63,7 +63,7 @@ export function makeDatadogQuery(
       '  Use `query` to filter by monitor name, `monitorStatus` for state filter\n' +
       '  (e.g. "Alert,Warn,No Data"), and `tags` for monitor tag filter.\n\n' +
       '`from`/`to` accept ISO8601 timestamps, relative durations ("-1h", "-30m", "-2d"), or Unix seconds.',
-    parameters: v.object({
+    input: v.object({
       queryType: v.pipe(
         v.picklist(['metrics', 'logs', 'events', 'monitors']),
         v.description(
@@ -120,7 +120,7 @@ export function makeDatadogQuery(
         ),
       ),
     }),
-    execute: async ({ queryType, query, from, to, limit, indexes, tags, monitorStatus }) =>
+    run: async ({ input: { queryType, query, from, to, limit, indexes, tags, monitorStatus } }) =>
       runDatadogQuery({ queryType, query, from, to, limit, indexes, tags, monitorStatus }, config),
   });
 }
