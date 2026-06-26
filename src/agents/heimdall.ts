@@ -111,13 +111,12 @@ const { allTools: ALL_TOOLS, enabledKeys: enabledToolKeys } = buildToolRegistry(
 const telemetryEnabled = isTelemetryEnabled();
 
 function wrapWithTiming(tool: ToolDefinition): ToolDefinition {
-  const t = tool as ToolDefinition & { execute: (input: Record<string, unknown>) => Promise<string> };
-  const orig = t.execute.bind(t);
+  const orig = tool.run.bind(tool);
   return Object.assign({}, tool, {
-    execute: async (input: Record<string, unknown>): Promise<string> => {
+    run: async (context: Parameters<typeof orig>[0]) => {
       const start = Date.now();
       try {
-        return await orig(input);
+        return await orig(context);
       } finally {
         recordToolCall(Date.now() - start);
       }
