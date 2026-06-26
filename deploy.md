@@ -331,15 +331,27 @@ from that generated config, not the source-root `wrangler.jsonc`.
 
 ### Configuration
 
-> **Note:** Cloudflare Workers' `nodejs_compat` flag does **not** polyfill
-> `node:fs`. Heimdall's `loadConfig()` uses `existsSync`/`readFileSync` at module
-> load time and will throw on CF Workers. Subprocess tools (kubectl, awsCli, etc.)
-> are listed as disabled in `wrangler.jsonc` comments for reference only — the
-> actual config loading from a YAML file is not supported on Workers. Track the
-> Workers-compatible config loader: TOO-198.
+Cloudflare Workers have no local filesystem, so `HEIMDALL_CONFIG` (file path)
+does not work. Instead, pass the raw YAML content via `HEIMDALL_CONFIG_YAML`.
+The repo ships `heimdall.config.cloudflare.yaml` as a ready-to-use template.
 
-Heimdall's model and other runtime settings can be changed via `wrangler.jsonc`
-`vars` or Wrangler secrets without a code change.
+**Option A — Wrangler secret (recommended):**
+
+```bash
+npx wrangler secret put HEIMDALL_CONFIG_YAML
+# paste the contents of heimdall.config.cloudflare.yaml when prompted
+```
+
+**Option B — inline in `wrangler.jsonc` vars (visible in source, OK for non-sensitive config):**
+
+```jsonc
+"vars": {
+  "HEIMDALL_CONFIG_YAML": "tools:\n  kubectl: false\n  listContexts: false\n  listNamespaces: false\n  helmRelease: false\n  awsCli: false\n  trivyScan: false\n  cdkQuery: false\n  prometheusQuery: true\nprometheus:\n  url: \"https://prometheus.example.com\"\n"
+}
+```
+
+Edit `heimdall.config.cloudflare.yaml` to enable the HTTP-based observability
+tools you have before pasting, then redeploy.
 
 ### Model selection
 

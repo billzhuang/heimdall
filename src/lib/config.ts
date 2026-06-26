@@ -440,39 +440,74 @@ function defaultConfig(): HeimdallConfig {
   return v.parse(HeimdallConfigSchema, {});
 }
 
-/**
- * Load and validate the Heimdall config file.
- *
- * @param configPath - explicit path override (used in tests); falls back to env / cwd.
- */
-export function loadConfig(configPath?: string): HeimdallConfig {
-  const filePath = configPath ?? resolveConfigPath();
-  if (!existsSync(filePath)) return defaultConfig();
-
+/** Parse raw YAML content into a validated HeimdallConfig. */
+function parseYamlContent(yamlStr: string, source: string): HeimdallConfig {
   let raw: unknown;
   try {
-    raw = yaml.load(readFileSync(filePath, 'utf-8'));
+    raw = yaml.load(yamlStr);
   } catch (err) {
-    console.warn(`[heimdall] Could not read config file ${filePath}:`, err);
+    console.warn(`[heimdall] Could not parse YAML from ${source}:`, err);
     return defaultConfig();
   }
 
-  // yaml.load returns a scalar (string, boolean, number) for degenerate files.
+  // yaml.load returns a scalar (string, boolean, number) for degenerate input.
   if (raw !== null && raw !== undefined && typeof raw !== 'object') {
-    console.warn(`[heimdall] Config at ${filePath} must be a YAML mapping, got ${typeof raw}`);
+    console.warn(`[heimdall] Config from ${source} must be a YAML mapping, got ${typeof raw}`);
     return defaultConfig();
   }
 
   const rawObj = (raw ?? {}) as Record<string, unknown>;
-  const tools = normalizeToolsBlock(rawObj['tools'], filePath);
+  const tools = normalizeToolsBlock(rawObj['tools'], source);
 
   const result = v.safeParse(HeimdallConfigSchema, {
     ...rawObj,
     ...(tools !== undefined ? { tools } : {}),
   });
   if (!result.success) {
-    console.warn(`[heimdall] Invalid config at ${filePath}:`, result.issues);
+    console.warn(`[heimdall] Invalid config from ${source}:`, result.issues);
     return defaultConfig();
   }
   return result.output;
+}
+
+/**
+ * Load and validate the Heimdall config.
+ *
+ * Resolution order:
+ *  1. Explicit `configPath` argument (used in tests and CLI overrides).
+ *  2. `HEIMDALL_CONFIG_YAML` env var — raw YAML string; intended for runtimes
+ *     without a local filesystem such as Cloudflare Workers.
+ *  3. `HEIMDALL_CONFIG` env var — path to a YAML file.
+ *  4. `heimdall.config.yaml` in the current working directory.
+ */
+export function loadConfig(configPath?: string): HeimdallConfig {
+  if (configPath) {
+    if (!existsSync(configPath)) return defaultConfig();
+    let yamlStr: string;
+    try {
+      yamlStr = readFileSync(configPath, 'utf-8');
+    } catch (err) {
+      console.warn(`[heimdall] Could not read config file ${configPath}:`, err);
+      return defaultConfig();
+    }
+    return parseYamlContent(yamlStr, configPath);
+  }
+
+  // Inline YAML via env var — the only option on runtimes without node:fs.
+  const inlineYaml = process.env.HEIMDALL_CONFIG_YAML;
+  if (inlineYaml) {
+    return parseYamlContent(inlineYaml, '<HEIMDALL_CONFIG_YAML>');
+  }
+
+  const filePath = resolveConfigPath();
+  if (!existsSync(filePath)) return defaultConfig();
+
+  let yamlStr: string;
+  try {
+    yamlStr = readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    console.warn(`[heimdall] Could not read config file ${filePath}:`, err);
+    return defaultConfig();
+  }
+  return parseYamlContent(yamlStr, filePath);
 }

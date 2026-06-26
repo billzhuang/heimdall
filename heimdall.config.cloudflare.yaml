@@ -4,9 +4,16 @@
 # so all tools that shell out to external binaries are disabled here.
 # Only HTTP-based tools — which use fetch internally — are supported.
 #
-# Usage:
-#   Set HEIMDALL_CONFIG=heimdall.config.cloudflare.yaml in your wrangler.toml [vars]
-#   or pass it as a Wrangler secret / environment variable at deploy time.
+# Usage on Cloudflare Workers (no local filesystem):
+#   Cloudflare Workers cannot read files at runtime, so pass this config as raw YAML
+#   via the HEIMDALL_CONFIG_YAML environment variable.
+#
+#   Option A — inline in wrangler.jsonc [vars] (visible in source):
+#     "vars": { "HEIMDALL_CONFIG_YAML": "tools:\n  kubectl: false\n  ..." }
+#
+#   Option B — Wrangler secret (recommended; not stored in source):
+#     npx wrangler secret put HEIMDALL_CONFIG_YAML
+#     (paste the contents of this file when prompted)
 
 tools:
   # Subprocess tools — NOT supported on Cloudflare Workers (require execFile).

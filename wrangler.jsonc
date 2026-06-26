@@ -68,6 +68,8 @@
   // Required secrets — set via: npx wrangler secret put <NAME>
   // Never commit secret values to this file.
   //
+  // HEIMDALL_CONFIG_YAML — raw YAML config content (see heimdall.config.cloudflare.yaml);
+  //                        the only way to configure tools/backends without a filesystem.
   // ANTHROPIC_API_KEY   — required when using "anthropic/" model provider
   // DD_API_KEY          — required when datadogQuery tool is enabled
   // DD_APP_KEY          — required when datadogQuery tool is enabled

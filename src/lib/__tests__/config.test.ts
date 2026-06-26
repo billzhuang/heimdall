@@ -376,6 +376,48 @@ describe('loadConfig', () => {
     });
   });
 
+  describe('HEIMDALL_CONFIG_YAML env var', () => {
+    afterEach(() => {
+      delete process.env.HEIMDALL_CONFIG_YAML;
+    });
+
+    it('loads config from raw YAML string when HEIMDALL_CONFIG_YAML is set', () => {
+      process.env.HEIMDALL_CONFIG_YAML = [
+        'tools:',
+        '  kubectl: false',
+        '  prometheusQuery: true',
+        'prometheus:',
+        '  url: "https://prometheus.example.com"',
+      ].join('\n');
+      const config = loadConfig();
+      expect(config.tools.kubectl).toBe(false);
+      expect(config.tools.prometheusQuery).toBe(true);
+      expect(config.prometheus?.url).toBe('https://prometheus.example.com');
+    });
+
+    it('explicit configPath argument takes priority over HEIMDALL_CONFIG_YAML', () => {
+      process.env.HEIMDALL_CONFIG_YAML = 'tools:\n  kubectl: false\n';
+      const configPath = join(tmpDir, 'override.yaml');
+      writeFileSync(configPath, 'tools:\n  kubectl: true\n  prometheusQuery: true\n');
+      const config = loadConfig(configPath);
+      // File overrides env var.
+      expect(config.tools.kubectl).toBe(true);
+      expect(config.tools.prometheusQuery).toBe(true);
+    });
+
+    it('returns defaults when HEIMDALL_CONFIG_YAML contains invalid YAML', () => {
+      process.env.HEIMDALL_CONFIG_YAML = ': bad: yaml: [unclosed';
+      const config = loadConfig();
+      expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
+    });
+
+    it('returns defaults when HEIMDALL_CONFIG_YAML is a scalar not a mapping', () => {
+      process.env.HEIMDALL_CONFIG_YAML = 'just a string';
+      const config = loadConfig();
+      expect(config.tools).toEqual(EXPECTED_DEFAULT_TOOLS);
+    });
+  });
+
   describe('Cloudflare Workers config', () => {
     it('disables all subprocess tools and leaves HTTP tools configurable', () => {
       const configPath = join(tmpDir, 'heimdall.config.cloudflare.yaml');
