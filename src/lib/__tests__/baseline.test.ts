@@ -82,6 +82,7 @@ describe('readBaselines', () => {
     const entries = await readBaselines(tmpFile);
     expect(entries).toHaveLength(1);
   });
+
 });
 
 describe('upsertBaseline', () => {
@@ -147,6 +148,19 @@ describe('upsertBaseline', () => {
     const updated = await readBaselines(tmpFile);
     expect(updated[0].dismissed).toBe(true);
     expect(updated[0].occurrences).toBe(2);
+  });
+
+  it('creates the parent directory when it does not yet exist', async () => {
+    const newDir = join(tmpdir(), `baseline-newdir-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const filePath = join(newDir, 'sub', 'baselines.jsonl');
+    try {
+      await upsertBaseline('prod', 'default', 'Pod', 'api', 'crash', filePath);
+      const entries = await readBaselines(filePath);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].key).toBe('prod/default/Pod/api');
+    } finally {
+      await rm(newDir, { recursive: true, force: true });
+    }
   });
 });
 

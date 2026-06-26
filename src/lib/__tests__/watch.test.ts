@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseEventLine,
   matchesWatchFilter,
@@ -8,6 +8,7 @@ import {
   shouldDiagnose,
   computeBackoffMs,
   shouldResetBackoff,
+  postWebhook,
   type K8sEventObject,
   type WatchFilterConfig,
   type CooldownState,
@@ -458,5 +459,58 @@ describe('shouldResetBackoff', () => {
   it('returns false when uptime is below the threshold', () => {
     expect(shouldResetBackoff(59_999, 60_000)).toBe(false);
     expect(shouldResetBackoff(0, 60_000)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postWebhook
+// ---------------------------------------------------------------------------
+
+describe('postWebhook', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('resolves without throwing on a successful 2xx response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(''),
+    }));
+    await expect(postWebhook('http://example.com/hook', { event: 'test' })).resolves.toBeUndefined();
+  });
+
+  it('sends a POST with Content-Type application/json and a JSON body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('') });
+    vi.stubGlobal('fetch', fetchMock);
+    const payload = { kind: 'BackOff', pod: 'api-xyz' };
+    await postWebhook('http://example.com/hook', payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://example.com/hook',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+    );
+  });
+
+  it('throws when the response is not ok (non-2xx)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: () => Promise.resolve('Service Unavailable'),
+    }));
+    await expect(postWebhook('http://example.com/hook', {})).rejects.toThrow('HTTP 503');
+  });
+
+  it('throws when fetch rejects (network error)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    await expect(postWebhook('http://example.com/hook', {})).rejects.toThrow('ECONNREFUSED');
+  });
+
+  it('throws when the request is aborted (timeout)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(Object.assign(new Error('abort'), { name: 'AbortError' })));
+    await expect(postWebhook('http://example.com/hook', {})).rejects.toThrow('abort');
   });
 });
