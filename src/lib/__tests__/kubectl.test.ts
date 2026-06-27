@@ -396,6 +396,10 @@ describe('matchMock', () => {
   it('returns null when mocks is not an object', () => {
     expect(matchMock(null as unknown as Record<string, string>, ['get'])).toBeNull();
   });
+
+  it('skips empty-string keys (zero tokens after split)', () => {
+    expect(matchMock({ '': 'fallback', 'get pods': 'pod list' }, ['get', 'pods'])).toBe('pod list');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -729,5 +733,61 @@ describe('runKubectl (exec paths)', () => {
     await runKubectl('get pods -o json');
     await runKubectl('get pods -o json');
     expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+  });
+
+  // --- getCacheDir: tmpdir fallback when HEIMDALL_KUBECTL_CACHE_DIR is unset ---
+
+  it('uses the OS tmpdir as cache base when HEIMDALL_KUBECTL_CACHE_DIR is not set', async () => {
+    delete process.env.HEIMDALL_KUBECTL_CACHE_DIR;
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '60';
+    const uid = typeof process.getuid === 'function' ? String(process.getuid()) : undefined;
+    const user = uid ?? process.env.USER ?? process.env.USERNAME ?? 'default';
+    const defaultCacheBase = join(tmpdir(), `heimdall-kubectl-cache-${user}`);
+    stubExec((_cmd, _args, _opts, cb) => { cb(null, { stdout: '{"items":[]}', stderr: '' }); });
+    try {
+      await runKubectl('get pods -o json');
+      await runKubectl('get pods -o json');
+      expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(defaultCacheBase, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  // --- Cache expiry: cache miss when cached file is older than TTL ---
+
+  it('re-executes when the cached file is older than the TTL', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '1';
+    stubExec((_cmd, _args, _opts, cb) => { cb(null, { stdout: '{"first":true}', stderr: '' }); });
+    await runKubectl('get pods -o json');
+    resetExec();
+    vi.useFakeTimers({ now: Date.now() + 2_000 });
+    try {
+      stubExec((_cmd, _args, _opts, cb) => { cb(null, { stdout: '{"second":true}', stderr: '' }); });
+      const result = await runKubectl('get pods -o json');
+      expect(result).toBe('{"second":true}');
+      expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // --- Arg quoting: args with spaces are shell-quoted in the cmd string ---
+
+  it('shell-quotes args containing spaces when building the cache-key cmd string', async () => {
+    stubExec((_cmd, _args, _opts, cb) => { cb(null, { stdout: 'pod list', stderr: '' }); });
+    const result = await runKubectl('get pods -l "app=my app"');
+    expect(result).toBe('pod list');
+  });
+
+  // --- Cache hit with redactSecrets=false ---
+
+  it('skips secret redaction on cache hit when redactSecrets is false', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '60';
+    stubExec((_cmd, _args, _opts, cb) => { cb(null, { stdout: '{"items":[]}', stderr: '' }); });
+    await runKubectl('get pods -o json');
+    resetExec();
+    const result = await runKubectl('get pods -o json', { redactSecrets: false });
+    expect(result).toBe('{"items":[]}');
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(0);
   });
 });
