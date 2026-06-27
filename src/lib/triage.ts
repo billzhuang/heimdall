@@ -30,6 +30,47 @@ export type Severity = 'critical' | 'warning' | 'info';
 export const TRIAGE_CATEGORIES = ['nodes', 'pods', 'workloads', 'events', 'pvcs', 'jobs', 'capi'] as const;
 export type TriageCategory = (typeof TRIAGE_CATEGORIES)[number];
 
+/** Resolved namespace scope strings derived from {@link TriageOptions}. */
+export interface NamespaceScope {
+  /** kubectl flag suffix: `''` | `' -n <ns>'` | `' -A'` */
+  kubectlSuffix: string;
+  /** Human-readable scope label for single-cluster prompts, e.g. `'namespace "prod"'` */
+  scopeLabel: string;
+  /** Prose suffix for multi-cluster descriptions, e.g. `' scoped to namespace "prod"'` */
+  multiClusterSuffix: string;
+}
+
+/**
+ * Derive namespace scope strings from triage options.
+ *
+ * Single source of truth for the three namespace representations used in
+ * {@link buildTriagePrompt} and {@link buildMultiClusterTriagePrompt}.
+ * `namespace` takes precedence over `allNamespaces` when both are set.
+ */
+export function resolveNamespaceScope(
+  opts: Pick<TriageOptions, 'namespace' | 'allNamespaces'>,
+): NamespaceScope {
+  if (opts.namespace) {
+    return {
+      kubectlSuffix: ` -n ${opts.namespace}`,
+      scopeLabel: `namespace "${opts.namespace}"`,
+      multiClusterSuffix: ` scoped to namespace "${opts.namespace}"`,
+    };
+  }
+  if (opts.allNamespaces) {
+    return {
+      kubectlSuffix: ' -A',
+      scopeLabel: 'all namespaces',
+      multiClusterSuffix: ' across all namespaces',
+    };
+  }
+  return {
+    kubectlSuffix: '',
+    scopeLabel: 'the default namespace',
+    multiClusterSuffix: '',
+  };
+}
+
 /**
  * Build the structured triage prompt sent to the Heimdall agent.
  *
@@ -44,16 +85,7 @@ export function buildTriagePrompt(opts: TriageOptions = {}): string {
     return buildMultiClusterTriagePrompt(opts.contexts, opts);
   }
 
-  const nsSuffix = opts.namespace
-    ? ` -n ${opts.namespace}`
-    : opts.allNamespaces
-      ? ' -A'
-      : '';
-  const scope = opts.namespace
-    ? `namespace "${opts.namespace}"`
-    : opts.allNamespaces
-      ? 'all namespaces'
-      : 'the default namespace';
+  const { kubectlSuffix: nsSuffix, scopeLabel: scope } = resolveNamespaceScope(opts);
 
   return `Run a complete cluster health triage sweep scoped to ${scope}.
 Work through ALL of the following checks in order. Do not skip any category.
@@ -119,11 +151,7 @@ ${sloList}`;
  */
 function buildMultiClusterTriagePrompt(contexts: string[], opts: TriageOptions): string {
   const contextList = contexts.map((c) => `- ${c}`).join('\n');
-  const nsSuffix = opts.namespace
-    ? ` scoped to namespace "${opts.namespace}"`
-    : opts.allNamespaces
-      ? ' across all namespaces'
-      : '';
+  const { multiClusterSuffix: nsSuffix } = resolveNamespaceScope(opts);
 
   return `Run a multi-cluster health triage sweep${nsSuffix} across the following Kubernetes contexts:
 
