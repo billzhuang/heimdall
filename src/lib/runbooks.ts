@@ -6,7 +6,7 @@
  * included; untagged runbooks always load. Without a query, all runbooks load.
  * Output is capped to protect the model's context window.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export interface RunbookConfig {
@@ -31,6 +31,27 @@ export function tagsMatch(tags: string[] | null | undefined, query: string): boo
 }
 
 /**
+ * Read a single runbook file, logging a specific warning on error and returning
+ * null so the caller can skip it. Distinguishes ENOENT ("not found") from other
+ * read errors (e.g. EPERM, EISDIR) for clearer operator feedback.
+ *
+ * Using a single try/catch avoids the TOCTOU race between an existsSync check
+ * and the subsequent readFileSync call.
+ */
+export function readRunbook(absPath: string): string | null {
+  try {
+    return readFileSync(absPath, 'utf-8').trim();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      process.stderr.write(`[heimdall] Runbook not found: ${absPath}\n`);
+    } else {
+      process.stderr.write(`[heimdall] Could not read runbook ${absPath}: ${err}\n`);
+    }
+    return null;
+  }
+}
+
+/**
  * Load and concatenate runbook files.
  *
  * @param configDir  - directory relative to which `entry.path` values are resolved.
@@ -48,19 +69,7 @@ export function loadRunbooks(configDir: string, configs: RunbookConfig[], query?
     if (query !== undefined && !tagsMatch(entry.tags, query)) continue;
 
     const absPath = resolve(configDir, entry.path);
-    if (!existsSync(absPath)) {
-      process.stderr.write(`[heimdall] Runbook not found: ${absPath}\n`);
-      continue;
-    }
-
-    let text: string;
-    try {
-      text = readFileSync(absPath, 'utf-8').trim();
-    } catch (err) {
-      process.stderr.write(`[heimdall] Could not read runbook ${absPath}: ${err}\n`);
-      continue;
-    }
-
+    const text = readRunbook(absPath);
     if (!text) continue;
 
     const header = `\n\n### Runbook: ${entry.path}\n\n`;
