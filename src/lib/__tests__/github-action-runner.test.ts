@@ -435,6 +435,13 @@ describe('runPromptMode', () => {
     expect(mockCapture).not.toHaveBeenCalled();
   });
 
+  it('exits 1 when prompt is whitespace-only', async () => {
+    const mockCapture = vi.fn();
+    const cfg = makeConfig({ prompt: '   \t\n  ' });
+    await expect(runPromptMode(cfg, mockCapture)).rejects.toThrow('process.exit(1)');
+    expect(mockCapture).not.toHaveBeenCalled();
+  });
+
   it('exits with the capture exit code when heimdall exits non-zero', async () => {
     const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 2 });
     const cfg = makeConfig();

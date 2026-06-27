@@ -147,7 +147,7 @@ type CaptureFn = typeof capture;
  * `captureImpl` can be replaced with a mock in unit tests.
  */
 export async function runPromptMode(config: ActionConfig, captureImpl: CaptureFn = capture): Promise<void> {
-  if (!config.prompt) {
+  if (!config.prompt.trim()) {
     process.stderr.write('[heimdall-action] Error: prompt input is required for prompt mode\n');
     process.exit(1);
   }
