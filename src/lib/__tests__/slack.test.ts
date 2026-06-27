@@ -42,6 +42,7 @@ function mockFetch(status = 200, body = 'ok'): ReturnType<typeof vi.fn> {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -297,5 +298,61 @@ describe('sendSlackNotification — buildBlockKitPayload edge cases', () => {
     const cmdsBlock = payload.blocks.find((b) => b.text?.text.includes('Suggested commands'));
     const cmdLines = cmdsBlock?.text?.text.split('\n').filter((l) => l.startsWith('kubectl')) ?? [];
     expect(cmdLines.length).toBe(MAX_SUGGESTED_COMMANDS);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Abort timeout — covers the `() => controller.abort()` setTimeout callback
+// ---------------------------------------------------------------------------
+
+describe('sendSlackNotification — abort timeout', () => {
+  it('fires the setTimeout abort after timeoutMs and logs a timeout message', async () => {
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+          );
+        }),
+      ),
+    );
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const notifyPromise = sendSlackNotification(
+      CRITICAL_FINDING,
+      { ...BASE_CONFIG, timeoutMs: 3_000 },
+    );
+
+    await vi.advanceTimersByTimeAsync(3_001);
+    await notifyPromise;
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('timed out'));
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('3000ms'));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// response.text() failure — covers the `.catch(() => '')` fallback on non-2xx
+// ---------------------------------------------------------------------------
+
+describe('sendSlackNotification — response.text() failure', () => {
+  it('logs HTTP error without body detail when text() rejects', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: () => Promise.reject(new Error('stream closed')),
+    }));
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG);
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('HTTP 503'));
+    expect(stderrSpy).not.toHaveBeenCalledWith(expect.stringContaining('stream closed'));
   });
 });
