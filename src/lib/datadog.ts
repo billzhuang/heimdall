@@ -13,7 +13,6 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
-export { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
 
 export interface DatadogConfig {
   apiKey: string;

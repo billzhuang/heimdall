@@ -218,6 +218,16 @@ describe('resolveTimePassthrough', () => {
     expect(resolveTimePassthrough('9999999999999', NOW)).toBe('9999999999999');
   });
 
+  it('treats 13-digit ms epoch as seconds — intentional Loki divergence', () => {
+    // Other resolvers treat 13-digit strings as Unix ms; this one always treats
+    // them as Unix seconds (Loki interprets bare ints as nanoseconds, so all
+    // bare ints must be converted from seconds before sending to Loki).
+    // '1717243200000' as seconds → year ~56000, NOT 2024.
+    const result = resolveTimePassthrough('1717243200000', NOW);
+    expect(result).not.toBe('2024-06-01T12:00:00.000Z');
+    expect(new Date(result).getFullYear()).toBeGreaterThan(50000);
+  });
+
   it('passes through ISO8601 strings unchanged', () => {
     const iso = '2024-01-15T08:30:00Z';
     expect(resolveTimePassthrough(iso, NOW)).toBe(iso);
