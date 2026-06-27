@@ -29,7 +29,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import { nextFireTime, formatDelay, validateCronExpression } from './lib/schedule.ts';
-import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
+import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -114,11 +114,7 @@ async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
 
 /** Run one triage sweep. Returns true on success, false on failure. */
 async function runTriage(opts: TriageOptions, signal?: AbortSignal): Promise<boolean> {
-  const scope = opts.namespace
-    ? `namespace "${opts.namespace}"`
-    : opts.allNamespaces
-      ? 'all namespaces'
-      : 'default namespace';
+  const { scopeLabel: scope } = resolveNamespaceScope(opts);
   process.stderr.write(`[heimdall-schedule] Running scheduled triage (scope: ${scope})...\n`);
 
   try {
@@ -177,13 +173,11 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
     process.exit(1);
   }
 
-  // allNamespaces takes precedence; drop namespace when both are set.
-  const triageOpts: TriageOptions = triageCfg.allNamespaces
-    ? { allNamespaces: true }
-    : {
-        namespace: triageCfg.namespace ?? undefined,
-        allNamespaces: false,
-      };
+  // namespace takes precedence over allNamespaces (matches resolveNamespaceScope contract).
+  const triageOpts: TriageOptions = {
+    namespace: triageCfg.namespace ?? undefined,
+    allNamespaces: triageCfg.allNamespaces ?? false,
+  };
 
   process.stderr.write(`[heimdall-schedule] Schedule mode started. Triage cron: "${cron}" (UTC)\n`);
 

@@ -173,7 +173,7 @@ const WatchSchema = v.nullish(
 // Namespace lockdown — restricts the agent to a single namespace enforced in code.
 const NamespaceSchema = v.nullish(
   v.object({
-    locked: v.nullish(v.string()),
+    locked: v.nullish(v.pipe(v.string(), v.minLength(1))),
   }),
 );
 
@@ -261,7 +261,7 @@ const ScheduleTriageSchema = v.nullish(
     // Fields: minute hour day-of-month month day-of-week.
     cron: v.nullish(v.string(), '0 */6 * * *'),
     // Optional namespace scope (passed as -n to triage). Omit for default namespace.
-    namespace: v.nullish(v.string()),
+    namespace: v.nullish(v.pipe(v.string(), v.minLength(1))),
     // Sweep all namespaces (-A). Overrides namespace when true.
     allNamespaces: v.nullish(v.boolean(), false),
   }),

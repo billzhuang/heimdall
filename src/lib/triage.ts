@@ -50,7 +50,7 @@ export interface NamespaceScope {
 export function resolveNamespaceScope(
   opts: Pick<TriageOptions, 'namespace' | 'allNamespaces'>,
 ): NamespaceScope {
-  if (opts.namespace) {
+  if (opts.namespace != null && opts.namespace !== '') {
     return {
       kubectlSuffix: ` -n ${opts.namespace}`,
       scopeLabel: `namespace "${opts.namespace}"`,
@@ -85,31 +85,31 @@ export function buildTriagePrompt(opts: TriageOptions = {}): string {
     return buildMultiClusterTriagePrompt(opts.contexts, opts);
   }
 
-  const { kubectlSuffix: nsSuffix, scopeLabel: scope } = resolveNamespaceScope(opts);
+  const { kubectlSuffix, scopeLabel } = resolveNamespaceScope(opts);
 
-  return `Run a complete cluster health triage sweep scoped to ${scope}.
+  return `Run a complete cluster health triage sweep scoped to ${scopeLabel}.
 Work through ALL of the following checks in order. Do not skip any category.
 
 1. **Nodes** — \`kubectl get nodes -o wide\`
    Flag: NotReady status; MemoryPressure, DiskPressure, or PIDPressure conditions; Unschedulable nodes.
 
-2. **Pods** — \`kubectl get pods${nsSuffix} -o wide\`
+2. **Pods** — \`kubectl get pods${kubectlSuffix} -o wide\`
    Flag: CrashLoopBackOff; ImagePullBackOff or ErrImagePull; OOMKilled; Pending > 5 min; ContainerCreating > 5 min; restart count > 5; any phase other than Running or Succeeded.
 
-3. **Workloads** — \`kubectl get deployments,statefulsets,daemonsets${nsSuffix}\`
+3. **Workloads** — \`kubectl get deployments,statefulsets,daemonsets${kubectlSuffix}\`
    Flag: unavailable replicas (READY < DESIRED). For any flagged workload, check \`kubectl rollout status deployment/<name> -n <ns> --timeout=5s\` to see if a rollout is stuck.
 
-4. **Events** — \`kubectl get events${nsSuffix} --sort-by='.lastTimestamp'\`
+4. **Events** — \`kubectl get events${kubectlSuffix} --sort-by='.lastTimestamp'\`
    Report Warning-type events from the last hour. Group by reason.
 
-5. **PVCs** — \`kubectl get pvc${nsSuffix}\`
+5. **PVCs** — \`kubectl get pvc${kubectlSuffix}\`
    Flag: any PVC in Pending or Lost phase.
 
-6. **Jobs** — \`kubectl get jobs${nsSuffix}\`
+6. **Jobs** — \`kubectl get jobs${kubectlSuffix}\`
    Flag: any Job with failed completions (FAILED > 0) or that appears to be hung (COMPLETIONS shows 0/N and the job is old).
 
 7. **CAPI drift** (Cluster API — skip if not installed) — \`kubectl api-resources --api-group=cluster.x-k8s.io\`
-   If CAPI CRDs are present, run \`kubectl get machine,machinedeployment${nsSuffix} -o wide\` and delegate deep investigation to the \`capi-investigator\` subagent.
+   If CAPI CRDs are present, run \`kubectl get machine,machinedeployment${kubectlSuffix} -o wide\` and delegate deep investigation to the \`capi-investigator\` subagent.
    Flag: Machines not in Running phase; MachineDeployments with READY < DESIRED.
 
 For each finding provide:
@@ -151,9 +151,9 @@ ${sloList}`;
  */
 function buildMultiClusterTriagePrompt(contexts: string[], opts: TriageOptions): string {
   const contextList = contexts.map((c) => `- ${c}`).join('\n');
-  const { multiClusterSuffix: nsSuffix } = resolveNamespaceScope(opts);
+  const { multiClusterSuffix } = resolveNamespaceScope(opts);
 
-  return `Run a multi-cluster health triage sweep${nsSuffix} across the following Kubernetes contexts:
+  return `Run a multi-cluster health triage sweep${multiClusterSuffix} across the following Kubernetes contexts:
 
 ${contextList}
 
