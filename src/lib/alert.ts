@@ -44,13 +44,10 @@ export function parseAlertManagerPayload(payload: unknown): ParsedAlert[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const p = payload as AlertManagerPayload;
   const raw = Array.isArray(p.alerts) ? p.alerts : [];
-  return raw.flatMap((a) => {
-    const parsed = parseOneAlert(a);
-    return parsed ? [parsed] : [];
-  });
+  return raw.map((a) => parseOneAlert(a));
 }
 
-function parseOneAlert(alert: AlertManagerAlert): ParsedAlert | null {
+function parseOneAlert(alert: AlertManagerAlert): ParsedAlert {
   const lbls = alert.labels ?? {};
   const ann = alert.annotations ?? {};
 
