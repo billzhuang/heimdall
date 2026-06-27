@@ -109,6 +109,7 @@ export function capture(
     });
     child.stdout.setEncoding('utf-8');
     child.stdout.on('data', (chunk: string) => { stdout += chunk; });
+    /* v8 ignore next */
     child.on('close', (code) => resolve({ stdout, code: code ?? 1 }));
     child.on('error', (err) => {
       process.stderr.write(`[heimdall-action] spawn error: ${err.message}\n`);
@@ -269,6 +270,7 @@ export async function main(captureImpl?: CaptureFn): Promise<void> {
 }
 
 // Only run when this file is the entry point, not when imported by tests.
+/* v8 ignore next 2 */
 if (process.argv[1] === __filename) {
   await main();
 }

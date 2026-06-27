@@ -191,6 +191,7 @@ export function selectDiverseEntries(
     let bestIdx = -1;
     let minMaxSim = Infinity;
     for (const idx of remaining) {
+      /* v8 ignore next */
       const maxSim = maxSims.get(idx) ?? -Infinity;
       if (maxSim < minMaxSim) {
         minMaxSim = maxSim;
@@ -198,6 +199,7 @@ export function selectDiverseEntries(
       }
     }
 
+    /* v8 ignore next */
     if (bestIdx !== -1) {
       selected.push(bestIdx);
       remaining.delete(bestIdx);

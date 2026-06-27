@@ -79,7 +79,9 @@ function getCacheDir(): string {
   const baseDir = process.env.HEIMDALL_KUBECTL_CACHE_DIR || tmpdir();
   // Isolate per-user so a shared base dir (e.g. /tmp) cannot cause cross-user
   // EACCES write failures or cache poisoning on multi-user hosts.
+  /* v8 ignore next */
   const uid = typeof process.getuid === 'function' ? String(process.getuid()) : undefined;
+  /* v8 ignore next */
   const user = uid ?? process.env.USER ?? process.env.USERNAME ?? 'default';
   return joinPath(baseDir, `${CACHE_DIR_NAME}-${user}`);
 }

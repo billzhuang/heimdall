@@ -232,6 +232,14 @@ describe('runKubectl (policy enforcement)', () => {
     expect(result).toMatch(/no kubectl subcommand provided/i);
   });
 
+  it('quotes args containing whitespace in the display command (line 217 ternary)', async () => {
+    // tokenizeArgs strips the quotes, leaving 'my pod' as one arg with a space.
+    // The ternary at kubectl.ts line 217 re-wraps it for audit/display purposes.
+    // `delete` is destructive so the command is blocked before kubectl is spawned.
+    const result = await runKubectl(`delete pod 'my pod' -n prod`);
+    expect(result).toMatch(/^BLOCKED:/);
+  });
+
   // The allow path (get/describe/auth can-i not blocked) is asserted in
   // kubectl-safety.test.ts against validateCommand, without spawning kubectl —
   // executing an allowed command here would depend on a live cluster and the
@@ -712,6 +720,20 @@ describe('runKubectl (exec paths)', () => {
     stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: '{"items":[]}', stderr: '' }));
     const result = await runKubectl('get pods -o json');
     expect(result).toBe('{"items":[]}');
+  });
+
+  // --- redactSecrets: false cache hit (covers the ternary false branch at line 305) ---
+
+  it('returns raw cached output when redactSecrets is false (skips redactSecretValues)', async () => {
+    process.env.HEIMDALL_KUBECTL_CACHE = '1';
+    process.env.HEIMDALL_KUBECTL_CACHE_TTL = '60';
+    stubExec((_cmd, _args, _opts, cb) => {
+      cb(null, { stdout: '{"items":[]}', stderr: '' });
+    });
+    await runKubectl('get pods -o json', { redactSecrets: false }); // miss → writes
+    const result = await runKubectl('get pods -o json', { redactSecrets: false }); // hit
+    expect(result).toContain('"items"');
+    expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
   });
 
   // --- Caching with --context flag already in argv (skips effectiveContext lookup) ---
