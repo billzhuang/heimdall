@@ -140,6 +140,15 @@ describe('parseAlertManagerPayload', () => {
     const alerts = parseAlertManagerPayload(payload);
     expect(alerts[0].pod).toBeUndefined();
   });
+
+  it('skips null elements in the alerts array without throwing', () => {
+    const payload = {
+      alerts: [null, { labels: { alertname: 'Real' }, annotations: {} }],
+    };
+    const alerts = parseAlertManagerPayload(payload);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].alertname).toBe('Real');
+  });
 });
 
 // ── buildAlertPrompt ─────────────────────────────────────────────────────────
