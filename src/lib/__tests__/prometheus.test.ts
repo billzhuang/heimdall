@@ -6,6 +6,7 @@ import { mockFetch, makeAbortError } from './test-helpers.ts';
 const BASE_CONFIG: PrometheusConfig = { url: 'http://prometheus:9090', timeoutMs: 5_000 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -226,5 +227,58 @@ describe('runPrometheusQuery — output truncation', () => {
     const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
     expect(result).toBe(small);
     expect(result).not.toContain('[output truncated');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Abort timeout — covers the `() => controller.abort()` setTimeout callback
+// ---------------------------------------------------------------------------
+
+describe('runPrometheusQuery — abort timeout', () => {
+  it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+          );
+        }),
+      ),
+    );
+
+    const queryPromise = runPrometheusQuery(
+      'instant',
+      { query: 'up' },
+      { ...BASE_CONFIG, timeoutMs: 3_000 },
+    );
+
+    await vi.advanceTimersByTimeAsync(3_001);
+    const result = await queryPromise;
+
+    expect(result).toMatch(/timed out/i);
+    expect(result).toContain('3000ms');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// response.text() catch fallback — covers `() => ''` on non-2xx path
+// ---------------------------------------------------------------------------
+
+describe('runPrometheusQuery — response.text() failure', () => {
+  it('returns an HTTP error without body detail when text() throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: () => Promise.reject(new Error('stream closed')),
+    }));
+
+    const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
+
+    expect(result).toMatch(/Prometheus HTTP 503/);
+    expect(result).not.toContain(':');
   });
 });
