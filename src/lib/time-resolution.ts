@@ -13,6 +13,11 @@ import { parseDurationMs } from './duration.ts';
 
 const BARE_INT_RE = /^\d{1,13}$/;
 
+/** Convert milliseconds to an ISO8601 string; returns null if the value is out of Date range. */
+function msToIso(ms: number): string | null {
+  try { return new Date(ms).toISOString(); } catch { return null; }
+}
+
 /**
  * Resolve a time expression to Unix milliseconds.
  *
@@ -56,8 +61,7 @@ export function resolveTimeSeconds(expr: string, nowMs: number): number | null {
 export function resolveTimeISO(expr: string, nowMs: number): string | null {
   if (expr.startsWith('-') || BARE_INT_RE.test(expr)) {
     const ms = resolveTimeMs(expr, nowMs);
-    if (ms === null) return null;
-    try { return new Date(ms).toISOString(); } catch { return null; }
+    return ms === null ? null : msToIso(ms);
   }
   // ISO8601 / RFC3339 — pass through unchanged if valid
   if (!Number.isNaN(Date.parse(expr))) return expr;
@@ -86,19 +90,10 @@ export function resolveTimeUs(expr: string, nowMs: number): number | null {
 export function resolveTimePassthrough(expr: string, nowMs: number): string {
   if (expr.startsWith('-')) {
     const ms = resolveTimeMs(expr, nowMs);
-    if (ms === null) return expr;
-    try {
-      return new Date(ms).toISOString();
-    } catch {
-      return expr;
-    }
+    return ms === null ? expr : (msToIso(ms) ?? expr);
   }
   if (BARE_INT_RE.test(expr)) {
-    try {
-      return new Date(Number(expr) * 1_000).toISOString();
-    } catch {
-      return expr;
-    }
+    return msToIso(Number(expr) * 1_000) ?? expr;
   }
   return expr;
 }
