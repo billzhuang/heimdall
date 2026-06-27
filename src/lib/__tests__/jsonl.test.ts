@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { readJsonlFile } from '../jsonl.ts';
+import { appendJsonlLine, readJsonlFile } from '../jsonl.ts';
 import * as fs from 'node:fs/promises';
 
 vi.mock('node:fs/promises');
 
 const mockReadFile = vi.mocked(fs.readFile);
+const mockAppendFile = vi.mocked(fs.appendFile);
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -55,5 +56,50 @@ describe('readJsonlFile', () => {
     mockReadFile.mockResolvedValueOnce('\n\n\n' as never);
     const result = await readJsonlFile('/data.jsonl');
     expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// appendJsonlLine
+// ---------------------------------------------------------------------------
+
+describe('appendJsonlLine', () => {
+  it('calls appendFile with the serialized item and a trailing newline', async () => {
+    mockAppendFile.mockResolvedValueOnce(undefined as never);
+    await appendJsonlLine({ id: 1, name: 'test' }, '/data.jsonl');
+    expect(mockAppendFile).toHaveBeenCalledWith('/data.jsonl', '{"id":1,"name":"test"}\n', 'utf8');
+  });
+
+  it('serializes an array value correctly', async () => {
+    mockAppendFile.mockResolvedValueOnce(undefined as never);
+    await appendJsonlLine([1, 2, 3], '/data.jsonl');
+    expect(mockAppendFile).toHaveBeenCalledWith('/data.jsonl', '[1,2,3]\n', 'utf8');
+  });
+
+  it('serializes a primitive string value', async () => {
+    mockAppendFile.mockResolvedValueOnce(undefined as never);
+    await appendJsonlLine('hello world', '/data.jsonl');
+    expect(mockAppendFile).toHaveBeenCalledWith('/data.jsonl', '"hello world"\n', 'utf8');
+  });
+
+  it('serializes a numeric value', async () => {
+    mockAppendFile.mockResolvedValueOnce(undefined as never);
+    await appendJsonlLine(42, '/data.jsonl');
+    expect(mockAppendFile).toHaveBeenCalledWith('/data.jsonl', '42\n', 'utf8');
+  });
+
+  it('propagates errors thrown by appendFile', async () => {
+    const err = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    mockAppendFile.mockRejectedValueOnce(err);
+    await expect(appendJsonlLine({ id: 1 }, '/protected.jsonl')).rejects.toMatchObject({
+      code: 'EACCES',
+    });
+  });
+
+  it('uses the exact filePath provided', async () => {
+    mockAppendFile.mockResolvedValueOnce(undefined as never);
+    const path = '/custom/dir/log.jsonl';
+    await appendJsonlLine({}, path);
+    expect(mockAppendFile.mock.calls[0][0]).toBe(path);
   });
 });
