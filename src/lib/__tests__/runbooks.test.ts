@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+
+afterEach(() => vi.restoreAllMocks());
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tagsMatch, loadRunbooks } from '../runbooks.ts';
+import { tagsMatch, readRunbook, loadRunbooks } from '../runbooks.ts';
 
 // ── tagsMatch ────────────────────────────────────────────────────────────────
 
@@ -43,6 +45,46 @@ describe('tagsMatch', () => {
   it('returns false when query is empty and tags are non-empty', () => {
     expect(tagsMatch(['oom'], '')).toBe(false);
     expect(tagsMatch(['latency', 'api'], '')).toBe(false);
+  });
+});
+
+// ── readRunbook ───────────────────────────────────────────────────────────────
+
+describe('readRunbook', () => {
+  it('returns the trimmed file contents on success', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'heimdall-runbooks-test-'));
+    const filePath = join(dir, 'rb.md');
+    writeFileSync(filePath, '  # Title\n\nContent here.  ');
+    const result = readRunbook(filePath);
+    expect(result).toBe('# Title\n\nContent here.');
+  });
+
+  it('returns null and logs "not found" when file does not exist (ENOENT)', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const result = readRunbook('/nonexistent/path/runbook.md');
+    expect(result).toBeNull();
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Runbook not found'));
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('runbook.md'));
+    stderrSpy.mockRestore();
+  });
+
+  it('returns null and logs "Could not read" for non-ENOENT errors', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // Passing a directory path causes EISDIR on readFileSync — a real non-ENOENT error.
+    const dir = mkdtempSync(join(tmpdir(), 'heimdall-runbooks-test-'));
+    const result = readRunbook(dir);
+    expect(result).toBeNull();
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Could not read runbook'));
+    expect(stderrSpy).not.toHaveBeenCalledWith(expect.stringContaining('Runbook not found'));
+    stderrSpy.mockRestore();
+  });
+
+  it('returns empty string (falsy) for a file containing only whitespace', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'heimdall-runbooks-test-'));
+    writeFileSync(join(dir, 'empty.md'), '   \n  ');
+    const result = readRunbook(join(dir, 'empty.md'));
+    // trim() of whitespace-only content → '' which is falsy
+    expect(result).toBe('');
   });
 });
 
@@ -133,6 +175,17 @@ describe('loadRunbooks', () => {
     const result = loadRunbooks(dir, [{ path: 'missing.md' }]);
     expect(result).toBe('');
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Runbook not found'));
+    stderrSpy.mockRestore();
+  });
+
+  it('warns to stderr and skips unreadable files (non-ENOENT error) without crashing', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // A subdirectory as a path triggers EISDIR — exists but not readable as a file.
+    const dir = makeTmpDir();
+    mkdirSync(join(dir, 'a-dir'));
+    const result = loadRunbooks(dir, [{ path: 'a-dir' }]);
+    expect(result).toBe('');
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Could not read runbook'));
     stderrSpy.mockRestore();
   });
 
