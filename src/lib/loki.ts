@@ -8,6 +8,7 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimePassthrough } from './time-resolution.ts';
+import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
 
 export interface LokiConfig {
   url: string;
@@ -91,9 +92,6 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
       ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
       : DEFAULT_LIMIT;
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
-
   try {
     const baseUrl = new URL(config.url);
     baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + '/loki/api/v1/query_range';
@@ -104,24 +102,15 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
     baseUrl.searchParams.set('limit', String(effectiveLimit));
     baseUrl.searchParams.set('direction', params.direction ?? DEFAULT_DIRECTION);
 
-    const response = await fetch(baseUrl.toString(), { signal: controller.signal });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const redactedBody = applyRedaction(body, config.regexRedactionRules ?? []);
-      const detail = redactedBody ? `: ${redactedBody.slice(0, 200)}` : '';
-      return `Loki HTTP ${response.status} ${response.statusText}${detail}`;
-    }
-
-    const text = await response.text();
-    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
+      if (!response.ok) {
+        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+        return `Loki HTTP ${response.status} ${response.statusText}${detail}`;
+      }
+      const text = await response.text();
+      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return `Loki query timed out after ${config.timeoutMs}ms.`;
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return `Loki query failed: ${applyRedaction(message, config.regexRedactionRules ?? [])}`;
-  } finally {
-    clearTimeout(timer);
+    return formatQueryError(err, 'Loki', config.timeoutMs, config.regexRedactionRules ?? []);
   }
 }

@@ -7,6 +7,7 @@
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
+import { fetchWithTimeout } from './http.ts';
 
 export interface PrometheusConfig {
   url: string;
@@ -54,33 +55,26 @@ export async function runPrometheusQuery(
     searchParams.set('step', params.step!);
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
-
   try {
     // Build the request URL inside the try block so a malformed config.url
     // throws a TypeError that is caught and returned as a clean error string.
     const baseUrl = new URL(config.url);
     baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + endpoint;
     searchParams.forEach((value, key) => baseUrl.searchParams.set(key, value));
-    const reqUrl = baseUrl.toString();
 
-    const response = await fetch(reqUrl, { signal: controller.signal });
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const detail = body ? `: ${body.slice(0, 200)}` : '';
-      return `Prometheus HTTP ${response.status} ${response.statusText}${detail}`;
-    }
-
-    const text = await response.text();
-    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const detail = body ? `: ${body.slice(0, 200)}` : '';
+        return `Prometheus HTTP ${response.status} ${response.statusText}${detail}`;
+      }
+      const text = await response.text();
+      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       return `Prometheus query timed out after ${config.timeoutMs}ms.`;
     }
     return `Prometheus query failed: ${err instanceof Error ? err.message : String(err)}`;
-  } finally {
-    clearTimeout(timer);
   }
 }
