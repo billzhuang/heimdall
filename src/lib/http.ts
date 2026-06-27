@@ -47,6 +47,25 @@ export async function readErrorDetail(
 }
 
 /**
+ * Process a fetch Response for text-based APIs: on success return the truncated,
+ * redacted body; on non-2xx return a "<ServiceName> HTTP <status> <text>" string.
+ * AbortErrors from body reads are re-thrown (see readErrorDetail).
+ */
+export async function handleJsonResponse(
+  response: Response,
+  serviceName: string,
+  redactionRules: CompiledRedactionRule[],
+  truncate: (s: string) => string,
+): Promise<string> {
+  if (!response.ok) {
+    const detail = await readErrorDetail(response, redactionRules);
+    return `${serviceName} HTTP ${response.status} ${response.statusText}${detail}`;
+  }
+  const text = await response.text();
+  return truncate(applyRedaction(text, redactionRules));
+}
+
+/**
  * Format a caught fetch error as a human-readable string.
  * AbortErrors produce a timeout message; all other errors produce a "failed" message.
  * The error message is redacted before returning.

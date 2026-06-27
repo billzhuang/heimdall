@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { withTimeout, fetchWithTimeout, readErrorDetail, formatQueryError } from '../http.ts';
+import { withTimeout, fetchWithTimeout, handleJsonResponse, readErrorDetail, formatQueryError } from '../http.ts';
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
@@ -142,6 +142,47 @@ describe('fetchWithTimeout', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handleJsonResponse
+// ---------------------------------------------------------------------------
+
+describe('handleJsonResponse', () => {
+  it('returns body text for a 2xx response', async () => {
+    const response = { ok: true, text: () => Promise.resolve('hello') } as unknown as Response;
+    expect(await handleJsonResponse(response, 'Test', [], (s) => s)).toBe('hello');
+  });
+
+  it('applies truncation to a successful response body', async () => {
+    const response = { ok: true, text: () => Promise.resolve('long body') } as unknown as Response;
+    expect(await handleJsonResponse(response, 'Test', [], (s) => s.slice(0, 4))).toBe('long');
+  });
+
+  it('applies redaction rules to a successful response body', async () => {
+    const rules = [{ name: 'key', re: /key=[^\s]+/g }];
+    const response = { ok: true, text: () => Promise.resolve('key=secret') } as unknown as Response;
+    expect(await handleJsonResponse(response, 'Test', rules, (s) => s)).toBe('[REDACTED:key]');
+  });
+
+  it('returns formatted error string for a non-ok response', async () => {
+    const response = {
+      ok: false, status: 503, statusText: 'Service Unavailable',
+      text: () => Promise.resolve('overloaded'),
+    } as unknown as Response;
+    expect(await handleJsonResponse(response, 'Prometheus', [], (s) => s)).toBe(
+      'Prometheus HTTP 503 Service Unavailable: overloaded',
+    );
+  });
+
+  it('re-throws AbortError from error body read', async () => {
+    const abortErr = makeAbortError();
+    const response = {
+      ok: false, status: 503, statusText: 'Service Unavailable',
+      text: () => Promise.reject(abortErr),
+    } as unknown as Response;
+    await expect(handleJsonResponse(response, 'Test', [], (s) => s)).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 
