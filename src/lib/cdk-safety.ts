@@ -64,6 +64,8 @@ export interface CdkCommandValidationResult {
   subcommand: string | null;
 }
 
+import { tokenize } from './tokenizer.ts';
+
 /**
  * CDK global options that consume the following token as their value.
  * Only VALUE-TAKING options are listed. Boolean flags (--no-color, --verbose, etc.)
@@ -86,62 +88,19 @@ export const CDK_OPTIONS_WITH_VALUE = new Set([
 ]);
 
 /**
- * Tokenize a command string into parts, handling single- and double-quoted
+ * Tokenize a CDK command string into parts, handling single- and double-quoted
  * strings and backslash escapes so that multi-word option values (e.g.
  * --app "node app.js") are treated as a single token.
+ *
+ * Delegates to the shared `tokenize` core from tokenizer.ts so the CDK and
+ * kubectl/aws paths always use the same tokenization logic.
  *
  * Exported so that `cdk.ts` can reuse the same tokenizer at execution time,
  * eliminating the validation/execution discrepancy that would otherwise allow
  * a crafted command to pass validation with one parse and execute differently.
  */
 export function tokenizeCdkCommand(command: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let inSingle = false;
-  let inDouble = false;
-  let hasToken = false;
-
-  for (let i = 0; i < command.length; i++) {
-    const ch = command[i];
-
-    if (inSingle) {
-      if (ch === "'") inSingle = false;
-      else current += ch;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"') {
-        inDouble = false;
-      } else if (ch === '\\' && i + 1 < command.length && (command[i + 1] === '"' || command[i + 1] === '\\')) {
-        current += command[++i];
-      } else {
-        current += ch;
-      }
-      continue;
-    }
-
-    if (ch === "'") {
-      inSingle = true;
-      hasToken = true;
-    } else if (ch === '"') {
-      inDouble = true;
-      hasToken = true;
-    } else if (ch === '\\' && i + 1 < command.length) {
-      current += command[++i];
-      hasToken = true;
-    } else if (/\s/.test(ch)) {
-      if (hasToken) {
-        tokens.push(current);
-        current = '';
-        hasToken = false;
-      }
-    } else {
-      current += ch;
-      hasToken = true;
-    }
-  }
-  if (hasToken) tokens.push(current);
-  return tokens;
+  return tokenize(command);
 }
 
 /**

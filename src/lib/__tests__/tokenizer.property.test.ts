@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
-import { tokenizeShellArgs } from '../tokenizer.ts';
+import { tokenize, tokenizeShellArgs } from '../tokenizer.ts';
 
 // ---------------------------------------------------------------------------
 // Shared arbitraries
@@ -257,6 +257,41 @@ describe('tokenizeShellArgs (property-based) — whitespace', () => {
           .map((chars) => chars.join('')),
         (input) => {
           expect(tokenizeShellArgs(input, 'kubectl')).toEqual([]);
+        },
+      ),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// tokenize — delegates correctly from tokenizeShellArgs
+// ---------------------------------------------------------------------------
+
+describe('tokenize (property-based) — consistent with tokenizeShellArgs', () => {
+  it('tokenize(input) equals tokenizeShellArgs(input, binaryName) when first token does not match binaryName', () => {
+    // Use 'zz-never-matches' as the binary name — safe words never start with 'zz-never-matches'.
+    fc.assert(
+      fc.property(
+        fc.array(safeWord, { minLength: 1, maxLength: 6 }),
+        (words) => {
+          const input = words.join(' ');
+          expect(tokenize(input)).toEqual(tokenizeShellArgs(input, 'zz-never-matches'));
+        },
+      ),
+    );
+  });
+
+  it('tokenize(binaryName + " " + rest) equals [binaryName, ...tokenizeShellArgs(rest, binaryName)]', () => {
+    // tokenize keeps the binary name; tokenizeShellArgs strips it and returns only the rest.
+    fc.assert(
+      fc.property(
+        fc
+          .array(safeWord, { minLength: 1, maxLength: 5 })
+          .filter((words) => words[0].toLowerCase() !== 'kubectl'),
+        (words) => {
+          const rest = words.join(' ');
+          const full = 'kubectl ' + rest;
+          expect(tokenize(full)).toEqual(['kubectl', ...tokenizeShellArgs(rest, 'kubectl')]);
         },
       ),
     );

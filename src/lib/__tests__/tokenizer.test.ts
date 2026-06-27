@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tokenizeShellArgs } from '../tokenizer.ts';
+import { tokenize, tokenizeShellArgs } from '../tokenizer.ts';
 
 describe('tokenizeShellArgs', () => {
   it('splits simple space-separated args', () => {
@@ -81,5 +81,48 @@ describe('tokenizeShellArgs', () => {
 
   it('adjacent single-quoted tokens without whitespace concatenate into one token', () => {
     expect(tokenizeShellArgs("'foo''bar'", 'kubectl')).toEqual(['foobar']);
+  });
+});
+
+describe('tokenize', () => {
+  it('returns all tokens without stripping any binary name', () => {
+    expect(tokenize('cdk ls')).toEqual(['cdk', 'ls']);
+    expect(tokenize('kubectl get pods')).toEqual(['kubectl', 'get', 'pods']);
+  });
+
+  it('returns empty array for empty or whitespace input', () => {
+    expect(tokenize('')).toEqual([]);
+    expect(tokenize('   ')).toEqual([]);
+  });
+
+  it('handles single-quoted strings', () => {
+    expect(tokenize("cdk --app 'node app.js' diff")).toEqual(['cdk', '--app', 'node app.js', 'diff']);
+  });
+
+  it('handles double-quoted strings', () => {
+    expect(tokenize('cdk --app "node app.js" diff')).toEqual(['cdk', '--app', 'node app.js', 'diff']);
+  });
+
+  it('handles backslash escape outside quotes', () => {
+    expect(tokenize('foo\\ bar')).toEqual(['foo bar']);
+  });
+
+  it('handles backslash-escaped quote inside double quotes', () => {
+    expect(tokenize('cdk --app "my \\"app\\"" diff')).toEqual(['cdk', '--app', 'my "app"', 'diff']);
+  });
+
+  it('handles unrecognized escape in double quotes — preserves backslash', () => {
+    expect(tokenize('"\\n"')).toEqual(['\\n']);
+  });
+
+  it('tokenizeShellArgs strips only the matching binary name token', () => {
+    // tokenize returns ['cdk', 'ls']; tokenizeShellArgs with 'cdk' strips the first token
+    expect(tokenizeShellArgs('cdk ls', 'cdk')).toEqual(['ls']);
+    // tokenize returns ['KUBECTL', 'get', 'pods']; strip 'kubectl' case-insensitively
+    expect(tokenizeShellArgs('KUBECTL get pods', 'kubectl')).toEqual(['get', 'pods']);
+    // first token does not match — no stripping
+    expect(tokenizeShellArgs('aws ec2 describe-instances', 'kubectl')).toEqual([
+      'aws', 'ec2', 'describe-instances',
+    ]);
   });
 });
