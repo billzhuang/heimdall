@@ -61,6 +61,42 @@ describe('parseCdkCommand', () => {
     const result = parseCdkCommand('cdk LS');
     expect(result.subcommand).toBe('ls');
   });
+
+  it('parses a path-based cdk binary', () => {
+    const result = parseCdkCommand('/usr/local/bin/cdk diff MyStack');
+    expect(result.isCdk).toBe(true);
+    expect(result.subcommand).toBe('diff');
+    expect(result.args).toEqual(['MyStack']);
+  });
+
+  it('handles -c short form (value-consuming, space form)', () => {
+    const result = parseCdkCommand('cdk -c env=prod ls');
+    expect(result.isCdk).toBe(true);
+    expect(result.subcommand).toBe('ls');
+  });
+
+  it('does not consume next token for --key=value equals form', () => {
+    const result = parseCdkCommand('cdk --context=env=prod ls');
+    expect(result.isCdk).toBe(true);
+    expect(result.subcommand).toBe('ls');
+  });
+
+  it('captures multiple args after subcommand', () => {
+    const result = parseCdkCommand('cdk diff Stack1 Stack2 --exclusively');
+    expect(result.subcommand).toBe('diff');
+    expect(result.args).toEqual(['Stack1', 'Stack2', '--exclusively']);
+  });
+
+  it('treats a trailing value-taking flag as having no subcommand', () => {
+    const resultApp = parseCdkCommand('cdk --app');
+    expect(resultApp.isCdk).toBe(true);
+    expect(resultApp.subcommand).toBeNull();
+    expect(resultApp.args).toEqual([]);
+    const resultC = parseCdkCommand('cdk -c');
+    expect(resultC.isCdk).toBe(true);
+    expect(resultC.subcommand).toBeNull();
+    expect(validateCdkCommand('cdk --app')?.allowed).toBe(true);
+  });
 });
 
 describe('validateCdkCommand', () => {
@@ -152,11 +188,64 @@ describe('validateCdkCommand', () => {
     const result = validateCdkCommand('cdk --no-color ls');
     expect(result?.allowed).toBe(true);
   });
+
+  it('blocks destructive commands invoked via a path-based binary', () => {
+    const result = validateCdkCommand('/usr/local/bin/cdk deploy MyStack');
+    expect(result?.allowed).toBe(false);
+    expect(result?.reason).toMatch(/blocked/i);
+  });
+
+  it('allows read-only commands via a path-based binary', () => {
+    const result = validateCdkCommand('/usr/local/bin/cdk diff MyStack');
+    expect(result?.allowed).toBe(true);
+  });
+
+  it('blocks destructive command after --key=value equals-form flag', () => {
+    const result = validateCdkCommand('cdk --output=./cdk.out deploy MyStack');
+    expect(result?.allowed).toBe(false);
+  });
+
+  it('allows read-only command after --key=value equals-form flag', () => {
+    const result = validateCdkCommand('cdk --output=./cdk.out diff MyStack');
+    expect(result?.allowed).toBe(true);
+  });
 });
 
 describe('tokenizeCdkCommand — backslash escape outside quotes', () => {
   it('treats a backslash-escaped space as part of the current token', () => {
     expect(tokenizeCdkCommand('foo\\ bar')).toEqual(['foo bar']);
+  });
+});
+
+describe('tokenizeCdkCommand — additional edge cases', () => {
+  it('handles single-quoted multi-word value', () => {
+    expect(tokenizeCdkCommand("cdk --app 'node app.js' diff")).toEqual([
+      'cdk', '--app', 'node app.js', 'diff',
+    ]);
+  });
+
+  it('handles double-quoted value with backslash-escaped inner quote', () => {
+    expect(tokenizeCdkCommand('cdk --app "my \\"app\\"" diff')).toEqual([
+      'cdk', '--app', 'my "app"', 'diff',
+    ]);
+  });
+
+  it('collapses multiple spaces between tokens', () => {
+    expect(tokenizeCdkCommand('cdk  ls')).toEqual(['cdk', 'ls']);
+  });
+
+  it('ignores trailing whitespace', () => {
+    expect(tokenizeCdkCommand('cdk ls ')).toEqual(['cdk', 'ls']);
+  });
+
+  it('returns empty array for empty string', () => {
+    expect(tokenizeCdkCommand('')).toEqual([]);
+  });
+
+  it('treats --key=value as a single token', () => {
+    expect(tokenizeCdkCommand('cdk --output=./cdk.out diff')).toEqual([
+      'cdk', '--output=./cdk.out', 'diff',
+    ]);
   });
 });
 
