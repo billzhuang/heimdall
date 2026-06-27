@@ -90,7 +90,12 @@ describe('applyRedaction (property-based)', () => {
       fc.property(
         fc.tuple(
           fc.integer({ min: 1, max: 6 }),
-          fc.array(fc.string({ maxLength: 20 }), { minLength: 0, maxLength: 5 }),
+          fc.array(
+            fc
+              .string({ maxLength: 20 })
+              .filter((s) => !s.includes('SECRET') && !s.includes('[REDACTED:')),
+            { minLength: 0, maxLength: 5 },
+          ),
         ),
         ([count, fillers]) => {
           // Build a string interleaving fillers and "SECRET" tokens
@@ -102,11 +107,9 @@ describe('applyRedaction (property-based)', () => {
           const input = parts.join(' ');
           const result = applyRedaction(input, rules);
           expect(result).not.toContain('SECRET');
-          // Every replaced token must use the canonical format
-          const replacements = result.match(/\[REDACTED:[^\]]+\]/g) ?? [];
-          for (const r of replacements) {
-            expect(r).toBe('[REDACTED:tok]');
-          }
+          // Count of replacement tokens must equal the number of SECRET tokens inserted
+          const replacements = result.match(/\[REDACTED:tok\]/g) ?? [];
+          expect(replacements).toHaveLength(count);
         },
       ),
     );
