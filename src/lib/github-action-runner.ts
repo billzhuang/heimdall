@@ -231,12 +231,19 @@ export async function runScheduleOnceMode(config: ActionConfig, captureImpl: Cap
     process.exit(code);
   }
 
+  const summaryMd = '## Heimdall Schedule\n\nScheduled triage completed.';
   setOutput('severity', 'ok', config.githubOutput);
   setOutput('summary', 'Scheduled triage completed.', config.githubOutput);
   setOutput('answer', '', config.githubOutput);
   setOutput('suggested-commands', '', config.githubOutput);
   setOutput('remediation-steps', '', config.githubOutput);
-  setOutput('summary-markdown', '', config.githubOutput);
+  setOutput('summary-markdown', summaryMd, config.githubOutput);
+
+  if (config.postSummary) {
+    appendSummary(summaryMd, config.githubStepSummary);
+  }
+
+  checkFailOnSeverity(config.failOn, 'ok');
 }
 
 // ── Dispatch ───────────────────────────────────────────────────────────────

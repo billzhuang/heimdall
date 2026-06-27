@@ -682,4 +682,46 @@ describe('runScheduleOnceMode', () => {
     expect(content).toContain('remediation-steps<<');
     expect(content).toContain('summary-markdown<<');
   });
+
+  it('writes non-empty summary-markdown output on success', async () => {
+    const outputFile = join(tmpDir, 'output');
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
+    const cfg = makeConfig({ mode: 'schedule-once', githubOutput: outputFile });
+    await runScheduleOnceMode(cfg, mockCapture);
+
+    const content = await readFile(outputFile, 'utf8');
+    expect(content).toMatch(/summary-markdown<<[^\n]+\n## Heimdall Schedule/);
+  });
+
+  it('appends to step summary when postSummary is true', async () => {
+    const summaryFile = join(tmpDir, 'summary');
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
+    const cfg = makeConfig({ mode: 'schedule-once', postSummary: true, githubStepSummary: summaryFile });
+    await runScheduleOnceMode(cfg, mockCapture);
+
+    const content = await readFile(summaryFile, 'utf8');
+    expect(content).toContain('## Heimdall Schedule');
+    expect(content).toContain('Scheduled triage completed.');
+  });
+
+  it('does not write step summary when postSummary is false', async () => {
+    const summaryFile = join(tmpDir, 'summary');
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
+    const cfg = makeConfig({ mode: 'schedule-once', postSummary: false, githubStepSummary: summaryFile });
+    await runScheduleOnceMode(cfg, mockCapture);
+
+    await expect(readFile(summaryFile, 'utf8')).rejects.toThrow('ENOENT');
+  });
+
+  it('exits 1 when fail-on threshold is met', async () => {
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
+    const cfg = makeConfig({ mode: 'schedule-once', failOn: 'ok' });
+    await expect(runScheduleOnceMode(cfg, mockCapture)).rejects.toThrow('process.exit(1)');
+  });
+
+  it('does not exit when fail-on is empty', async () => {
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
+    const cfg = makeConfig({ mode: 'schedule-once', failOn: '' });
+    await expect(runScheduleOnceMode(cfg, mockCapture)).resolves.toBeUndefined();
+  });
 });
