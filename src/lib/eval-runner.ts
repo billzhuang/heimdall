@@ -12,7 +12,7 @@ import { resolve, join } from 'node:path';
 import { load as loadYaml } from 'js-yaml';
 import type { OneShotFinding } from './format-output.ts';
 
-const EVAL_TIMEOUT_MS = 120_000;
+export const EVAL_TIMEOUT_MS = 120_000;
 
 export interface EvalScenario {
   description: string;
@@ -52,6 +52,7 @@ export async function loadScenario(filePath: string): Promise<EvalScenario> {
 export async function runScenario(
   binPath: string,
   scenario: EvalScenario,
+  timeoutMs = EVAL_TIMEOUT_MS,
 ): Promise<EvalResult> {
   const tmpFile = join(tmpdir(), `heimdall-eval-${randomBytes(8).toString('hex')}.json`);
   await writeFile(tmpFile, JSON.stringify(scenario.mocks ?? {}), 'utf8');
@@ -78,8 +79,8 @@ export async function runScenario(
 
       const timer = setTimeout(() => {
         child.kill('SIGTERM');
-        safeReject(new Error(`scenario timed out after ${EVAL_TIMEOUT_MS / 1000}s`));
-      }, EVAL_TIMEOUT_MS);
+        safeReject(new Error(`scenario timed out after ${timeoutMs / 1000}s`));
+      }, timeoutMs);
 
       child.on('close', (code: number | null) => {
         clearTimeout(timer);
