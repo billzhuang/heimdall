@@ -104,22 +104,29 @@ export function validateCronExpression(cron: string): string | undefined {
     // Reject out-of-range tokens before checking for matches.
     for (const part of f.split(',')) {
       if (part === '*' || part.startsWith('*/')) continue;
-      // a-b or a-b/n — validate range bounds (strip optional /n before checking)
-      const rangeM = part.match(/^(\d+)-(\d+)(\/\d+)?$/);
+      // a-b or a-b/n — validate range bounds and optional step
+      const rangeM = part.match(/^(\d+)-(\d+)(\/(\d+))?$/);
       if (rangeM) {
         const a = parseInt(rangeM[1], 10);
         const b = parseInt(rangeM[2], 10);
         if (a > b || a < lo || b > hi) {
           return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
         }
+        if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) {
+          return `${names[i]} field "${f}" has an invalid step: step must be > 0`;
+        }
         continue;
       }
-      // n/s — start-value with step: validate starting value
+      // n/s — start-value with step: validate starting value and step
       const startStepM = part.match(/^(\d+)\/(\d+)$/);
       if (startStepM) {
         const n = parseInt(startStepM[1], 10);
+        const s = parseInt(startStepM[2], 10);
         if (n < lo || n > hi) {
           return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
+        }
+        if (s === 0) {
+          return `${names[i]} field "${f}" has an invalid step: step must be > 0`;
         }
         continue;
       }

@@ -207,6 +207,16 @@ describe('validateCronExpression', () => {
     expect(validateCronExpression('60/5 * * * *')).toMatch(/out of range/);   // minute 60 > 59
     expect(validateCronExpression('0 24/1 * * *')).toMatch(/out of range/);   // hour 24 > 23
   });
+
+  it('rejects n/s with step=0 with a clear error message', () => {
+    expect(validateCronExpression('5/0 * * * *')).toMatch(/step must be > 0/);
+    expect(validateCronExpression('0 8/0 * * *')).toMatch(/step must be > 0/);
+  });
+
+  it('rejects a-b/n with step=0 with a clear error message', () => {
+    expect(validateCronExpression('0-59/0 * * * *')).toMatch(/step must be > 0/);
+    expect(validateCronExpression('0 0-23/0 * * *')).toMatch(/step must be > 0/);
+  });
 });
 
 describe('nextFireTime', () => {
