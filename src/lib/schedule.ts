@@ -130,6 +130,15 @@ export function validateCronExpression(cron: string): string | undefined {
         }
         continue;
       }
+      // n/s — start-value with step: validate starting value
+      const startStepM = part.match(/^(\d+)\/(\d+)$/);
+      if (startStepM) {
+        const n = parseInt(startStepM[1], 10);
+        if (n < lo || n > hi) {
+          return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
+        }
+        continue;
+      }
       const n = parseInt(part, 10);
       if (isNaN(n) || n < lo || n > hi) {
         return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
