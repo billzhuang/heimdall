@@ -70,6 +70,12 @@ function effectiveLimit(limit: number | null | undefined): number {
 }
 
 
+async function datadogErrorMessage(response: Response, queryType: string): Promise<string> {
+  const body = await response.text().catch(() => '');
+  const detail = body ? `: ${body.slice(0, 200)}` : '';
+  return `Datadog ${queryType} HTTP ${response.status} ${response.statusText}${detail}`;
+}
+
 function buildHeaders(config: DatadogConfig): Record<string, string> {
   return {
     'DD-API-KEY': config.apiKey,
@@ -109,11 +115,7 @@ async function queryMetrics(
     signal,
   });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    const detail = body ? `: ${body.slice(0, 200)}` : '';
-    return `Datadog metrics HTTP ${response.status} ${response.statusText}${detail}`;
-  }
+  if (!response.ok) return datadogErrorMessage(response, 'metrics');
   return await response.text();
 }
 
@@ -151,11 +153,7 @@ async function queryLogs(
     signal,
   });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    const detail = text ? `: ${text.slice(0, 200)}` : '';
-    return `Datadog logs HTTP ${response.status} ${response.statusText}${detail}`;
-  }
+  if (!response.ok) return datadogErrorMessage(response, 'logs');
   return await response.text();
 }
 
@@ -188,11 +186,7 @@ async function queryEvents(
     signal,
   });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    const detail = body ? `: ${body.slice(0, 200)}` : '';
-    return `Datadog events HTTP ${response.status} ${response.statusText}${detail}`;
-  }
+  if (!response.ok) return datadogErrorMessage(response, 'events');
   return await response.text();
 }
 
@@ -218,11 +212,7 @@ async function queryMonitors(
     signal,
   });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    const detail = body ? `: ${body.slice(0, 200)}` : '';
-    return `Datadog monitors HTTP ${response.status} ${response.statusText}${detail}`;
-  }
+  if (!response.ok) return datadogErrorMessage(response, 'monitors');
 
   const text = await response.text();
 
