@@ -207,20 +207,28 @@ ${list}
 // ---------------------------------------------------------------------------
 
 /**
+ * Parse `raw` as JSON, extract `items`, and apply `extract` to them.
+ * Returns [] on any JSON parse error or missing `items`.
+ */
+function parseJsonItems<T>(raw: string, extract: (items: unknown[]) => T[]): T[] {
+  try {
+    const obj = JSON.parse(raw) as { items?: unknown[] };
+    return extract(obj.items ?? []);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Parse a namespace list from `kubectl get namespaces -o json` output.
  * Returns an empty array on parse error or missing data.
  */
 export function parseNamespacesFromJson(raw: string): string[] {
-  try {
-    const obj = JSON.parse(raw) as {
-      items?: Array<{ metadata?: { name?: string } }>;
-    };
-    return (obj.items ?? [])
+  return parseJsonItems(raw, (items) =>
+    (items as Array<{ metadata?: { name?: string } }>)
       .map((item) => item?.metadata?.name ?? '')
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+      .filter(Boolean),
+  );
 }
 
 /**
@@ -228,15 +236,9 @@ export function parseNamespacesFromJson(raw: string): string[] {
  * Returns an empty array on parse error or missing data.
  */
 export function parseWorkloadsFromJson(raw: string): WorkloadRef[] {
-  try {
-    const obj = JSON.parse(raw) as {
-      items?: Array<{
-        kind?: string;
-        metadata?: { name?: string; namespace?: string };
-      }>;
-    };
+  return parseJsonItems(raw, (items) => {
     const results: WorkloadRef[] = [];
-    for (const item of obj.items ?? []) {
+    for (const item of items as Array<{ kind?: string; metadata?: { name?: string; namespace?: string } }>) {
       const kind = item?.kind as WorkloadRef['kind'];
       if (!['Deployment', 'StatefulSet', 'DaemonSet'].includes(kind)) continue;
       const name = item?.metadata?.name;
@@ -244,9 +246,7 @@ export function parseWorkloadsFromJson(raw: string): WorkloadRef[] {
       if (name && namespace) results.push({ kind, namespace, name });
     }
     return results;
-  } catch {
-    return [];
-  }
+  });
 }
 
 /**
@@ -254,24 +254,14 @@ export function parseWorkloadsFromJson(raw: string): WorkloadRef[] {
  * Returns an empty array on parse error or missing data.
  */
 export function parseNodesFromJson(raw: string): NodeRef[] {
-  try {
-    const obj = JSON.parse(raw) as {
-      items?: Array<{
-        metadata?: { name?: string };
-        status?: {
-          conditions?: Array<{ type?: string; status?: string }>;
-        };
-      }>;
-    };
-    return (obj.items ?? [])
+  return parseJsonItems(raw, (items) =>
+    (items as Array<{ metadata?: { name?: string }; status?: { conditions?: Array<{ type?: string; status?: string }> } }>)
       .map((item) => {
         const name = item?.metadata?.name ?? '';
         const readyCond = item?.status?.conditions?.find((c) => c?.type === 'Ready');
         const status = readyCond?.status === 'True' ? 'Ready' : 'NotReady';
         return { name, status };
       })
-      .filter((n) => Boolean(n.name));
-  } catch {
-    return [];
-  }
+      .filter((n) => Boolean(n.name)),
+  );
 }
