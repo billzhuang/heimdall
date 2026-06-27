@@ -424,18 +424,13 @@ Examples:
     } else {
       process.stderr.write('[heimdall-serve] Authentication: none (set HEIMDALL_API_KEY to enable)\n');
     }
-    process.stderr.write('[heimdall-serve] Endpoints:\n');
+    const base = `http://${info.address}:${info.port}`;
     process.stderr.write(
-      `  POST http://${info.address}:${info.port}/api/diagnose\n`,
-    );
-    process.stderr.write(
-      `  GET  http://${info.address}:${info.port}/api/health\n`,
-    );
-    process.stderr.write(
-      `  GET  http://${info.address}:${info.port}/api/openapi.json\n`,
-    );
-    process.stderr.write(
-      `  GET  http://${info.address}:${info.port}/metrics\n`,
+      `[heimdall-serve] Endpoints:\n` +
+      `  POST ${base}/api/diagnose\n` +
+      `  GET  ${base}/api/health\n` +
+      `  GET  ${base}/api/openapi.json\n` +
+      `  GET  ${base}/metrics\n`,
     );
   });
 }
