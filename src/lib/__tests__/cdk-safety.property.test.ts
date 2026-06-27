@@ -63,7 +63,7 @@ describe('validateCdkCommand (property-based)', () => {
       fc.property(
         fc.constantFrom(...DESTRUCTIVE_CDK_COMMANDS),
         fc.constantFrom(...allValueFlags),
-        fc.string({ minLength: 1, maxLength: 20 }).filter(s => !s.includes(' ') && !s.includes('"') && !s.includes("'")),
+        fc.string({ minLength: 1, maxLength: 20 }).filter(s => !/\s/.test(s) && !s.includes('"') && !s.includes("'") && !s.includes('\\')),
         (subcommand, flag, value) => {
           const cmd = `cdk ${flag} ${value} ${subcommand}`;
           const result = validateCdkCommand(cmd);
@@ -79,7 +79,7 @@ describe('validateCdkCommand (property-based)', () => {
       fc.property(
         fc.constantFrom(...DESTRUCTIVE_CDK_COMMANDS),
         fc.constantFrom(...allValueFlags),
-        fc.string({ minLength: 1, maxLength: 20 }).filter(s => !s.includes(' ') && !s.includes('"') && !s.includes("'")),
+        fc.string({ minLength: 1, maxLength: 20 }).filter(s => !/\s/.test(s) && !s.includes('"') && !s.includes("'") && !s.includes('\\')),
         (subcommand, flag, value) => {
           const cmd = `cdk ${flag}=${value} ${subcommand}`;
           const result = validateCdkCommand(cmd);

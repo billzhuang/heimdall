@@ -159,7 +159,9 @@ function consumeGlobalFlagsIndex(parts: string[], startIdx: number): number {
     const part = parts[i];
     if (!part.startsWith('-')) return i; // positional token found
     // Space form: --flag value — skip the value token only for known value-taking flags.
-    if (!part.includes('=') && CDK_OPTIONS_WITH_VALUE.has(part)) i++;
+    if (!part.includes('=') && CDK_OPTIONS_WITH_VALUE.has(part)) {
+      if (i + 1 < parts.length) i++;
+    }
     i++;
   }
   return parts.length;
