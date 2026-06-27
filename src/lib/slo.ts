@@ -15,6 +15,46 @@
 import { runPrometheusQuery } from './prometheus.ts';
 import type { PrometheusConfig } from './prometheus.ts';
 
+/**
+ * Result of parsing a Prometheus instant query response.
+ * Either a successfully extracted numeric value or a descriptive error string.
+ */
+export type ParsedInstantValue = { value: number } | { error: string };
+
+/**
+ * Extract a single scalar value from a raw Prometheus instant query JSON response.
+ *
+ * Returns `{ value }` on success or `{ error }` for any failure mode:
+ * - JSON parse error
+ * - Non-success status or empty result array
+ * - Missing or NaN value field
+ *
+ * This is a pure function — no I/O, fully unit-testable in isolation.
+ */
+export function parseInstantQueryValue(raw: string): ParsedInstantValue {
+  type InstantResponse = {
+    status?: string;
+    data?: { result?: Array<{ value?: [number, string] }> };
+  };
+
+  let parsed: InstantResponse;
+  try {
+    parsed = JSON.parse(raw) as InstantResponse;
+  } catch {
+    return { error: `Failed to parse Prometheus response: ${raw.slice(0, 120)}` };
+  }
+
+  if (parsed.status === 'success' && parsed.data?.result?.length) {
+    const rawValue = parsed.data.result[0]?.value?.[1];
+    if (rawValue !== undefined) {
+      const value = parseFloat(rawValue);
+      if (!isNaN(value)) return { value };
+    }
+  }
+
+  return { error: 'No metric data returned for this SLO.' };
+}
+
 /** A single SLO definition from the config. */
 export interface SloDefinition {
   /** Human-readable name, e.g. "API availability" or "p99 latency". */
@@ -55,11 +95,6 @@ export interface SloResult {
   error?: string;
 }
 
-type PrometheusInstantResponse = {
-  status?: string;
-  data?: { result?: Array<{ value?: [number, string] }> };
-};
-
 /**
  * Evaluate a single SLO against live Prometheus data.
  *
@@ -82,42 +117,16 @@ export async function evaluateSLO(
 ): Promise<SloResult> {
   // runPrometheusQuery never throws — it returns error strings for all failure modes.
   const raw = await runPrometheusQuery('instant', { query: slo.metric }, prometheusConfig);
+  const parsed = parseInstantQueryValue(raw);
 
-  let currentValue: number | undefined;
-  let parsed: PrometheusInstantResponse;
-  try {
-    parsed = JSON.parse(raw) as PrometheusInstantResponse;
-  } catch {
-    return {
-      name: slo.name,
-      burnRate: 0,
-      remainingBudget: 1,
-      breaching: false,
-      error: `Failed to parse Prometheus response: ${raw.slice(0, 120)}`,
-    };
+  if ('error' in parsed) {
+    return { name: slo.name, burnRate: 0, remainingBudget: 1, breaching: false, error: parsed.error };
   }
 
-  if (parsed.status === 'success' && parsed.data?.result?.length) {
-    const rawValue = parsed.data?.result?.[0]?.value?.[1];
-    if (rawValue !== undefined) {
-      currentValue = parseFloat(rawValue);
-    }
-  }
-
-  if (currentValue === undefined || isNaN(currentValue)) {
-    return {
-      name: slo.name,
-      burnRate: 0,
-      remainingBudget: 1,
-      breaching: false,
-      error: 'No metric data returned for this SLO.',
-    };
-  }
-
+  const currentValue = parsed.value;
   // Burn rate: how many times faster than allowed we're consuming the error budget.
   // Clamp to 0 to guard against metrics that return negative values.
   const burnRate = slo.budget > 0 ? Math.max(0, currentValue) / slo.budget : 0;
-  // Remaining budget as a fraction of total budget.
   const remainingBudget = Math.max(0, 1 - burnRate);
   const breaching = burnRate > 1;
 

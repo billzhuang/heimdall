@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { evaluateSLO } from '../slo.ts';
+import { evaluateSLO, parseInstantQueryValue } from '../slo.ts';
 import type { SloDefinition } from '../slo.ts';
 import type { PrometheusConfig } from '../prometheus.ts';
 import { mockFetch } from './test-helpers.ts';
@@ -200,5 +200,125 @@ describe('evaluateSLO — various SLO configurations', () => {
     expect(result.burnRate).toBeCloseTo(0.4, 5);
     expect(result.breaching).toBe(false);
     expect(result.remainingBudget).toBeCloseTo(0.6, 5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseInstantQueryValue — pure unit tests (no network, no mocks)
+// ---------------------------------------------------------------------------
+
+describe('parseInstantQueryValue — success paths', () => {
+  it('extracts a positive float from a well-formed instant query response', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { resultType: 'vector', result: [{ metric: {}, value: [1700000000, '0.0042'] }] },
+    });
+    const result = parseInstantQueryValue(raw);
+    expect('value' in result).toBe(true);
+    if ('value' in result) expect(result.value).toBeCloseTo(0.0042, 6);
+  });
+
+  it('extracts zero', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ value: [0, '0'] }] },
+    });
+    const result = parseInstantQueryValue(raw);
+    expect('value' in result).toBe(true);
+    if ('value' in result) expect(result.value).toBe(0);
+  });
+
+  it('extracts a negative value without clamping (clamping is the callers job)', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ value: [0, '-0.5'] }] },
+    });
+    const result = parseInstantQueryValue(raw);
+    expect('value' in result).toBe(true);
+    if ('value' in result) expect(result.value).toBeCloseTo(-0.5, 6);
+  });
+
+  it('uses the first result element when multiple are present', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: {
+        result: [
+          { value: [0, '0.1'] },
+          { value: [0, '0.9'] },
+        ],
+      },
+    });
+    const result = parseInstantQueryValue(raw);
+    expect('value' in result).toBe(true);
+    if ('value' in result) expect(result.value).toBeCloseTo(0.1, 6);
+  });
+});
+
+describe('parseInstantQueryValue — error paths', () => {
+  it('returns an error for invalid JSON', () => {
+    const result = parseInstantQueryValue('not-json');
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toMatch(/Failed to parse Prometheus response/);
+  });
+
+  it('truncates a long invalid JSON payload in the error message', () => {
+    const longGarbage = 'x'.repeat(200);
+    const result = parseInstantQueryValue(longGarbage);
+    expect('error' in result).toBe(true);
+    if ('error' in result) {
+      expect(result.error.length).toBeLessThan(200);
+      expect(result.error).toMatch(/Failed to parse/);
+    }
+  });
+
+  it('returns an error when status is not "success"', () => {
+    const raw = JSON.stringify({ status: 'error', error: 'bad_data', errorType: 'bad_data' });
+    const result = parseInstantQueryValue(raw);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toBe('No metric data returned for this SLO.');
+  });
+
+  it('returns an error when result array is empty', () => {
+    const raw = JSON.stringify({ status: 'success', data: { result: [] } });
+    const result = parseInstantQueryValue(raw);
+    expect('error' in result).toBe(true);
+  });
+
+  it('returns an error when the result entry is missing the value field', () => {
+    const raw = JSON.stringify({ status: 'success', data: { result: [{ metric: {} }] } });
+    const result = parseInstantQueryValue(raw);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toBe('No metric data returned for this SLO.');
+  });
+
+  it('returns an error when the value string is "NaN"', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ value: [0, 'NaN'] }] },
+    });
+    const result = parseInstantQueryValue(raw);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toBe('No metric data returned for this SLO.');
+  });
+
+  it('returns an error when the value string is "+Inf"', () => {
+    const raw = JSON.stringify({
+      status: 'success',
+      data: { result: [{ value: [0, '+Inf'] }] },
+    });
+    const result = parseInstantQueryValue(raw);
+    expect('error' in result).toBe(true);
+  });
+
+  it('returns an error when data is missing entirely', () => {
+    const raw = JSON.stringify({ status: 'success' });
+    const result = parseInstantQueryValue(raw);
+    expect('error' in result).toBe(true);
+  });
+
+  it('returns an error for an empty string input', () => {
+    const result = parseInstantQueryValue('');
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toMatch(/Failed to parse/);
   });
 });
