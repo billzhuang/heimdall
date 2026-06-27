@@ -248,18 +248,22 @@ export async function runScheduleOnceMode(config: ActionConfig, captureImpl: Cap
 
 // ── Dispatch ───────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+/**
+ * Read config from the environment and dispatch to the appropriate mode runner.
+ * `captureImpl` can be injected in tests to avoid spawning a real process.
+ */
+export async function main(captureImpl?: CaptureFn): Promise<void> {
   const config = readActionConfig();
   switch (config.mode) {
     case 'triage':
-      await runTriageMode(config);
+      await runTriageMode(config, captureImpl);
       break;
     case 'schedule-once':
-      await runScheduleOnceMode(config);
+      await runScheduleOnceMode(config, captureImpl);
       break;
     case 'prompt':
     default:
-      await runPromptMode(config);
+      await runPromptMode(config, captureImpl);
       break;
   }
 }
