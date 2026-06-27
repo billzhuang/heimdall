@@ -148,6 +148,30 @@ export function retrieveSimilarEntries(
 }
 
 /**
+ * From a set of candidate indices, return the one with the lowest recorded
+ * max-similarity to already-selected entries (i.e., the most diverse candidate).
+ *
+ * Indices absent from `maxSims` are treated as having similarity `-Infinity`
+ * and are therefore always preferred over scored entries. Returns -1 when
+ * `remaining` is empty.
+ */
+export function findLeastSimilarIndex(
+  remaining: Set<number>,
+  maxSims: Map<number, number>,
+): number {
+  let bestIdx = -1;
+  let minMaxSim = Infinity;
+  for (const idx of remaining) {
+    const maxSim = maxSims.get(idx) ?? -Infinity;
+    if (maxSim < minMaxSim) {
+      minMaxSim = maxSim;
+      bestIdx = idx;
+    }
+  }
+  return bestIdx;
+}
+
+/**
  * Pick a diverse cross-section of entries using a greedy maximal-marginal-relevance
  * strategy. Useful when no specific query is available (e.g., at agent startup).
  * Always includes the most recent entry, then picks entries most dissimilar to
@@ -188,23 +212,10 @@ export function selectDiverseEntries(
     }
 
     // Pick the remaining entry with the lowest max-similarity — the most diverse.
-    let bestIdx = -1;
-    let minMaxSim = Infinity;
-    for (const idx of remaining) {
-      /* v8 ignore next */
-      const maxSim = maxSims.get(idx) ?? -Infinity;
-      if (maxSim < minMaxSim) {
-        minMaxSim = maxSim;
-        bestIdx = idx;
-      }
-    }
-
-    /* v8 ignore next */
-    if (bestIdx !== -1) {
-      selected.push(bestIdx);
-      remaining.delete(bestIdx);
-      maxSims.delete(bestIdx);
-    }
+    const bestIdx = findLeastSimilarIndex(remaining, maxSims);
+    selected.push(bestIdx);
+    remaining.delete(bestIdx);
+    maxSims.delete(bestIdx);
   }
 
   return selected.map((i) => history[i]);

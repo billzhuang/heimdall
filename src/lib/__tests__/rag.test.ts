@@ -7,6 +7,7 @@ import {
   entryToText,
   cosineSimilarity,
   buildTfidfVectors,
+  findLeastSimilarIndex,
   formatRagEntry,
   retrieveSimilarEntries,
   selectDiverseEntries,
@@ -424,6 +425,54 @@ describe('retrieveSimilarEntries', () => {
   it('returns empty when minSimilarity is 1 and query does not perfectly match', () => {
     const results = retrieveSimilarEntries('pod crash', history, 5, 1.0);
     expect(results).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findLeastSimilarIndex
+// ---------------------------------------------------------------------------
+
+describe('findLeastSimilarIndex', () => {
+  it('returns -1 for an empty remaining set', () => {
+    expect(findLeastSimilarIndex(new Set(), new Map())).toBe(-1);
+  });
+
+  it('returns the only index when remaining has a single entry', () => {
+    const remaining = new Set([3]);
+    const maxSims = new Map([[3, 0.5]]);
+    expect(findLeastSimilarIndex(remaining, maxSims)).toBe(3);
+  });
+
+  it('returns the index with the lowest max-similarity', () => {
+    const remaining = new Set([0, 1, 2]);
+    const maxSims = new Map([[0, 0.8], [1, 0.2], [2, 0.5]]);
+    expect(findLeastSimilarIndex(remaining, maxSims)).toBe(1);
+  });
+
+  it('treats indices absent from maxSims as -Infinity (most preferred)', () => {
+    // Index 5 is absent from maxSims — should be selected over 0.1.
+    const remaining = new Set([2, 5]);
+    const maxSims = new Map([[2, 0.1]]);
+    expect(findLeastSimilarIndex(remaining, maxSims)).toBe(5);
+  });
+
+  it('returns the first encountered index when all similarities are equal', () => {
+    // Sets iterate in insertion order; first inserted wins on equal similarity.
+    const remaining = new Set([10, 20, 30]);
+    const maxSims = new Map([[10, 0.4], [20, 0.4], [30, 0.4]]);
+    expect(findLeastSimilarIndex(remaining, maxSims)).toBe(10);
+  });
+
+  it('handles all-zero similarities by returning the first index', () => {
+    const remaining = new Set([0, 1, 2]);
+    const maxSims = new Map([[0, 0], [1, 0], [2, 0]]);
+    expect(findLeastSimilarIndex(remaining, maxSims)).toBe(0);
+  });
+
+  it('handles negative similarities (prefers lowest)', () => {
+    const remaining = new Set([0, 1]);
+    const maxSims = new Map([[0, -0.5], [1, -0.1]]);
+    expect(findLeastSimilarIndex(remaining, maxSims)).toBe(0);
   });
 });
 
