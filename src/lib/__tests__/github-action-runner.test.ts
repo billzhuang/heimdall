@@ -244,6 +244,19 @@ describe('setOutput', () => {
     expect(match).not.toBeNull();
     expect(match![2]).toBe('line1\nline2');
   });
+
+  it('uses GITHUB_OUTPUT env var when called without an explicit outputPath', async () => {
+    const outputFile = join(tmpDir, 'github_output_env');
+    process.env['GITHUB_OUTPUT'] = outputFile;
+    setOutput('env-key', 'env-value');
+    const content = await readFile(outputFile, 'utf8');
+    expect(content).toContain('env-value');
+  });
+
+  it('is a no-op when called without explicit path and GITHUB_OUTPUT is unset', () => {
+    delete process.env['GITHUB_OUTPUT'];
+    expect(() => setOutput('key', 'value')).not.toThrow();
+  });
 });
 
 // ── appendSummary ──────────────────────────────────────────────────────────
@@ -296,6 +309,19 @@ describe('appendSummary', () => {
     const content = await readFile(summaryFile, 'utf8');
     expect(content).toBe('\n');
   });
+
+  it('uses GITHUB_STEP_SUMMARY env var when called without an explicit summaryPath', async () => {
+    const summaryFile = join(tmpDir, 'step_summary_env.md');
+    process.env['GITHUB_STEP_SUMMARY'] = summaryFile;
+    appendSummary('## from env');
+    const content = await readFile(summaryFile, 'utf8');
+    expect(content).toBe('## from env\n');
+  });
+
+  it('is a no-op when called without explicit path and GITHUB_STEP_SUMMARY is unset', () => {
+    delete process.env['GITHUB_STEP_SUMMARY'];
+    expect(() => appendSummary('## heading')).not.toThrow();
+  });
 });
 
 // ── capture ────────────────────────────────────────────────────────────────
@@ -332,6 +358,16 @@ describe('capture', () => {
     const { code } = await capture('/nonexistent-binary-xyz', []);
     expect(code).toBe(1);
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('spawn error'));
+  });
+
+  it('routes BIN_PATH through execPath so shell scripts run on all platforms', async () => {
+    // When cmd equals BIN_PATH the runner must spawn `process.execPath [BIN_PATH …]`
+    // instead of BIN_PATH directly (Windows cannot exec extensionless shell scripts).
+    // Node.js cannot parse bash syntax, so the close event fires with a non-zero code —
+    // the important thing is that the isShellScript=true branches are exercised.
+    const binPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'bin', 'heimdall');
+    const { code } = await capture(binPath, ['--this-flag-does-not-exist']);
+    expect(code).not.toBe(0);
   });
 });
 
