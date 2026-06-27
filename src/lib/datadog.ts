@@ -14,6 +14,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
 import { clampLimit } from './tool-config.ts';
+import { formatQueryError } from './http.ts';
 
 export interface DatadogConfig {
   apiKey: string;
@@ -275,11 +276,7 @@ export async function runDatadogQuery(
     }
     return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return `Datadog query timed out after ${config.timeoutMs}ms.`;
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return `Datadog query failed: ${applyRedaction(message, config.regexRedactionRules ?? [])}`;
+    return formatQueryError(err, 'Datadog', config.timeoutMs, config.regexRedactionRules ?? []);
   } finally {
     clearTimeout(timer);
   }

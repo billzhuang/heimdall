@@ -13,6 +13,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { resolveTimeISO } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { clampLimit } from './tool-config.ts';
+import { formatQueryError } from './http.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -222,11 +223,7 @@ export async function runNewRelicQuery(
     }
     return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return `New Relic query timed out after ${config.timeoutMs}ms.`;
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return `New Relic query failed: ${applyRedaction(message, config.regexRedactionRules ?? [])}`;
+    return formatQueryError(err, 'New Relic', config.timeoutMs, config.regexRedactionRules ?? []);
   } finally {
     clearTimeout(timer);
   }
