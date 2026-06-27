@@ -2,10 +2,12 @@
  * Shared shell-like argument tokenizer used by kubectl, aws, and other CLI runners.
  *
  * Honors single quotes, double quotes, and backslash escapes.
- * If the first token matches `binaryName` (case-insensitive) it is stripped,
- * so callers can pass either `"kubectl get pods"` or `"get pods"`.
+ * If `binaryName` is provided and the first token matches it (case-insensitive)
+ * it is stripped, so callers can pass either `"kubectl get pods"` or `"get pods"`.
+ * Omit `binaryName` to keep all tokens (e.g. when the validator needs the binary
+ * name present to confirm it is the right CLI).
  */
-export function tokenizeShellArgs(input: string, binaryName: string): string[] {
+export function tokenizeShellArgs(input: string, binaryName?: string): string[] {
   const tokens: string[] = [];
   let current = '';
   let quoteChar: '"' | "'" | null = null;
@@ -51,7 +53,7 @@ export function tokenizeShellArgs(input: string, binaryName: string): string[] {
   }
   if (hasToken) tokens.push(current);
 
-  if (tokens.length > 0 && tokens[0].toLowerCase() === binaryName.toLowerCase()) {
+  if (binaryName !== undefined && tokens.length > 0 && tokens[0].toLowerCase() === binaryName.toLowerCase()) {
     tokens.shift();
   }
   return tokens;
