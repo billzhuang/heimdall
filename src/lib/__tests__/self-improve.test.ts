@@ -6,6 +6,7 @@ import {
   generateSuggestion,
   buildLearningEntry,
   buildReflectionPrompt,
+  formatLearningEntries,
   readLearningLog,
   appendLearningEntry,
   resolveLogPath,
@@ -72,6 +73,49 @@ describe('generateSuggestion', () => {
     expect(s).toContain('"foo"');
     expect(s).toContain('"bar"');
     expect(s).toContain(' | ');
+  });
+});
+
+describe('formatLearningEntries', () => {
+  it('returns an empty string for an empty array', () => {
+    expect(formatLearningEntries([])).toBe('');
+  });
+
+  it('formats a single entry with numbered heading, prompt, failures, and suggestion', () => {
+    const entry = buildLearningEntry('CrashLoop', 'Why is the pod crashing?', [
+      'Missing expected keyword: "imagepullbackoff"',
+    ]);
+    const out = formatLearningEntries([entry]);
+    expect(out).toContain('### 1. "CrashLoop"');
+    expect(out).toContain('**Prompt**: Why is the pod crashing?');
+    expect(out).toContain('**Failures**:');
+    expect(out).toContain('- Missing expected keyword: "imagepullbackoff"');
+    expect(out).toContain('**Auto-suggestion**:');
+  });
+
+  it('formats multiple entries with sequential numbered headings', () => {
+    const e1 = buildLearningEntry('A', 'pa', ['Agent error: exit 1']);
+    const e2 = buildLearningEntry('B', 'pb', ['Missing expected keyword: "x"']);
+    const out = formatLearningEntries([e1, e2]);
+    expect(out).toContain('### 1. "A"');
+    expect(out).toContain('### 2. "B"');
+  });
+
+  it('joins multiple entries with a blank line separator', () => {
+    const e1 = buildLearningEntry('X', 'p1', ['f1']);
+    const e2 = buildLearningEntry('Y', 'p2', ['f2']);
+    const out = formatLearningEntries([e1, e2]);
+    expect(out).toContain('\n\n');
+  });
+
+  it('lists each failure as a dash bullet on its own line', () => {
+    const entry = buildLearningEntry('Multi', 'prompt', [
+      'Missing expected keyword: "foo"',
+      'Found forbidden keyword: "bar"',
+    ]);
+    const out = formatLearningEntries([entry]);
+    expect(out).toContain('- Missing expected keyword: "foo"');
+    expect(out).toContain('- Found forbidden keyword: "bar"');
   });
 });
 
