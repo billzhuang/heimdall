@@ -71,6 +71,17 @@ describe('makePrometheusQuery — timeout precedence', () => {
       expect.objectContaining({ timeoutMs: 10_000 }),
     );
   });
+
+  it.each([0, -1, Infinity, NaN])('falls back to default when timeoutMs is %s', async (bad) => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const tool = makePrometheusQuery({ timeoutMs: bad });
+    await tool.run({ input: { queryType: 'instant', query: 'up' } });
+    expect(runPrometheusQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ timeoutMs: 10_000 }),
+    );
+  });
 });
 
 describe('makePrometheusQuery — tool metadata and params forwarding', () => {

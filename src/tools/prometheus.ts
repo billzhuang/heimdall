@@ -7,6 +7,7 @@ import { runPrometheusQuery } from '../lib/prometheus.ts';
 import type { PrometheusConfig } from '../lib/prometheus.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
+import { resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_PROMETHEUS_URL = 'http://prometheus-operated.monitoring:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -21,7 +22,7 @@ export function makePrometheusQuery(
 ) {
   const config: PrometheusConfig = {
     url: prometheusConfig?.url || process.env.PROMETHEUS_URL || DEFAULT_PROMETHEUS_URL,
-    timeoutMs: prometheusConfig?.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    timeoutMs: resolveTimeoutMs(prometheusConfig?.timeoutMs, DEFAULT_TIMEOUT_MS),
     regexRedactionRules,
   };
 

@@ -57,6 +57,16 @@ describe('makeKubecostQuery — config precedence', () => {
     const result = await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
     expect(result).toContain('10000ms');
   });
+
+  it.each([0, -1, Infinity, NaN])('falls back to 10 000 ms when timeoutMs is %s', async (bad) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(Object.assign(new Error('abort'), { name: 'AbortError' })),
+    );
+    const tool = makeKubecostQuery({ timeoutMs: bad });
+    const result = await tool.run({ input: { endpoint: 'allocation', window: '7d', aggregate: 'namespace' } });
+    expect(result).toContain('10000ms');
+  });
 });
 
 describe('makeKubecostQuery — namespace lockdown', () => {
