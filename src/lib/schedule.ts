@@ -11,8 +11,8 @@ export interface ScheduledTriageConfig {
   /** Enable/disable the triage schedule. */
   enabled: boolean;
   /**
-   * Standard 5-field UTC cron expression, e.g. "0 STAR/6 * * *" (every 6 h).
-   * Fields: minute hour day-of-month month day-of-week.
+   * Standard 5-field UTC cron expression (minute hour dom month dow), e.g.
+   * "0 [*]/6 * * *" fires every 6 hours (replace [*] with an asterisk).
    */
   cron: string;
   /** Optional namespace scope for the triage sweep. */
@@ -25,11 +25,13 @@ export interface ScheduledTriageConfig {
  * Check whether a cron field value matches a single cron field descriptor.
  *
  * Supported patterns:
- *   *        — always matches
- *   n        — exact value
- *   a-b      — inclusive range
- *   STAR/n   — every nth value starting from lowerBound (e.g. dom/month fields start at 1)
- *   a,b,c    — comma-separated list of the above
+ *   *        - always matches
+ *   n        - exact value
+ *   a-b      - inclusive range
+ *   STAR/n   - every nth value starting from lowerBound (e.g. dom/month fields start at 1)
+ *   n/s      - step from a start value (e.g. 5/15 matches 5, 20, 35, 50)
+ *   a-b/s    - step within the range a-b (e.g. 1-10/3 matches 1, 4, 7, 10)
+ *   a,b,c    - comma-separated list of the above
  *
  * @param lowerBound  Start of the field's valid range (0 for minute/hour/dow, 1 for dom/month).
  */
@@ -46,6 +48,23 @@ export function matchesCronField(value: number, field: string, lowerBound = 0): 
   if (stepMatch) {
     const step = parseInt(stepMatch[1], 10);
     return step > 0 && (value - lowerBound) % step === 0;
+  }
+
+  // a-b/s — range with step (e.g. 1-10/3 → 1, 4, 7, 10)
+  const rangeStepMatch = field.match(/^(\d+)-(\d+)\/(\d+)$/);
+  if (rangeStepMatch) {
+    const lo = parseInt(rangeStepMatch[1], 10);
+    const hi = parseInt(rangeStepMatch[2], 10);
+    const step = parseInt(rangeStepMatch[3], 10);
+    return step > 0 && value >= lo && value <= hi && (value - lo) % step === 0;
+  }
+
+  // n/s — step from a specific start value (e.g. 5/15 → 5, 20, 35, 50)
+  const valueStepMatch = field.match(/^(\d+)\/(\d+)$/);
+  if (valueStepMatch) {
+    const start = parseInt(valueStepMatch[1], 10);
+    const step = parseInt(valueStepMatch[2], 10);
+    return step > 0 && value >= start && (value - start) % step === 0;
   }
 
   // a-b  — inclusive range

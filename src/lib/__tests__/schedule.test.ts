@@ -67,6 +67,47 @@ describe('matchesCronField', () => {
     expect(matchesCronField(7, '1-3,7')).toBe(true);
     expect(matchesCronField(4, '1-3,7')).toBe(false);
   });
+
+  it('n/s — step from a start value (e.g. 5/15 hits 5, 20, 35, 50)', () => {
+    expect(matchesCronField(5, '5/15')).toBe(true);
+    expect(matchesCronField(20, '5/15')).toBe(true);
+    expect(matchesCronField(35, '5/15')).toBe(true);
+    expect(matchesCronField(50, '5/15')).toBe(true);
+    // values before start or not aligned to step
+    expect(matchesCronField(0, '5/15')).toBe(false);
+    expect(matchesCronField(4, '5/15')).toBe(false);
+    expect(matchesCronField(6, '5/15')).toBe(false);
+    expect(matchesCronField(10, '5/15')).toBe(false);
+  });
+
+  it('n/s with step=0 always returns false', () => {
+    expect(matchesCronField(5, '5/0')).toBe(false);
+    expect(matchesCronField(0, '0/0')).toBe(false);
+  });
+
+  it('a-b/s — range with step (e.g. 1-10/3 hits 1, 4, 7, 10)', () => {
+    expect(matchesCronField(1, '1-10/3')).toBe(true);
+    expect(matchesCronField(4, '1-10/3')).toBe(true);
+    expect(matchesCronField(7, '1-10/3')).toBe(true);
+    expect(matchesCronField(10, '1-10/3')).toBe(true);
+    // outside range or off-step
+    expect(matchesCronField(0, '1-10/3')).toBe(false);
+    expect(matchesCronField(2, '1-10/3')).toBe(false);
+    expect(matchesCronField(3, '1-10/3')).toBe(false);
+    expect(matchesCronField(11, '1-10/3')).toBe(false);
+  });
+
+  it('a-b/s with step=0 always returns false', () => {
+    expect(matchesCronField(1, '1-10/0')).toBe(false);
+  });
+
+  it('n/s in a comma list', () => {
+    // "0,5/15" → 0, 5, 20, 35, 50
+    expect(matchesCronField(0, '0,5/15')).toBe(true);
+    expect(matchesCronField(5, '0,5/15')).toBe(true);
+    expect(matchesCronField(20, '0,5/15')).toBe(true);
+    expect(matchesCronField(1, '0,5/15')).toBe(false);
+  });
 });
 
 describe('validateCronExpression', () => {
@@ -225,6 +266,18 @@ describe('nextFireTime', () => {
     expect(() => nextFireTime('0 0 30 2 *', new Date('2024-03-01T00:00:00Z'))).toThrow(
       /no fires within one year/,
     );
+  });
+
+  it('fires with n/s minute pattern (e.g. 5/15 → :05, :20, :35, :50)', () => {
+    const from = new Date('2024-01-15T10:06:00Z');
+    const next = nextFireTime('5/15 * * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T10:20:00.000Z');
+  });
+
+  it('fires with a-b/s minute pattern (e.g. 0-30/10 → :00, :10, :20, :30)', () => {
+    const from = new Date('2024-01-15T10:05:00Z');
+    const next = nextFireTime('0-30/10 * * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T10:10:00.000Z');
   });
 });
 
