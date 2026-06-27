@@ -7,7 +7,7 @@
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { fetchWithTimeout } from './http.ts';
+import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
 
 export interface PrometheusConfig {
   url: string;
@@ -64,17 +64,13 @@ export async function runPrometheusQuery(
 
     return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
       if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        const detail = body ? `: ${body.slice(0, 200)}` : '';
+        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
         return `Prometheus HTTP ${response.status} ${response.statusText}${detail}`;
       }
       const text = await response.text();
       return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
     });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return `Prometheus query timed out after ${config.timeoutMs}ms.`;
-    }
-    return `Prometheus query failed: ${err instanceof Error ? err.message : String(err)}`;
+    return formatQueryError(err, 'Prometheus', config.timeoutMs, config.regexRedactionRules ?? []);
   }
 }
