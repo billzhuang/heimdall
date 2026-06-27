@@ -106,6 +106,19 @@ describe('saveCheckpoint / loadCheckpoint', () => {
     expect(loaded).toBeNull();
   });
 
+  it('skips valid JSON entries that lack a timestamp field', async () => {
+    const valid: ClusterCheckpoint = {
+      timestamp: '2026-01-01T00:00:00.000Z',
+      namespaces: ['default'],
+      workloads: [],
+      nodes: [],
+    };
+    const noTimestamp = JSON.stringify({ namespaces: ['other'], workloads: [], nodes: [] });
+    await writeFile(tmpFile, `${noTimestamp}\n${JSON.stringify(valid)}\n`, 'utf8');
+    const loaded = await loadCheckpoint(tmpFile);
+    expect(loaded?.timestamp).toBe('2026-01-01T00:00:00.000Z');
+  });
+
   it('rethrows non-ENOENT errors', async () => {
     await expect(loadCheckpoint('/dev/null/impossible')).rejects.toThrow();
   });

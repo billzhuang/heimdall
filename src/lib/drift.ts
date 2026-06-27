@@ -9,8 +9,7 @@
  *
  * All functions that touch the filesystem are async; all diff / parse logic is pure.
  */
-import { readFile } from 'node:fs/promises';
-import { appendJsonlLine } from './jsonl.ts';
+import { appendJsonlLine, readJsonlFile } from './jsonl.ts';
 
 export interface WorkloadRef {
   kind: 'Deployment' | 'StatefulSet' | 'DaemonSet';
@@ -63,25 +62,13 @@ export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: st
  * Returns null when the file does not exist or contains no parseable entries.
  */
 export async function loadCheckpoint(filePath: string): Promise<ClusterCheckpoint | null> {
-  let raw: string;
-  try {
-    raw = await readFile(filePath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw err;
-  }
-  let latest: ClusterCheckpoint | null = null;
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const entry = JSON.parse(trimmed) as ClusterCheckpoint;
-      if (typeof entry.timestamp === 'string') latest = entry;
-    } catch {
-      // skip malformed lines
-    }
-  }
-  return latest;
+  const entries = await readJsonlFile<unknown>(filePath);
+  const valid = entries.filter(
+    (e): e is ClusterCheckpoint =>
+      typeof e === 'object' && e !== null && 'timestamp' in e &&
+      typeof (e as ClusterCheckpoint).timestamp === 'string',
+  );
+  return valid.length > 0 ? valid[valid.length - 1] : null;
 }
 
 function workloadKey(w: WorkloadRef): string {
