@@ -8,8 +8,7 @@
  * Disable logging per-invocation with --no-learn, or globally via
  * `learning.enabled: false` in heimdall.config.yaml.
  */
-import { appendFile } from 'node:fs/promises';
-import { readJsonlFile } from './jsonl.ts';
+import { appendJsonlLine, readJsonlFile } from './jsonl.ts';
 import { randomBytes } from 'node:crypto';
 
 export interface TaskHistoryEntry {
@@ -50,7 +49,7 @@ export async function appendTaskHistoryEntry(
   entry: TaskHistoryEntry,
   logPath: string,
 ): Promise<void> {
-  await appendFile(logPath, JSON.stringify(entry) + '\n', 'utf8');
+  await appendJsonlLine(entry, logPath);
 }
 
 /** Read all task history entries from a JSONL file. Returns [] if the file does not exist. */

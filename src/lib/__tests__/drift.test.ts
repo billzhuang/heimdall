@@ -145,7 +145,7 @@ describe('saveCheckpoint / loadCheckpoint', () => {
     }
   });
 
-  it('always calls mkdir before appendFile (mkdir-first strategy)', async () => {
+  it('does not call mkdir when appendFile succeeds (try-first strategy)', async () => {
     const cp: ClusterCheckpoint = {
       timestamp: '2026-01-01T00:00:00.000Z',
       namespaces: ['default'],
@@ -155,12 +155,8 @@ describe('saveCheckpoint / loadCheckpoint', () => {
     vi.mocked(mkdir).mockClear();
     vi.mocked(appendFile).mockClear();
     await saveCheckpoint(cp, tmpFile);
-    expect(vi.mocked(mkdir)).toHaveBeenCalledOnce();
+    expect(vi.mocked(mkdir)).not.toHaveBeenCalled();
     expect(vi.mocked(appendFile)).toHaveBeenCalledOnce();
-    // mkdir must be called before appendFile
-    const mkdirOrder = vi.mocked(mkdir).mock.invocationCallOrder[0];
-    const appendOrder = vi.mocked(appendFile).mock.invocationCallOrder[0];
-    expect(mkdirOrder).toBeLessThan(appendOrder);
   });
 });
 
