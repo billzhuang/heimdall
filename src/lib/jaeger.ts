@@ -11,6 +11,7 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeUs } from './time-resolution.ts';
+import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
 
 export interface JaegerConfig {
   url: string;
@@ -57,8 +58,6 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
       : DEFAULT_LIMIT;
 
   const nowMs = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
   try {
     const baseUrl = new URL(config.url);
@@ -80,24 +79,16 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
       if (endUs !== null) baseUrl.searchParams.set('end', String(endUs));
     }
 
-    const response = await fetch(baseUrl.toString(), { signal: controller.signal });
+    const response = await fetchWithTimeout(baseUrl.toString(), config.timeoutMs);
 
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const redactedBody = applyRedaction(body, config.regexRedactionRules ?? []);
-      const detail = redactedBody ? `: ${redactedBody.slice(0, 200)}` : '';
+      const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
       return `Jaeger HTTP ${response.status} ${response.statusText}${detail}`;
     }
 
     const text = await response.text();
     return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
-      return `Jaeger query timed out after ${config.timeoutMs}ms.`;
-    }
-    const message = err instanceof Error ? err.message : String(err);
-    return `Jaeger query failed: ${applyRedaction(message, config.regexRedactionRules ?? [])}`;
-  } finally {
-    clearTimeout(timer);
+    return formatQueryError(err, 'Jaeger', config.timeoutMs, config.regexRedactionRules ?? []);
   }
 }
