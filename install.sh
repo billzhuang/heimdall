@@ -60,6 +60,10 @@ EOF
   esac
 done
 
+# Resolve to absolute paths now so symlinks and PATH entries are never relative.
+[[ "$INSTALL_DIR" = /* ]] || INSTALL_DIR="$(pwd)/$INSTALL_DIR"
+[[ "$BIN_DIR"     = /* ]] || BIN_DIR="$(pwd)/$BIN_DIR"
+
 # ---- prerequisite checks -------------------------------------------------
 check_node() {
   command -v node &>/dev/null || die "Node.js ≥${MIN_NODE_MAJOR}.${MIN_NODE_MINOR} is required. Install from https://nodejs.org"
@@ -67,6 +71,7 @@ check_node() {
   ver=$(node -e "process.stdout.write(process.versions.node)")
   local major minor
   IFS='.' read -r major minor _ <<< "$ver"
+  major="${major:-0}"; minor="${minor:-0}"
   if (( major < MIN_NODE_MAJOR )) || { (( major == MIN_NODE_MAJOR )) && (( minor < MIN_NODE_MINOR )); }; then
     die "Node.js ${MIN_NODE_MAJOR}.${MIN_NODE_MINOR}+ required (found ${ver}). Upgrade from https://nodejs.org"
   fi
@@ -86,7 +91,12 @@ check_npm() {
 check_kubectl() {
   if command -v kubectl &>/dev/null; then
     local kver
-    kver=$(kubectl version --client --output=json 2>/dev/null | grep '"gitVersion"' | head -1 | tr -d '" ,' | cut -d: -f2)
+    kver=$(kubectl version --client --output=json 2>/dev/null | node -e '
+      try {
+        const j = JSON.parse(require("fs").readFileSync(0, "utf-8"));
+        process.stdout.write(j.clientVersion?.gitVersion || j.gitVersion || "");
+      } catch {}
+    ')
     info "kubectl ${kver:-unknown} ✓"
   else
     warn "kubectl not found — install it before using Heimdall: https://kubernetes.io/docs/tasks/tools/"
@@ -105,7 +115,11 @@ fetch_source() {
     fi
   else
     if [[ -e "$INSTALL_DIR" ]]; then
-      die "${INSTALL_DIR} exists but is not a Heimdall installation. Remove it or choose a different --dir."
+      if [[ -d "$INSTALL_DIR" ]] && [[ -z "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]]; then
+        : # empty directory — git clone will use it as-is
+      else
+        die "${INSTALL_DIR} exists but is not a Heimdall installation. Remove it or choose a different --dir."
+      fi
     fi
     info "Cloning Heimdall into ${INSTALL_DIR} ..."
     mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -115,10 +129,10 @@ fetch_source() {
 
 build_heimdall() {
   info "Installing dependencies (production only) ..."
-  npm --prefix "$INSTALL_DIR" ci --omit=dev --silent
+  npm --prefix "$INSTALL_DIR" ci --omit=dev >/dev/null
 
   info "Building Heimdall ..."
-  npm --prefix "$INSTALL_DIR" run build --silent
+  npm --prefix "$INSTALL_DIR" run build >/dev/null
 }
 
 # ---- wire up the binary --------------------------------------------------
@@ -158,6 +172,7 @@ patch_path() {
 
   # Only append if the bin dir isn't already mentioned in the file.
   if [[ -n "$cfg" ]] && ! grep -qF "$BIN_DIR" "$cfg" 2>/dev/null; then
+    mkdir -p "$(dirname "$cfg")"
     printf '\n# Heimdall SRE agent\n%s\n' "$export_line" >> "$cfg"
     info "Added ${BIN_DIR} to PATH in ${cfg}"
   fi
