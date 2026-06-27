@@ -211,66 +211,65 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
   }
 }
 
-// --- CLI arg parsing when run directly ---
-const args = process.argv.slice(2);
-const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
-let modelFlag: string | undefined;
+/** Write an error to stderr and exit(1) when the next CLI token is missing or looks like a flag. */
+export function requireNextArg(args: string[], i: number, msg: string): void {
+  if (!args[i + 1] || args[i + 1].startsWith('-')) {
+    process.stderr.write(`Error: ${msg}\n`);
+    process.exit(1);
+  }
+}
 
-for (let i = 0; i < args.length; i++) {
-  const arg = args[i];
-  if (arg === '-n' || arg === '--namespace') {
-    if (!args[i + 1] || args[i + 1].startsWith('-')) {
-      process.stderr.write(`Error: ${arg} requires a namespace argument\n`);
-      process.exit(1);
-    }
-    opts.namespace = args[++i];
-  } else if (arg.startsWith('--namespace=')) {
-    const ns = arg.slice('--namespace='.length);
-    if (!ns) {
-      process.stderr.write(`Error: --namespace= requires a non-empty value\n`);
-      process.exit(1);
-    }
-    opts.namespace = ns;
-  } else if (arg === '-A' || arg === '--all-namespaces') {
-    opts.allNamespaces = true;
-  } else if (arg === '--contexts') {
-    if (!args[i + 1] || args[i + 1].startsWith('-')) {
-      process.stderr.write(`Error: --contexts requires a comma-separated list of context names\n`);
-      process.exit(1);
-    }
-    const parsed = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
-    if (parsed.length === 0) {
-      process.stderr.write(`Error: --contexts value produced an empty list after parsing\n`);
-      process.exit(1);
-    }
-    opts.contexts = Array.from(new Set(parsed));
-  } else if (arg.startsWith('--contexts=')) {
-    const raw = arg.slice('--contexts='.length);
-    if (!raw) {
-      process.stderr.write(`Error: --contexts= requires a non-empty comma-separated list\n`);
-      process.exit(1);
-    }
-    const parsed = raw.split(',').map((c) => c.trim()).filter(Boolean);
-    if (parsed.length === 0) {
-      process.stderr.write(`Error: --contexts= value produced an empty list after parsing\n`);
-      process.exit(1);
-    }
-    opts.contexts = Array.from(new Set(parsed));
-  } else if (arg === '--model') {
-    if (!args[i + 1] || args[i + 1].startsWith('-')) {
-      process.stderr.write(`Error: --model requires a value\n`);
-      process.exit(1);
-    }
-    modelFlag = args[++i];
-  } else if (arg.startsWith('--model=')) {
-    const m = arg.slice('--model='.length);
-    if (!m) {
-      process.stderr.write(`Error: --model= requires a non-empty value\n`);
-      process.exit(1);
-    }
-    modelFlag = m;
-  } else if (arg === '-h' || arg === '--help') {
-    process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
+/** Write an error to stderr and exit(1) when value is empty. */
+export function requireNonEmptyValue(value: string, msg: string): void {
+  if (!value) {
+    process.stderr.write(`Error: ${msg}\n`);
+    process.exit(1);
+  }
+}
+
+// --- CLI arg parsing when run directly ---
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  const args = process.argv.slice(2);
+  const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
+  let modelFlag: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '-n' || arg === '--namespace') {
+      requireNextArg(args, i, `${arg} requires a namespace argument`);
+      opts.namespace = args[++i];
+    } else if (arg.startsWith('--namespace=')) {
+      const ns = arg.slice('--namespace='.length);
+      requireNonEmptyValue(ns, '--namespace= requires a non-empty value');
+      opts.namespace = ns;
+    } else if (arg === '-A' || arg === '--all-namespaces') {
+      opts.allNamespaces = true;
+    } else if (arg === '--contexts') {
+      requireNextArg(args, i, '--contexts requires a comma-separated list of context names');
+      const parsed = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
+      if (parsed.length === 0) {
+        process.stderr.write(`Error: --contexts value produced an empty list after parsing\n`);
+        process.exit(1);
+      }
+      opts.contexts = Array.from(new Set(parsed));
+    } else if (arg.startsWith('--contexts=')) {
+      const raw = arg.slice('--contexts='.length);
+      requireNonEmptyValue(raw, '--contexts= requires a non-empty comma-separated list');
+      const parsed = raw.split(',').map((c) => c.trim()).filter(Boolean);
+      if (parsed.length === 0) {
+        process.stderr.write(`Error: --contexts= value produced an empty list after parsing\n`);
+        process.exit(1);
+      }
+      opts.contexts = Array.from(new Set(parsed));
+    } else if (arg === '--model') {
+      requireNextArg(args, i, '--model requires a value');
+      modelFlag = args[++i];
+    } else if (arg.startsWith('--model=')) {
+      const m = arg.slice('--model='.length);
+      requireNonEmptyValue(m, '--model= requires a non-empty value');
+      modelFlag = m;
+    } else if (arg === '-h' || arg === '--help') {
+      process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
 
 Run a structured whole-cluster health sweep and report findings by severity.
 
@@ -289,23 +288,24 @@ Examples:
   heimdall triage --contexts=prod-us,prod-eu -A       # multi-cluster, all namespaces
   npm run triage -- -n staging
 `);
-    process.exit(0);
-  } else {
-    process.stderr.write(`Error: unknown option: ${arg}\n`);
+      process.exit(0);
+    } else {
+      process.stderr.write(`Error: unknown option: ${arg}\n`);
+      process.exit(1);
+    }
+  }
+
+  let resolvedModel: string;
+  try {
+    resolvedModel = resolveModel(modelFlag);
+  } catch (err) {
+    process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
   }
-}
 
-let resolvedModel: string;
-try {
-  resolvedModel = resolveModel(modelFlag);
-} catch (err) {
-  process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
+  runTriageMode(opts, resolvedModel).catch((err: unknown) => {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[heimdall-triage] Fatal error: ${detail}\n`);
+    process.exit(1);
+  });
 }
-
-runTriageMode(opts, resolvedModel).catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-triage] Fatal error: ${detail}\n`);
-  process.exit(1);
-});
