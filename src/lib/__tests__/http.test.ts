@@ -176,6 +176,16 @@ describe('handleJsonResponse', () => {
     );
   });
 
+  it('handles empty statusText (HTTP/2) without extra spaces', async () => {
+    const response = {
+      ok: false, status: 503, statusText: '',
+      text: () => Promise.resolve('overloaded'),
+    } as unknown as Response;
+    expect(await handleJsonResponse(response, 'Prometheus', [], (s) => s)).toBe(
+      'Prometheus HTTP 503: overloaded',
+    );
+  });
+
   it('re-throws AbortError from error body read', async () => {
     const abortErr = makeAbortError();
     const response = {

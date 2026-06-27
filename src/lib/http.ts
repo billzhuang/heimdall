@@ -59,7 +59,8 @@ export async function handleJsonResponse(
 ): Promise<string> {
   if (!response.ok) {
     const detail = await readErrorDetail(response, redactionRules);
-    return `${serviceName} HTTP ${response.status} ${response.statusText}${detail}`;
+    const statusText = response.statusText ? ` ${response.statusText}` : '';
+    return `${serviceName} HTTP ${response.status}${statusText}${detail}`;
   }
   const text = await response.text();
   return truncate(applyRedaction(text, redactionRules));
