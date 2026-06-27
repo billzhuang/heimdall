@@ -253,6 +253,14 @@ export function extractKubectlCommands(text: string): string[] {
 const CRITICAL_SIGNAL_RE = /\b(?:critical|outage|unavailable)\b/;
 
 /**
+ * Strips negated critical phrases before the critical-signal check.
+ * e.g. "no outage", "not critical", "without unavailable" → removed so the
+ * remaining text is tested cleanly for genuine critical signals.
+ */
+const CRITICAL_NEGATION_SUPPRESS_RE =
+  /\b(?:no|not|without)\s+(?:critical|outage|unavailable)\b/g;
+
+/**
  * Matches healthy-summary phrases that should suppress a warning inference.
  * e.g. "no warning events", "without errors", "no crashloopbackoff".
  */
@@ -269,7 +277,10 @@ const WARNING_SIGNAL_RE =
  */
 export function inferSeverity(text: string): 'critical' | 'warning' | 'info' {
   const lower = text.toLowerCase();
-  if (CRITICAL_SIGNAL_RE.test(lower)) return 'critical';
+  // Strip negated critical phrases (e.g. "no outage", "not unavailable") before
+  // testing for critical signals — prevents false positives from healthy summaries.
+  const withoutNegatedCritical = lower.replace(CRITICAL_NEGATION_SUPPRESS_RE, '');
+  if (CRITICAL_SIGNAL_RE.test(withoutNegatedCritical)) return 'critical';
   // Suppress false positives from healthy summaries like "no warning events" / "no errors".
   if (NEGATION_SUPPRESS_RE.test(lower)) return 'info';
   if (WARNING_SIGNAL_RE.test(lower)) return 'warning';

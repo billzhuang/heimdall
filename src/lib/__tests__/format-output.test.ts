@@ -388,6 +388,30 @@ describe('inferSeverity', () => {
     expect(inferSeverity('CRITICAL issue detected.')).toBe('critical');
     expect(inferSeverity('WARNING: degraded performance.')).toBe('warning');
   });
+
+  it('returns "info" for "no critical issues" (negated critical suppressed)', () => {
+    expect(inferSeverity('No critical issues detected in the cluster.')).toBe('info');
+  });
+
+  it('returns "info" for "no outage" (negated critical suppressed)', () => {
+    expect(inferSeverity('Checked all services: no outage observed in the last hour.')).toBe('info');
+  });
+
+  it('returns "info" for "not unavailable" (negated critical suppressed)', () => {
+    expect(inferSeverity('The service is not unavailable — health checks are passing.')).toBe('info');
+  });
+
+  it('returns "info" for "without outage" (negated critical suppressed)', () => {
+    expect(inferSeverity('Traffic is processing without outage.')).toBe('info');
+  });
+
+  it('returns "critical" when unavailable is not negated despite negated outage', () => {
+    expect(inferSeverity('No outage but the service endpoint is unavailable.')).toBe('critical');
+  });
+
+  it('returns "warning" for "no outage" combined with warning keywords', () => {
+    expect(inferSeverity('No outage detected, but pod failures observed in prod.')).toBe('warning');
+  });
 });
 
 // ---------------------------------------------------------------------------
