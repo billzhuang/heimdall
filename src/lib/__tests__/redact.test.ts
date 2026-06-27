@@ -382,6 +382,18 @@ describe('detectFormat', () => {
     expect(detectFormat(['get', 'secret', 'foo', '-ojson'])).toBe('json');
   });
 
+  it('respects the last -o flag when multiple are specified (last-one-wins)', () => {
+    // detectFormat scans the full argv and returns the last matched format,
+    // matching kubectl's own flag semantics.
+    expect(detectFormat(['-o', 'json', '-o', 'yaml'])).toBe('yaml');
+    expect(detectFormat(['-o', 'yaml', '-o', 'json'])).toBe('json');
+    expect(detectFormat(['-o', 'json', '-o', 'wide'])).toBe('other');
+    expect(detectFormat(['-o', 'wide', '-o', 'json'])).toBe('json');
+    expect(detectFormat(['-o', 'json', '-o=jsonpath={.data}'])).toBe('other');
+    expect(detectFormat(['-ojson', '-oyaml'])).toBe('yaml');
+    expect(detectFormat(['-oyaml', '-ojson'])).toBe('json');
+  });
+
   it('handles -o=json (equals form without --)', () => {
     // -o=json is handled the same as -ojson by the parser
     expect(detectFormat(['-o=json'])).toBe('json');
@@ -517,10 +529,13 @@ describe('redactDataFields', () => {
     expect(redactDataFields({ key: 'dGVzdA==' }, true)['key']).toBe('<redacted: 4 bytes>');
   });
 
-  it('handles non-string values by coercing to string', () => {
-    const result = redactDataFields({ n: 42, nul: null } as Record<string, unknown>, false);
-    expect(result['n']).toMatch(/^<redacted: \d+ bytes>$/);
-    expect(result['nul']).toMatch(/^<redacted: \d+ bytes>$/);
+  it('treats null and undefined as empty string (0 bytes); coerces other non-strings via String()', () => {
+    const result = redactDataFields({ n: 42, nul: null, undef: undefined } as Record<string, unknown>, false);
+    // null and undefined → String(null ?? '') = '' → 0 bytes
+    expect(result['nul']).toBe('<redacted: 0 bytes>');
+    expect(result['undef']).toBe('<redacted: 0 bytes>');
+    // 42 → String(42) = '42' → 2 bytes
+    expect(result['n']).toBe('<redacted: 2 bytes>');
   });
 
   it('preserves all keys', () => {
