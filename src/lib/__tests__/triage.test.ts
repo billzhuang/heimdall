@@ -3,6 +3,7 @@ import {
   buildTriagePrompt,
   compareSeverity,
   parseSeverity,
+  resolveNamespaceScope,
   TRIAGE_CATEGORIES,
   type Severity,
 } from '../triage.ts';
@@ -236,5 +237,69 @@ describe('buildTriagePrompt — multi-cluster details', () => {
   it('ends with the multi-cluster triage summary line', () => {
     const prompt = buildTriagePrompt({ contexts: ['prod'] });
     expect(prompt).toContain('Multi-cluster triage complete:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveNamespaceScope
+// ---------------------------------------------------------------------------
+
+describe('resolveNamespaceScope — default (no options)', () => {
+  it('returns empty suffixes and "the default namespace" label', () => {
+    const scope = resolveNamespaceScope({});
+    expect(scope.kubectlSuffix).toBe('');
+    expect(scope.scopeLabel).toBe('the default namespace');
+    expect(scope.multiClusterSuffix).toBe('');
+  });
+
+  it('treats an empty namespace string as default scope', () => {
+    expect(resolveNamespaceScope({ namespace: '' })).toEqual({
+      kubectlSuffix: '',
+      scopeLabel: 'the default namespace',
+      multiClusterSuffix: '',
+    });
+  });
+
+  it('returns the same defaults when both namespace and allNamespaces are falsy', () => {
+    expect(resolveNamespaceScope({ namespace: undefined, allNamespaces: false }))
+      .toEqual({ kubectlSuffix: '', scopeLabel: 'the default namespace', multiClusterSuffix: '' });
+  });
+});
+
+describe('resolveNamespaceScope — specific namespace', () => {
+  it('returns -n suffix, quoted label, and "scoped to namespace" multi-cluster suffix', () => {
+    const scope = resolveNamespaceScope({ namespace: 'prod' });
+    expect(scope.kubectlSuffix).toBe(' -n prod');
+    expect(scope.scopeLabel).toBe('namespace "prod"');
+    expect(scope.multiClusterSuffix).toBe(' scoped to namespace "prod"');
+  });
+
+  it('embeds the namespace name verbatim (no sanitisation)', () => {
+    const scope = resolveNamespaceScope({ namespace: 'my-team-staging' });
+    expect(scope.kubectlSuffix).toBe(' -n my-team-staging');
+    expect(scope.scopeLabel).toBe('namespace "my-team-staging"');
+    expect(scope.multiClusterSuffix).toBe(' scoped to namespace "my-team-staging"');
+  });
+
+  it('namespace takes precedence over allNamespaces when both are set', () => {
+    const scope = resolveNamespaceScope({ namespace: 'prod', allNamespaces: true });
+    expect(scope.kubectlSuffix).toBe(' -n prod');
+    expect(scope.scopeLabel).toBe('namespace "prod"');
+    expect(scope.multiClusterSuffix).toBe(' scoped to namespace "prod"');
+  });
+});
+
+describe('resolveNamespaceScope — all namespaces', () => {
+  it('returns -A suffix, "all namespaces" label, and " across all namespaces" multi-cluster suffix', () => {
+    const scope = resolveNamespaceScope({ allNamespaces: true });
+    expect(scope.kubectlSuffix).toBe(' -A');
+    expect(scope.scopeLabel).toBe('all namespaces');
+    expect(scope.multiClusterSuffix).toBe(' across all namespaces');
+  });
+
+  it('does not use -A when allNamespaces is false', () => {
+    const scope = resolveNamespaceScope({ allNamespaces: false });
+    expect(scope.kubectlSuffix).toBe('');
+    expect(scope.scopeLabel).toBe('the default namespace');
   });
 });
