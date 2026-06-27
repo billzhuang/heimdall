@@ -67,6 +67,60 @@ describe('matchesCronField', () => {
     expect(matchesCronField(7, '1-3,7')).toBe(true);
     expect(matchesCronField(4, '1-3,7')).toBe(false);
   });
+
+  it('a-b/n range-with-step matches values in range at given stride', () => {
+    // 0-12/2 → 0, 2, 4, 6, 8, 10, 12
+    expect(matchesCronField(0, '0-12/2')).toBe(true);
+    expect(matchesCronField(2, '0-12/2')).toBe(true);
+    expect(matchesCronField(12, '0-12/2')).toBe(true);
+    expect(matchesCronField(1, '0-12/2')).toBe(false);   // odd — not on stride
+    expect(matchesCronField(13, '0-12/2')).toBe(false);  // out of range
+  });
+
+  it('a-b/n with lowerBound=1 (dom/month) fires at correct stride within range', () => {
+    // 3-15/4 (dom): 3, 7, 11, 15
+    expect(matchesCronField(3, '3-15/4', 1)).toBe(true);
+    expect(matchesCronField(7, '3-15/4', 1)).toBe(true);
+    expect(matchesCronField(11, '3-15/4', 1)).toBe(true);
+    expect(matchesCronField(15, '3-15/4', 1)).toBe(true);
+    expect(matchesCronField(4, '3-15/4', 1)).toBe(false);
+    expect(matchesCronField(16, '3-15/4', 1)).toBe(false);
+  });
+
+  it('a-b/0 range-with-step=0 always returns false', () => {
+    expect(matchesCronField(0, '0-23/0')).toBe(false);
+    expect(matchesCronField(6, '0-23/0')).toBe(false);
+  });
+
+  it('n/s start-value-with-step matches values from n in strides of s', () => {
+    // 5/15 → 5, 20, 35, 50
+    expect(matchesCronField(5, '5/15')).toBe(true);
+    expect(matchesCronField(20, '5/15')).toBe(true);
+    expect(matchesCronField(35, '5/15')).toBe(true);
+    expect(matchesCronField(50, '5/15')).toBe(true);
+    expect(matchesCronField(4, '5/15')).toBe(false);   // before start
+    expect(matchesCronField(6, '5/15')).toBe(false);   // not on stride
+  });
+
+  it('n/s with n=0 behaves like */s from 0', () => {
+    expect(matchesCronField(0, '0/10')).toBe(true);
+    expect(matchesCronField(10, '0/10')).toBe(true);
+    expect(matchesCronField(5, '0/10')).toBe(false);
+  });
+
+  it('n/0 start-with-step=0 always returns false', () => {
+    expect(matchesCronField(5, '5/0')).toBe(false);
+    expect(matchesCronField(0, '0/0')).toBe(false);
+  });
+
+  it('comma list mixing a-b/n and exact patterns', () => {
+    // "0-12/3,30" → 0, 3, 6, 9, 12, 30
+    expect(matchesCronField(0, '0-12/3,30')).toBe(true);
+    expect(matchesCronField(6, '0-12/3,30')).toBe(true);
+    expect(matchesCronField(30, '0-12/3,30')).toBe(true);
+    expect(matchesCronField(1, '0-12/3,30')).toBe(false);
+    expect(matchesCronField(13, '0-12/3,30')).toBe(false);
+  });
 });
 
 describe('validateCronExpression', () => {
@@ -127,6 +181,41 @@ describe('validateCronExpression', () => {
   it('accepts range fields', () => {
     expect(validateCronExpression('0 9-17 * * *')).toBeUndefined();
     expect(validateCronExpression('0 0 1-15 * *')).toBeUndefined();
+  });
+
+  it('accepts a-b/n range-with-step fields', () => {
+    expect(validateCronExpression('0 0-23/6 * * *')).toBeUndefined();  // every 6h in 0-23
+    expect(validateCronExpression('0-59/15 * * * *')).toBeUndefined(); // every 15m in 0-59
+    expect(validateCronExpression('0 0 1-31/7 * *')).toBeUndefined();  // every 7 days
+  });
+
+  it('rejects a-b/n when range bounds are out of range', () => {
+    expect(validateCronExpression('0 0-25/2 * * *')).toMatch(/out of range/);  // hour hi=25 > 23
+    expect(validateCronExpression('0-100/5 * * * *')).toMatch(/out of range/); // minute hi=100 > 59
+  });
+
+  it('rejects a-b/n when lo > hi (inverted range)', () => {
+    expect(validateCronExpression('10-5/2 * * * *')).toMatch(/out of range/);
+  });
+
+  it('accepts n/s start-value-with-step fields', () => {
+    expect(validateCronExpression('5/15 * * * *')).toBeUndefined();  // 5, 20, 35, 50
+    expect(validateCronExpression('0 8/4 * * *')).toBeUndefined();   // 8, 12, 16, 20
+  });
+
+  it('rejects n/s when starting value is out of range', () => {
+    expect(validateCronExpression('60/5 * * * *')).toMatch(/out of range/);   // minute 60 > 59
+    expect(validateCronExpression('0 24/1 * * *')).toMatch(/out of range/);   // hour 24 > 23
+  });
+
+  it('rejects n/s with step=0 with a clear error message', () => {
+    expect(validateCronExpression('5/0 * * * *')).toMatch(/step must be > 0/);
+    expect(validateCronExpression('0 8/0 * * *')).toMatch(/step must be > 0/);
+  });
+
+  it('rejects a-b/n with step=0 with a clear error message', () => {
+    expect(validateCronExpression('0-59/0 * * * *')).toMatch(/step must be > 0/);
+    expect(validateCronExpression('0 0-23/0 * * *')).toMatch(/step must be > 0/);
   });
 });
 
@@ -225,6 +314,34 @@ describe('nextFireTime', () => {
     expect(() => nextFireTime('0 0 30 2 *', new Date('2024-03-01T00:00:00Z'))).toThrow(
       /no fires within one year/,
     );
+  });
+
+  it('fires correctly with a-b/n range-with-step hour field', () => {
+    // "0 0-23/6 * * *" → fires at 00:00, 06:00, 12:00, 18:00
+    const from = new Date('2024-01-15T07:00:00Z');
+    const next = nextFireTime('0 0-23/6 * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T12:00:00.000Z');
+  });
+
+  it('fires correctly with a-b/n minute field', () => {
+    // "0-59/15 * * * *" → fires at :00, :15, :30, :45 of every hour
+    const from = new Date('2024-01-15T10:16:00Z');
+    const next = nextFireTime('0-59/15 * * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T10:30:00.000Z');
+  });
+
+  it('fires correctly with n/s start-value-with-step minute field', () => {
+    // "5/15 * * * *" → fires at :05, :20, :35, :50 of every hour
+    const from = new Date('2024-01-15T10:06:00Z');
+    const next = nextFireTime('5/15 * * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T10:20:00.000Z');
+  });
+
+  it('fires correctly with n/s hour field (start at 8, every 4 hours)', () => {
+    // "0 8/4 * * *" → fires at 08:00, 12:00, 16:00, 20:00
+    const from = new Date('2024-01-15T09:00:00Z');
+    const next = nextFireTime('0 8/4 * * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T12:00:00.000Z');
   });
 });
 

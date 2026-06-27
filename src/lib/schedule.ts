@@ -25,11 +25,13 @@ export interface ScheduledTriageConfig {
  * Check whether a cron field value matches a single cron field descriptor.
  *
  * Supported patterns:
- *   *        — always matches
- *   n        — exact value
- *   a-b      — inclusive range
- *   STAR/n   — every nth value starting from lowerBound (e.g. dom/month fields start at 1)
- *   a,b,c    — comma-separated list of the above
+ *   *        - always matches
+ *   n        - exact value
+ *   a-b      - inclusive range
+ *   a-b/n    - range with step: values from a to b where (value - a) % n === 0
+ *   n/s      - start-value with step: values >= n where (value - n) % s === 0
+ *   STAR/n   - every nth value starting from lowerBound (e.g. dom/month fields start at 1)
+ *   a,b,c    - comma-separated list of the above
  *
  * @param lowerBound  Start of the field's valid range (0 for minute/hour/dow, 1 for dom/month).
  */
@@ -48,12 +50,29 @@ export function matchesCronField(value: number, field: string, lowerBound = 0): 
     return step > 0 && (value - lowerBound) % step === 0;
   }
 
+  // a-b/n  — range with step (must be tested before plain a-b to avoid partial match)
+  const rangeStepMatch = field.match(/^(\d+)-(\d+)\/(\d+)$/);
+  if (rangeStepMatch) {
+    const lo = parseInt(rangeStepMatch[1], 10);
+    const hi = parseInt(rangeStepMatch[2], 10);
+    const step = parseInt(rangeStepMatch[3], 10);
+    return step > 0 && value >= lo && value <= hi && (value - lo) % step === 0;
+  }
+
   // a-b  — inclusive range
   const rangeMatch = field.match(/^(\d+)-(\d+)$/);
   if (rangeMatch) {
     const lo = parseInt(rangeMatch[1], 10);
     const hi = parseInt(rangeMatch[2], 10);
     return value >= lo && value <= hi;
+  }
+
+  // n/s  — start-value with step (e.g. 5/15 → 5, 20, 35, 50)
+  const startStepMatch = field.match(/^(\d+)\/(\d+)$/);
+  if (startStepMatch) {
+    const start = parseInt(startStepMatch[1], 10);
+    const step = parseInt(startStepMatch[2], 10);
+    return step > 0 && value >= start && (value - start) % step === 0;
   }
 
   // Exact numeric value
@@ -85,12 +104,29 @@ export function validateCronExpression(cron: string): string | undefined {
     // Reject out-of-range tokens before checking for matches.
     for (const part of f.split(',')) {
       if (part === '*' || part.startsWith('*/')) continue;
-      const rangeM = part.match(/^(\d+)-(\d+)$/);
+      // a-b or a-b/n — validate range bounds and optional step
+      const rangeM = part.match(/^(\d+)-(\d+)(\/(\d+))?$/);
       if (rangeM) {
         const a = parseInt(rangeM[1], 10);
         const b = parseInt(rangeM[2], 10);
         if (a > b || a < lo || b > hi) {
           return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
+        }
+        if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) {
+          return `${names[i]} field "${f}" has an invalid step: step must be > 0`;
+        }
+        continue;
+      }
+      // n/s — start-value with step: validate starting value and step
+      const startStepM = part.match(/^(\d+)\/(\d+)$/);
+      if (startStepM) {
+        const n = parseInt(startStepM[1], 10);
+        const s = parseInt(startStepM[2], 10);
+        if (n < lo || n > hi) {
+          return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
+        }
+        if (s === 0) {
+          return `${names[i]} field "${f}" has an invalid step: step must be > 0`;
         }
         continue;
       }
