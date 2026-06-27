@@ -9,6 +9,7 @@ import * as v from 'valibot';
 import { runJaegerQuery, type JaegerConfig } from '../lib/jaeger.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
+import { resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_JAEGER_URL = 'http://jaeger-query.tracing:16686';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -24,10 +25,7 @@ export function makeJaegerQuery(
   const rawTimeout = jaegerConfig?.timeoutMs;
   const config: JaegerConfig = {
     url: jaegerConfig?.url || process.env.JAEGER_URL || DEFAULT_JAEGER_URL,
-    timeoutMs:
-      typeof rawTimeout === 'number' && Number.isFinite(rawTimeout) && rawTimeout > 0
-        ? rawTimeout
-        : DEFAULT_TIMEOUT_MS,
+    timeoutMs: resolveTimeoutMs(rawTimeout, DEFAULT_TIMEOUT_MS),
     regexRedactionRules,
   };
 

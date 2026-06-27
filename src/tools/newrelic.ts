@@ -14,6 +14,7 @@ import * as v from 'valibot';
 import { runNewRelicQuery, type NewRelicConfig } from '../lib/newrelic.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
+import { resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
@@ -36,10 +37,7 @@ export function makeNewRelicQuery(
   const config: NewRelicConfig = {
     apiKey,
     accountId,
-    timeoutMs:
-      typeof rawTimeout === 'number' && Number.isFinite(rawTimeout) && rawTimeout > 0
-        ? rawTimeout
-        : DEFAULT_TIMEOUT_MS,
+    timeoutMs: resolveTimeoutMs(rawTimeout, DEFAULT_TIMEOUT_MS),
     regexRedactionRules,
   };
 
