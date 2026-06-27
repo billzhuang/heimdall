@@ -42,7 +42,18 @@ while [[ $# -gt 0 ]]; do
     --bin=*)     BIN_DIR="${1#--bin=}"; shift ;;
     --upgrade|-u) UPGRADE=true; shift ;;
     --help|-h)
-      sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+      cat <<'EOF'
+Heimdall native installer — no manual npm install required
+
+Quick install:
+  curl -fsSL https://raw.githubusercontent.com/billzhuang/heimdall/main/install.sh | bash
+
+Options:
+  --dir <path>     Installation directory (default: ~/.local/share/heimdall)
+  --bin <path>     Binary link directory  (default: ~/.local/bin)
+  --upgrade, -u    Pull latest and rebuild an existing installation
+  --help,    -h    Show this help
+EOF
       exit 0
       ;;
     *) die "Unknown argument: $1. Use --help for usage." ;;
@@ -134,7 +145,7 @@ patch_path() {
   local cfg export_line
   case "$shell_name" in
     zsh)  cfg="$HOME/.zshrc" ;;
-    bash) cfg="${BASH_ENV:-$HOME/.bashrc}" ;;
+    bash) cfg="$HOME/.bashrc" ;;
     fish) cfg="$HOME/.config/fish/config.fish" ;;
     *)    cfg="$HOME/.profile" ;;
   esac
