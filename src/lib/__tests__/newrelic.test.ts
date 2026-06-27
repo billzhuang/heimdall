@@ -1,23 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runNewRelicQuery, resolveNrqlTime } from '../newrelic.ts';
 import type { NewRelicConfig } from '../newrelic.ts';
+import { mockFetch } from './test-helpers.ts';
 
 const BASE_CONFIG: NewRelicConfig = {
   apiKey: 'test-api-key',
   accountId: '1234567',
   timeoutMs: 5_000,
 };
-
-function mockFetch(body: string, status = 200): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: status === 200 ? 'OK' : 'Bad Request',
-    text: () => Promise.resolve(body),
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
-}
 
 afterEach(() => {
   vi.useRealTimers();
