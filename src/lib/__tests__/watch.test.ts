@@ -523,6 +523,7 @@ describe('shouldResetBackoff', () => {
 
 describe('postWebhook', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -567,5 +568,27 @@ describe('postWebhook', () => {
   it('throws when the request is aborted (timeout)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(Object.assign(new Error('abort'), { name: 'AbortError' })));
     await expect(postWebhook('http://example.com/hook', {})).rejects.toThrow('abort');
+  });
+
+  it('aborts the request after the 10-second setTimeout fires', async () => {
+    vi.useFakeTimers();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+          );
+        }),
+      ),
+    );
+
+    const hookPromise = postWebhook('http://example.com/hook', {});
+    // Attach rejection handler before advancing timers so the rejection is
+    // not flagged as unhandled when the abort fires mid-advanceTimersByTimeAsync.
+    const assertion = expect(hookPromise).rejects.toThrow('aborted');
+    await vi.advanceTimersByTimeAsync(10_001);
+    await assertion;
   });
 });
