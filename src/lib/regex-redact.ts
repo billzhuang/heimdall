@@ -21,6 +21,12 @@ export interface CompiledRedactionRule {
   re: RegExp;
 }
 
+/** A compiled, single-argument redaction function produced by {@link createRedactor}. */
+export type Redactor = (text: string) => string;
+
+/** Matches a single leading inline-flag group, e.g. `(?im)`. */
+const INLINE_FLAG_RE = /^\(\?([gimsuy]+)\)/;
+
 /**
  * Extract all leading inline-flag groups (e.g. `(?i)`, `(?im)`, `(?i)(?m)`)
  * from a pattern string. Supports the JavaScript flag letters (g, i, m, s, u, y).
@@ -29,11 +35,10 @@ export interface CompiledRedactionRule {
  * that carry more than one flag group are handled correctly.
  */
 function extractInlineFlags(pattern: string): { pattern: string; extraFlags: string } {
-  const flagGroupRe = /^\(\?([gimsuy]+)\)/;
   let remaining = pattern;
   let allFlags = '';
   let m: RegExpMatchArray | null;
-  while ((m = remaining.match(flagGroupRe)) !== null) {
+  while ((m = remaining.match(INLINE_FLAG_RE)) !== null) {
     allFlags += m[1];
     remaining = remaining.slice(m[0].length);
   }
@@ -56,6 +61,22 @@ function hasPotentialReDoS(pattern: string): boolean {
 }
 
 /**
+ * Deduplicate regex flags and strip the sticky flag `y`, which conflicts with
+ * the global `g` flag required for exhaustive redaction (with `/gy`,
+ * `String.prototype.replace` stops after the first non-contiguous match).
+ */
+function buildFlags(extraFlags: string, ruleName: string): string {
+  const flagSet = new Set('g' + extraFlags);
+  if (flagSet.has('y')) {
+    flagSet.delete('y');
+    console.warn(
+      `[heimdall] Redaction rule "${ruleName}": sticky flag 'y' is incompatible with global redaction and has been removed`,
+    );
+  }
+  return Array.from(flagSet).join('');
+}
+
+/**
  * Compile a single raw rule into a CompiledRedactionRule, or return null if the
  * rule should be skipped (invalid pattern, ReDoS risk, or empty after flag strip).
  * Logs a warning for every skipped rule.
@@ -74,18 +95,7 @@ function compileSingleRule(rule: RedactionRule): CompiledRedactionRule | null {
     );
     return null;
   }
-  // Deduplicate flags via Set so `(?ii)` or a user-supplied `g` can't cause a SyntaxError.
-  // The sticky flag `y` conflicts with global `g` in String.prototype.replace: with `/gy`,
-  // replace stops after the first non-contiguous match, leaving later secrets unredacted.
-  // Strip `y` and warn so redaction is always exhaustive.
-  const flagSet = new Set('g' + extraFlags);
-  if (flagSet.has('y')) {
-    flagSet.delete('y');
-    console.warn(
-      `[heimdall] Redaction rule "${rule.name}": sticky flag 'y' is incompatible with global redaction and has been removed`,
-    );
-  }
-  const flags = Array.from(flagSet).join('');
+  const flags = buildFlags(extraFlags, rule.name);
   try {
     return { name: rule.name, re: new RegExp(pattern, flags) };
   } catch {
@@ -121,4 +131,14 @@ export function applyRedaction(text: string, rules: CompiledRedactionRule[]): st
     result = result.replace(re, `[REDACTED:${name}]`);
   }
   return result;
+}
+
+/**
+ * Compile rules once and return a single-argument redaction function.
+ * Prefer this over calling compileRules + applyRedaction separately when the
+ * same rule set is applied to many strings — the rules are compiled exactly once.
+ */
+export function createRedactor(rules: RedactionRule[]): Redactor {
+  const compiled = compileRules(rules);
+  return (text: string) => applyRedaction(text, compiled);
 }
