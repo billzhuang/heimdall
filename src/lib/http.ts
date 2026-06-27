@@ -1,23 +1,30 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 
 /**
- * Issue a fetch with a hard timeout enforced via AbortController.
- * The handler runs inside the timer window so body consumption is also
- * covered by the timeout — clearing the timer only after handler resolves.
+ * Run an async operation under a hard AbortController timeout.
+ * The timer is cleared only after the operation resolves, so body
+ * consumption inside the operation is also covered by the timeout.
  */
-export async function fetchWithTimeout<T>(
-  url: URL | string,
+export async function withTimeout<T>(
   timeoutMs: number,
-  handler: (response: Response) => Promise<T>,
+  operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { signal: controller.signal });
-    return await handler(response);
+    return await operation(controller.signal);
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Issue a fetch with a hard timeout; body consumption is covered by the same timer. */
+export function fetchWithTimeout<T>(
+  url: URL | string,
+  timeoutMs: number,
+  handler: (response: Response) => Promise<T>,
+): Promise<T> {
+  return withTimeout(timeoutMs, (signal) => fetch(url, { signal }).then(handler));
 }
 
 /**

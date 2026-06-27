@@ -13,7 +13,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { resolveTimeISO } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { clampLimit } from './tool-config.ts';
-import { formatQueryError } from './http.ts';
+import { formatQueryError, withTimeout } from './http.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -205,26 +205,23 @@ export async function runNewRelicQuery(
     return 'Error: New Relic account ID is not configured. Set the NEW_RELIC_ACCOUNT_ID environment variable, or add accountId to the newRelic section in heimdall.config.yaml.';
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
-
   try {
-    let raw: string;
-    switch (params.queryType) {
-      case 'metrics':
-        raw = await queryMetrics(params, config, controller.signal);
-        break;
-      case 'apm':
-        raw = await queryApm(params, config, controller.signal);
-        break;
-      case 'alerts':
-        raw = await queryAlerts(params, config, controller.signal);
-        break;
-    }
-    return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
+    return await withTimeout(config.timeoutMs, async (signal) => {
+      let raw: string;
+      switch (params.queryType) {
+        case 'metrics':
+          raw = await queryMetrics(params, config, signal);
+          break;
+        case 'apm':
+          raw = await queryApm(params, config, signal);
+          break;
+        case 'alerts':
+          raw = await queryAlerts(params, config, signal);
+          break;
+      }
+      return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     return formatQueryError(err, 'New Relic', config.timeoutMs, config.regexRedactionRules ?? []);
-  } finally {
-    clearTimeout(timer);
   }
 }

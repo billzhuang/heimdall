@@ -14,7 +14,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
 import { clampLimit } from './tool-config.ts';
-import { formatQueryError } from './http.ts';
+import { formatQueryError, withTimeout } from './http.ts';
 
 export interface DatadogConfig {
   apiKey: string;
@@ -255,29 +255,26 @@ export async function runDatadogQuery(
     return 'Error: Datadog Application key is not configured. Set the DD_APP_KEY or DATADOG_APP_KEY environment variable, or add appKey to the datadog section in heimdall.config.yaml.';
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
-
   try {
-    let raw: string;
-    switch (params.queryType) {
-      case 'metrics':
-        raw = await queryMetrics(params, config, controller.signal);
-        break;
-      case 'logs':
-        raw = await queryLogs(params, config, controller.signal);
-        break;
-      case 'events':
-        raw = await queryEvents(params, config, controller.signal);
-        break;
-      case 'monitors':
-        raw = await queryMonitors(params, config, controller.signal);
-        break;
-    }
-    return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
+    return await withTimeout(config.timeoutMs, async (signal) => {
+      let raw: string;
+      switch (params.queryType) {
+        case 'metrics':
+          raw = await queryMetrics(params, config, signal);
+          break;
+        case 'logs':
+          raw = await queryLogs(params, config, signal);
+          break;
+        case 'events':
+          raw = await queryEvents(params, config, signal);
+          break;
+        case 'monitors':
+          raw = await queryMonitors(params, config, signal);
+          break;
+      }
+      return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     return formatQueryError(err, 'Datadog', config.timeoutMs, config.regexRedactionRules ?? []);
-  } finally {
-    clearTimeout(timer);
   }
 }
