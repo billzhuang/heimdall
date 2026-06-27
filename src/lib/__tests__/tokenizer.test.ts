@@ -61,4 +61,25 @@ describe('tokenizeShellArgs', () => {
       'describe-instances',
     ]);
   });
+
+  it('empty single-quoted string produces an empty-string token', () => {
+    expect(tokenizeShellArgs("''", 'kubectl')).toEqual(['']);
+  });
+
+  it('empty double-quoted string produces an empty-string token', () => {
+    expect(tokenizeShellArgs('""', 'kubectl')).toEqual(['']);
+  });
+
+  it('single quote inside double-quoted string is treated as a literal character', () => {
+    expect(tokenizeShellArgs(`"it's"`, 'kubectl')).toEqual(["it's"]);
+  });
+
+  it('unrecognized escape sequence in double quotes preserves the backslash literally', () => {
+    // `\n` is not a recognized double-quote escape (only `\"` and `\\` are) — backslash kept.
+    expect(tokenizeShellArgs('"\\n"', 'kubectl')).toEqual(['\\n']);
+  });
+
+  it('adjacent single-quoted tokens without whitespace concatenate into one token', () => {
+    expect(tokenizeShellArgs("'foo''bar'", 'kubectl')).toEqual(['foobar']);
+  });
 });
