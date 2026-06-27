@@ -57,6 +57,10 @@ describe('resolveTimeMs', () => {
   it('returns null when relative timestamp overflows to Infinity', () => {
     expect(resolveTimeMs('-1h', Infinity)).toBeNull();
   });
+
+  it('returns null when relative timestamp is finite but exceeds Date range', () => {
+    expect(resolveTimeMs('-999999999999d', NOW)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -125,6 +129,10 @@ describe('resolveTimeISO', () => {
 
   it('returns null when nowMs is Infinity', () => {
     expect(resolveTimeISO('-1h', Infinity)).toBeNull();
+  });
+
+  it('returns null when relative timestamp is finite but exceeds Date range', () => {
+    expect(resolveTimeISO('-999999999999d', NOW)).toBeNull();
   });
 });
 
@@ -203,6 +211,11 @@ describe('resolveTimePassthrough', () => {
     // Unlike other resolvers, the Loki variant always multiplies by 1000,
     // so 13-digit "millisecond" strings are treated as seconds.
     expect(resolveTimePassthrough('0', NOW)).toBe('1970-01-01T00:00:00.000Z');
+  });
+
+  it('returns expr unchanged when bare integer × 1000 exceeds Date range', () => {
+    // 9999999999999 seconds × 1000 = ~year 318857, outside ±8.64e15 ms Date range
+    expect(resolveTimePassthrough('9999999999999', NOW)).toBe('9999999999999');
   });
 
   it('passes through ISO8601 strings unchanged', () => {

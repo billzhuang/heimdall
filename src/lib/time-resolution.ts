@@ -27,7 +27,7 @@ export function resolveTimeMs(expr: string, nowMs: number): number | null {
     const durationMs = parseDurationMs(expr.slice(1));
     if (durationMs === null) return null;
     const ts = nowMs - durationMs;
-    if (!Number.isFinite(ts)) return null;
+    if (!Number.isFinite(ts) || Math.abs(ts) > 8_640_000_000_000_000) return null;
     return ts;
   }
   if (BARE_INT_RE.test(expr)) {
@@ -56,7 +56,8 @@ export function resolveTimeSeconds(expr: string, nowMs: number): number | null {
 export function resolveTimeISO(expr: string, nowMs: number): string | null {
   if (expr.startsWith('-') || BARE_INT_RE.test(expr)) {
     const ms = resolveTimeMs(expr, nowMs);
-    return ms === null ? null : new Date(ms).toISOString();
+    if (ms === null) return null;
+    try { return new Date(ms).toISOString(); } catch { return null; }
   }
   // ISO8601 / RFC3339 — pass through unchanged if valid
   if (!Number.isNaN(Date.parse(expr))) return expr;
@@ -91,7 +92,11 @@ export function resolveTimePassthrough(expr: string, nowMs: number): string {
     }
   }
   if (BARE_INT_RE.test(expr)) {
-    return new Date(Number(expr) * 1_000).toISOString();
+    try {
+      return new Date(Number(expr) * 1_000).toISOString();
+    } catch {
+      return expr;
+    }
   }
   return expr;
 }
