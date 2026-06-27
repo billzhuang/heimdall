@@ -5,8 +5,9 @@
  * `_HEIMDALL_ACTION_`, runs the appropriate Heimdall mode, and writes
  * outputs to $GITHUB_OUTPUT and optionally $GITHUB_STEP_SUMMARY.
  *
- * The file exports testable I/O helpers (`setOutput`, `appendSummary`,
- * `capture`) so they can be unit-tested without spawning a real process.
+ * Exported helpers (`setOutput`, `appendSummary`, `capture`, `readActionConfig`,
+ * `checkFailOnSeverity`, `runPromptMode`, `runTriageMode`, `runScheduleOnceMode`)
+ * are unit-tested without spawning a real process or touching process.env.
  * Pure, side-effect-free logic lives in github-action.ts.
  * The dispatch (`main`) only fires when this file is the process entry point.
  */
@@ -30,15 +31,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 const BIN_PATH   = resolve(__dirname, '..', '..', 'bin', 'heimdall');
 
-const MODE           = process.env['_HEIMDALL_ACTION_MODE'] ?? 'prompt';
-const PROMPT         = process.env['_HEIMDALL_ACTION_PROMPT'] ?? '';
-const NAMESPACE      = process.env['_HEIMDALL_ACTION_NAMESPACE'] ?? '';
-const ALL_NAMESPACES = process.env['_HEIMDALL_ACTION_ALL_NAMESPACES'] === 'true';
-const FAIL_ON        = (process.env['_HEIMDALL_ACTION_FAIL_ON'] ?? '').trim();
-const POST_SUMMARY   = process.env['_HEIMDALL_ACTION_POST_SUMMARY'] !== 'false';
+/**
+ * All environment-derived settings for a single action run.
+ * Grouped so that mode functions can be called directly in tests
+ * without mutating process.env.
+ */
+export interface ActionConfig {
+  mode: string;
+  prompt: string;
+  namespace: string;
+  allNamespaces: boolean;
+  failOn: string;
+  postSummary: boolean;
+  githubOutput: string;
+  githubStepSummary: string;
+}
 
-const GITHUB_OUTPUT       = process.env['GITHUB_OUTPUT'] ?? '';
-const GITHUB_STEP_SUMMARY = process.env['GITHUB_STEP_SUMMARY'] ?? '';
+/** Read action config from environment variables (called once in main). */
+export function readActionConfig(): ActionConfig {
+  return {
+    mode: process.env['_HEIMDALL_ACTION_MODE'] ?? 'prompt',
+    prompt: process.env['_HEIMDALL_ACTION_PROMPT'] ?? '',
+    namespace: process.env['_HEIMDALL_ACTION_NAMESPACE'] ?? '',
+    allNamespaces: process.env['_HEIMDALL_ACTION_ALL_NAMESPACES'] === 'true',
+    failOn: (process.env['_HEIMDALL_ACTION_FAIL_ON'] ?? '').trim(),
+    postSummary: process.env['_HEIMDALL_ACTION_POST_SUMMARY'] !== 'false',
+    githubOutput: process.env['GITHUB_OUTPUT'] ?? '',
+    githubStepSummary: process.env['GITHUB_STEP_SUMMARY'] ?? '',
+  };
+}
 
 /**
  * Append a name=value pair to a GitHub Actions output file (multiline-safe).
@@ -46,7 +67,7 @@ const GITHUB_STEP_SUMMARY = process.env['GITHUB_STEP_SUMMARY'] ?? '';
  * `outputPath` defaults to $GITHUB_OUTPUT; pass an explicit path in tests to
  * avoid touching environment variables.
  */
-export function setOutput(name: string, value: string, outputPath = GITHUB_OUTPUT): void {
+export function setOutput(name: string, value: string, outputPath = process.env['GITHUB_OUTPUT'] ?? ''): void {
   if (!outputPath) return;
   const delimiter = `_heimdall_eof_${name}_${Date.now()}`;
   appendFileSync(outputPath, `${name}<<${delimiter}\n${value}\n${delimiter}\n`);
@@ -58,7 +79,7 @@ export function setOutput(name: string, value: string, outputPath = GITHUB_OUTPU
  * `summaryPath` defaults to $GITHUB_STEP_SUMMARY; pass an explicit path in
  * tests to avoid touching environment variables.
  */
-export function appendSummary(markdown: string, summaryPath = GITHUB_STEP_SUMMARY): void {
+export function appendSummary(markdown: string, summaryPath = process.env['GITHUB_STEP_SUMMARY'] ?? ''): void {
   if (!summaryPath) return;
   appendFileSync(summaryPath, markdown + '\n');
 }
@@ -98,8 +119,9 @@ export function capture(
 
 // ── Failure gating ─────────────────────────────────────────────────────────
 
-function checkFailOnSeverity(severity: ActionSeverity): void {
-  const decision = evaluateFailOn(FAIL_ON, severity);
+/** Evaluate the fail-on threshold and exit if the detected severity meets it. */
+export function checkFailOnSeverity(failOn: string, severity: ActionSeverity): void {
+  const decision = evaluateFailOn(failOn, severity);
   if (decision.ok) return;
   if (decision.reason === 'invalid-value') {
     process.stderr.write(
@@ -114,15 +136,23 @@ function checkFailOnSeverity(severity: ActionSeverity): void {
   process.exit(1);
 }
 
+// ── Shared capture type ─────────────────────────────────────────────────────
+
+type CaptureFn = typeof capture;
+
 // ── Prompt mode ────────────────────────────────────────────────────────────
 
-async function runPromptMode(): Promise<void> {
-  if (!PROMPT) {
+/**
+ * Run Heimdall in prompt mode and write outputs.
+ * `captureImpl` can be replaced with a mock in unit tests.
+ */
+export async function runPromptMode(config: ActionConfig, captureImpl: CaptureFn = capture): Promise<void> {
+  if (!config.prompt.trim()) {
     process.stderr.write('[heimdall-action] Error: prompt input is required for prompt mode\n');
     process.exit(1);
   }
 
-  const { stdout, code } = await capture(BIN_PATH, ['-p', PROMPT, '--json', '--no-learn']);
+  const { stdout, code } = await captureImpl(BIN_PATH, ['-p', config.prompt, '--json', '--no-learn']);
   if (code !== 0) {
     process.stderr.write(`[heimdall-action] Heimdall exited with code ${code}\n`);
     process.exit(code);
@@ -138,82 +168,98 @@ async function runPromptMode(): Promise<void> {
 
   const outputs = findingToOutputs(finding);
   for (const [key, value] of Object.entries(outputs)) {
-    setOutput(key, value);
+    setOutput(key, value, config.githubOutput);
   }
 
-  const summaryMd = renderJobSummary(finding, PROMPT);
-  setOutput('summary-markdown', summaryMd);
+  const summaryMd = renderJobSummary(finding, config.prompt);
+  setOutput('summary-markdown', summaryMd, config.githubOutput);
 
-  if (POST_SUMMARY) {
-    appendSummary(summaryMd);
+  if (config.postSummary) {
+    appendSummary(summaryMd, config.githubStepSummary);
   }
 
-  checkFailOnSeverity(normaliseSeverity(finding.severity));
+  checkFailOnSeverity(config.failOn, normaliseSeverity(finding.severity));
 }
 
 // ── Triage mode ────────────────────────────────────────────────────────────
 
-async function runTriageMode(): Promise<void> {
+/**
+ * Run Heimdall in triage mode and write outputs.
+ * `captureImpl` can be replaced with a mock in unit tests.
+ */
+export async function runTriageMode(config: ActionConfig, captureImpl: CaptureFn = capture): Promise<void> {
   const extraArgs: string[] = [];
-  if (ALL_NAMESPACES) {
+  if (config.allNamespaces) {
     extraArgs.push('-A');
-  } else if (NAMESPACE) {
-    extraArgs.push('-n', NAMESPACE);
+  } else if (config.namespace) {
+    extraArgs.push('-n', config.namespace);
   }
 
-  const { stdout, code } = await capture(BIN_PATH, ['triage', ...extraArgs]);
+  const { stdout, code } = await captureImpl(BIN_PATH, ['triage', ...extraArgs]);
   if (code !== 0) {
     process.stderr.write(`[heimdall-action] Heimdall triage exited with code ${code}\n`);
     process.exit(code);
   }
 
   const severity = detectTriageSeverity(stdout);
-  setOutput('severity', severity);
-  setOutput('summary', '');
-  setOutput('answer', '');
-  setOutput('suggested-commands', '');
-  setOutput('remediation-steps', '');
+  setOutput('severity', severity, config.githubOutput);
+  setOutput('summary', '', config.githubOutput);
+  setOutput('answer', '', config.githubOutput);
+  setOutput('suggested-commands', '', config.githubOutput);
+  setOutput('remediation-steps', '', config.githubOutput);
 
   const summaryMd = renderTriageJobSummary(stdout);
-  setOutput('summary-markdown', summaryMd);
+  setOutput('summary-markdown', summaryMd, config.githubOutput);
 
-  if (POST_SUMMARY) {
-    appendSummary(summaryMd);
+  if (config.postSummary) {
+    appendSummary(summaryMd, config.githubStepSummary);
   }
 
-  checkFailOnSeverity(severity);
+  checkFailOnSeverity(config.failOn, severity);
 }
 
 // ── Schedule-once mode ─────────────────────────────────────────────────────
 
-async function runScheduleOnceMode(): Promise<void> {
-  const { code } = await capture(BIN_PATH, ['schedule', '--once']);
+/**
+ * Run Heimdall schedule --once and write outputs.
+ * `captureImpl` can be replaced with a mock in unit tests.
+ */
+export async function runScheduleOnceMode(config: ActionConfig, captureImpl: CaptureFn = capture): Promise<void> {
+  const { code } = await captureImpl(BIN_PATH, ['schedule', '--once']);
   if (code !== 0) {
     process.stderr.write(`[heimdall-action] Heimdall schedule exited with code ${code}\n`);
     process.exit(code);
   }
 
-  setOutput('severity', 'ok');
-  setOutput('summary', 'Scheduled triage completed.');
-  setOutput('answer', '');
-  setOutput('suggested-commands', '');
-  setOutput('remediation-steps', '');
-  setOutput('summary-markdown', '');
+  const summaryMd = '## Heimdall Schedule\n\nScheduled triage completed.';
+  setOutput('severity', 'ok', config.githubOutput);
+  setOutput('summary', 'Scheduled triage completed.', config.githubOutput);
+  setOutput('answer', '', config.githubOutput);
+  setOutput('suggested-commands', '', config.githubOutput);
+  setOutput('remediation-steps', '', config.githubOutput);
+  setOutput('summary-markdown', summaryMd, config.githubOutput);
+
+  if (config.postSummary) {
+    appendSummary(summaryMd, config.githubStepSummary);
+  }
+
+  checkFailOnSeverity(config.failOn, 'ok');
 }
 
 // ── Dispatch ───────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  switch (MODE) {
+  const config = readActionConfig();
+  switch (config.mode) {
     case 'triage':
-      await runTriageMode();
+      await runTriageMode(config);
       break;
     case 'schedule-once':
-      await runScheduleOnceMode();
+      await runScheduleOnceMode(config);
       break;
     case 'prompt':
     default:
-      await runPromptMode();
+      await runPromptMode(config);
       break;
   }
 }
