@@ -15,6 +15,7 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
 import {
+  EVAL_TIMEOUT_MS,
   loadScenario,
   loadScenarios,
   resolveBinPath,
@@ -505,6 +506,31 @@ describe('runScenario', () => {
     expect(capturedArgs).toContain('-p');
     expect(capturedArgs).toContain('check pods');
     expect(capturedArgs).toContain('--json');
+  });
+
+  it('kills the child process and reports a timeout when timeoutMs elapses', async () => {
+    let killCount = 0;
+
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      // Never emit 'close' — simulates a hung process.
+      return {
+        stdout,
+        stderr,
+        kill: () => { killCount++; },
+        on: childEmitter.on.bind(childEmitter),
+        once: childEmitter.once.bind(childEmitter),
+      } as unknown as ReturnType<typeof spawn>;
+    });
+
+    // Pass a short real timeout (50 ms) so the test completes without fake timers,
+    // which avoids deadlocks between the fake clock and real I/O (writeFile/unlink).
+    const result = await runScenario('/bin/heimdall', MINIMAL_SCENARIO, 50);
+    expect(killCount).toBe(1);
+    expect(result.passed).toBe(false);
+    expect(result.failures.some((f) => /timed out/i.test(f))).toBe(true);
   });
 });
 
