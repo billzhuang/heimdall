@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { runDatadogQuery } from '../datadog.ts';
 import { resolveTimeSeconds, resolveTimeISO } from '../time-resolution.ts';
 import type { DatadogConfig } from '../datadog.ts';
+import { mockFetch } from './test-helpers.ts';
 
 const BASE_CONFIG: DatadogConfig = {
   apiKey: 'test-api-key',
@@ -9,17 +10,6 @@ const BASE_CONFIG: DatadogConfig = {
   site: 'datadoghq.com',
   timeoutMs: 5_000,
 };
-
-function mockFetch(body: string, status = 200): ReturnType<typeof vi.fn> {
-  const fetchMock = vi.fn().mockResolvedValue({
-    ok: status >= 200 && status < 300,
-    status,
-    statusText: status === 200 ? 'OK' : 'Bad Request',
-    text: () => Promise.resolve(body),
-  });
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
-}
 
 afterEach(() => {
   vi.useRealTimers();
