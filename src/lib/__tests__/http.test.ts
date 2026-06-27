@@ -44,7 +44,10 @@ describe('withTimeout', () => {
     try {
       const promise = withTimeout(
         5_000,
-        () => new Promise<string>((resolve) => setTimeout(() => resolve('ok'), 1_000)),
+        (signal) => new Promise<string>((resolve) => setTimeout(() => {
+          expect(signal.aborted).toBe(false);
+          resolve('ok');
+        }, 1_000)),
       );
       await vi.advanceTimersByTimeAsync(1_000);
       await expect(promise).resolves.toBe('ok');
