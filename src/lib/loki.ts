@@ -102,15 +102,14 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
     baseUrl.searchParams.set('limit', String(effectiveLimit));
     baseUrl.searchParams.set('direction', params.direction ?? DEFAULT_DIRECTION);
 
-    const response = await fetchWithTimeout(baseUrl.toString(), config.timeoutMs);
-
-    if (!response.ok) {
-      const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
-      return `Loki HTTP ${response.status} ${response.statusText}${detail}`;
-    }
-
-    const text = await response.text();
-    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
+      if (!response.ok) {
+        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+        return `Loki HTTP ${response.status} ${response.statusText}${detail}`;
+      }
+      const text = await response.text();
+      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     return formatQueryError(err, 'Loki', config.timeoutMs, config.regexRedactionRules ?? []);
   }

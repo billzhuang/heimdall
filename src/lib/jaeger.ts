@@ -79,15 +79,14 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
       if (endUs !== null) baseUrl.searchParams.set('end', String(endUs));
     }
 
-    const response = await fetchWithTimeout(baseUrl.toString(), config.timeoutMs);
-
-    if (!response.ok) {
-      const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
-      return `Jaeger HTTP ${response.status} ${response.statusText}${detail}`;
-    }
-
-    const text = await response.text();
-    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
+      if (!response.ok) {
+        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+        return `Jaeger HTTP ${response.status} ${response.statusText}${detail}`;
+      }
+      const text = await response.text();
+      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     return formatQueryError(err, 'Jaeger', config.timeoutMs, config.regexRedactionRules ?? []);
   }

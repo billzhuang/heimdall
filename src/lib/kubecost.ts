@@ -91,15 +91,14 @@ export async function runKubecostQuery(
       baseUrl.searchParams.set('filterNamespaces', effectiveNamespace);
     }
 
-    const response = await fetchWithTimeout(baseUrl.toString(), config.timeoutMs);
-
-    if (!response.ok) {
-      const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
-      return `Kubecost HTTP ${response.status} ${response.statusText}${detail}`;
-    }
-
-    const text = await response.text();
-    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
+      if (!response.ok) {
+        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+        return `Kubecost HTTP ${response.status} ${response.statusText}${detail}`;
+      }
+      const text = await response.text();
+      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     return formatQueryError(err, 'Kubecost', config.timeoutMs, config.regexRedactionRules ?? []);
   }

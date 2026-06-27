@@ -62,16 +62,15 @@ export async function runPrometheusQuery(
     baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + endpoint;
     searchParams.forEach((value, key) => baseUrl.searchParams.set(key, value));
 
-    const response = await fetchWithTimeout(baseUrl.toString(), config.timeoutMs);
-
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const detail = body ? `: ${body.slice(0, 200)}` : '';
-      return `Prometheus HTTP ${response.status} ${response.statusText}${detail}`;
-    }
-
-    const text = await response.text();
-    return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const detail = body ? `: ${body.slice(0, 200)}` : '';
+        return `Prometheus HTTP ${response.status} ${response.statusText}${detail}`;
+      }
+      const text = await response.text();
+      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
+    });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       return `Prometheus query timed out after ${config.timeoutMs}ms.`;

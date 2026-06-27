@@ -3,7 +3,6 @@ import { fetchWithTimeout, readErrorDetail, formatQueryError } from '../http.ts'
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -12,12 +11,12 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('fetchWithTimeout', () => {
-  it('calls fetch with the given URL and an AbortSignal', async () => {
+  it('calls fetch with the given URL and an AbortSignal, returns handler result', async () => {
     const mockResponse = { ok: true, status: 200 };
     const fetchMock = vi.fn().mockResolvedValue(mockResponse);
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await fetchWithTimeout('http://example.com', 5_000);
+    const result = await fetchWithTimeout('http://example.com', 5_000, async (res) => res);
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0]).toBe('http://example.com');
@@ -27,34 +26,71 @@ describe('fetchWithTimeout', () => {
 
   it('aborts and throws AbortError after timeoutMs', async () => {
     vi.useFakeTimers();
-    const abortErr = makeAbortError();
-    const fetchMock = vi.fn().mockImplementation(
-      (_url: unknown, { signal }: { signal: AbortSignal }) =>
-        new Promise<never>((_, reject) => {
-          signal.addEventListener('abort', () => reject(abortErr));
-        }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const abortErr = makeAbortError();
+      const fetchMock = vi.fn().mockImplementation(
+        (_url: unknown, { signal }: { signal: AbortSignal }) =>
+          new Promise<never>((_, reject) => {
+            signal.addEventListener('abort', () => reject(abortErr));
+          }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
 
-    const promise = fetchWithTimeout('http://slow.example.com', 3_000);
-    // Attach the rejection handler BEFORE advancing timers to avoid an
-    // unhandled-rejection warning from the microtask queue racing the timer.
-    const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
-    await vi.advanceTimersByTimeAsync(3_000);
-    await assertion;
+      const promise = fetchWithTimeout('http://slow.example.com', 3_000, async (res) => res);
+      // Attach the rejection handler BEFORE advancing timers to avoid an
+      // unhandled-rejection warning from the microtask queue racing the timer.
+      const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not abort before timeoutMs elapses', async () => {
     vi.useFakeTimers();
-    const mockResponse = { ok: true };
-    const fetchMock = vi.fn().mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(mockResponse), 1_000)),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const mockResponse = { ok: true };
+      const fetchMock = vi.fn().mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(mockResponse), 1_000)),
+      );
+      vi.stubGlobal('fetch', fetchMock);
 
-    const promise = fetchWithTimeout('http://example.com', 5_000);
-    await vi.advanceTimersByTimeAsync(1_000);
-    await expect(promise).resolves.toBe(mockResponse);
+      const promise = fetchWithTimeout('http://example.com', 5_000, async (res) => res);
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(promise).resolves.toBe(mockResponse);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the timer alive while the handler runs', async () => {
+    vi.useFakeTimers();
+    try {
+      const mockResponse = { ok: true };
+      const fetchMock = vi.fn().mockResolvedValue(mockResponse);
+      vi.stubGlobal('fetch', fetchMock);
+
+      let handlerAborted = false;
+      const promise = fetchWithTimeout(
+        'http://example.com',
+        500,
+        (_res) =>
+          new Promise<never>((_, reject) => {
+            // simulate slow body read that times out
+            setTimeout(() => {
+              handlerAborted = true;
+              reject(makeAbortError());
+            }, 1_000);
+          }),
+      );
+      const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+      expect(handlerAborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -80,9 +116,15 @@ describe('readErrorDetail', () => {
     expect(detail).toBe(`: ${'x'.repeat(200)}`);
   });
 
-  it('returns empty string when response.text() rejects', async () => {
-    const response = { text: () => Promise.reject(new Error('fail')) } as unknown as Response;
+  it('returns empty string when response.text() rejects with a non-AbortError', async () => {
+    const response = { text: () => Promise.reject(new Error('socket hang up')) } as unknown as Response;
     expect(await readErrorDetail(response, [])).toBe('');
+  });
+
+  it('re-throws AbortError so the outer catch reports it as a timeout', async () => {
+    const abortErr = makeAbortError();
+    const response = { text: () => Promise.reject(abortErr) } as unknown as Response;
+    await expect(readErrorDetail(response, [])).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('applies redaction rules to the body', async () => {
