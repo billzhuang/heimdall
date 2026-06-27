@@ -681,3 +681,55 @@ describe('startOtelExport / stopOtelExport', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
+
+// ─── exit handler ───────────────────────────────────────────────────────────
+
+describe('exit handler — _emitSync is called when _enabled is true', () => {
+  it('invokes _emitSync when the exit callback fires while enabled', () => {
+    // Capture the callback registered via process.once so we can invoke it
+    // directly without emitting a real process exit event.
+    let exitCb: (() => void) | null = null;
+    const onceSpy = vi.spyOn(process, 'once').mockImplementation((event, cb) => {
+      if (event === 'exit') exitCb = cb as () => void;
+      return process;
+    });
+
+    initTelemetry({ enabled: true });
+    recordCacheHit();
+    onceSpy.mockRestore();
+
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+
+    expect(exitCb).not.toBeNull();
+    exitCb!();
+
+    expect(lines.length).toBeGreaterThan(0);
+    const snap = JSON.parse(lines[0].trimEnd()) as Record<string, number>;
+    expect(snap.cacheHits).toBe(1);
+  });
+
+  it('does not invoke _emitSync when _enabled is false at exit time', () => {
+    let exitCb: (() => void) | null = null;
+    const onceSpy = vi.spyOn(process, 'once').mockImplementation((event, cb) => {
+      if (event === 'exit') exitCb = cb as () => void;
+      return process;
+    });
+
+    initTelemetry({ enabled: true });
+    onceSpy.mockRestore();
+
+    // Disable telemetry after registering the handler (simulates _resetTelemetry).
+    _resetTelemetry();
+
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    expect(exitCb).not.toBeNull();
+    exitCb!();
+
+    expect(stderrSpy).not.toHaveBeenCalled();
+  });
+});

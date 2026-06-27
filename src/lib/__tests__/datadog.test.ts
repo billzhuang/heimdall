@@ -60,6 +60,11 @@ describe('resolveTimeSeconds', () => {
   it('returns null for unknown duration units', () => {
     expect(resolveTimeSeconds('-5y', NOW)).toBeNull();
   });
+
+  it('returns null for a completely unparseable non-date string', () => {
+    // Exercises the final `return null` branch after Date.parse() returns NaN.
+    expect(resolveTimeSeconds('not-a-date', NOW)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -85,6 +90,11 @@ describe('resolveTimeISO', () => {
 
   it('returns null for unknown duration units', () => {
     expect(resolveTimeISO('-5y', NOW)).toBeNull();
+  });
+
+  it('returns null for a completely unparseable non-date string', () => {
+    // Exercises the final `return null` branch after Date.parse() returns NaN.
+    expect(resolveTimeISO('not-a-date', NOW)).toBeNull();
   });
 });
 

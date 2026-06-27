@@ -11,6 +11,7 @@ import {
   runPromptMode,
   runTriageMode,
   runScheduleOnceMode,
+  main,
   type ActionConfig,
 } from '../github-action-runner.ts';
 import {
@@ -730,5 +731,68 @@ describe('runScheduleOnceMode', () => {
     const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
     const cfg = makeConfig({ mode: 'schedule-once', failOn: '' });
     await expect(runScheduleOnceMode(cfg, mockCapture)).resolves.toBeUndefined();
+  });
+});
+
+// ── main (dispatch) ────────────────────────────────────────────────────────
+
+describe('main — dispatch', () => {
+  beforeEach(() => {
+    stubExit();
+  });
+
+  afterEach(() => {
+    for (const key of [
+      '_HEIMDALL_ACTION_MODE',
+      '_HEIMDALL_ACTION_PROMPT',
+      '_HEIMDALL_ACTION_NAMESPACE',
+      '_HEIMDALL_ACTION_ALL_NAMESPACES',
+      '_HEIMDALL_ACTION_FAIL_ON',
+      '_HEIMDALL_ACTION_POST_SUMMARY',
+      'GITHUB_OUTPUT',
+      'GITHUB_STEP_SUMMARY',
+    ]) {
+      delete process.env[key];
+    }
+  });
+
+  it('dispatches to runTriageMode when mode is "triage"', async () => {
+    process.env['_HEIMDALL_ACTION_MODE'] = 'triage';
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: 'Cluster is healthy.', code: 0 });
+    await main(mockCapture);
+    expect(mockCapture).toHaveBeenCalledOnce();
+    const [, args] = mockCapture.mock.calls[0] as [string, string[]];
+    expect(args).toContain('triage');
+  });
+
+  it('dispatches to runScheduleOnceMode when mode is "schedule-once"', async () => {
+    process.env['_HEIMDALL_ACTION_MODE'] = 'schedule-once';
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: '', code: 0 });
+    await main(mockCapture);
+    expect(mockCapture).toHaveBeenCalledOnce();
+    const [, args] = mockCapture.mock.calls[0] as [string, string[]];
+    expect(args).toContain('schedule');
+    expect(args).toContain('--once');
+  });
+
+  it('dispatches to runPromptMode when mode is "prompt"', async () => {
+    process.env['_HEIMDALL_ACTION_MODE'] = 'prompt';
+    process.env['_HEIMDALL_ACTION_PROMPT'] = 'Why is my pod crashing?';
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: JSON.stringify(FINDING), code: 0 });
+    await main(mockCapture);
+    expect(mockCapture).toHaveBeenCalledOnce();
+    const [, args] = mockCapture.mock.calls[0] as [string, string[]];
+    expect(args).toContain('-p');
+    expect(args).toContain('Why is my pod crashing?');
+  });
+
+  it('defaults to runPromptMode for an unrecognised mode', async () => {
+    process.env['_HEIMDALL_ACTION_MODE'] = 'unknown-mode';
+    process.env['_HEIMDALL_ACTION_PROMPT'] = 'test prompt';
+    const mockCapture = vi.fn().mockResolvedValue({ stdout: JSON.stringify(FINDING), code: 0 });
+    await main(mockCapture);
+    expect(mockCapture).toHaveBeenCalledOnce();
+    const [, args] = mockCapture.mock.calls[0] as [string, string[]];
+    expect(args).toContain('-p');
   });
 });
