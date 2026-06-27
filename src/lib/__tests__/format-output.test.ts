@@ -3,6 +3,8 @@ import {
   parseOneShotOutput,
   extractKubectlCommands,
   inferSeverity,
+  parseBulletList,
+  parseEvidenceMap,
   type OneShotFinding,
 } from '../format-output.ts';
 
@@ -556,5 +558,121 @@ describe('structured RCA fields', () => {
     const raw = `Causal Chain:\n- memory leak in api\n`;
     const result = parseOneShotOutput(raw);
     expect(result.causalChain).toEqual(['memory leak in api']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseBulletList
+// ---------------------------------------------------------------------------
+
+describe('parseBulletList', () => {
+  it('strips leading dash bullets', () => {
+    expect(parseBulletList('- step one\n- step two')).toEqual(['step one', 'step two']);
+  });
+
+  it('strips leading asterisk bullets', () => {
+    expect(parseBulletList('* first\n* second')).toEqual(['first', 'second']);
+  });
+
+  it('strips leading numbered list markers (period)', () => {
+    expect(parseBulletList('1. first item\n2. second item')).toEqual(['first item', 'second item']);
+  });
+
+  it('strips leading numbered list markers (parenthesis)', () => {
+    expect(parseBulletList('1) first\n2) second')).toEqual(['first', 'second']);
+  });
+
+  it('strips leading numbered list markers (colon)', () => {
+    expect(parseBulletList('1: first\n2: second')).toEqual(['first', 'second']);
+  });
+
+  it('filters out blank lines', () => {
+    expect(parseBulletList('- a\n\n- b\n\n')).toEqual(['a', 'b']);
+  });
+
+  it('returns empty array for an empty string', () => {
+    expect(parseBulletList('')).toEqual([]);
+  });
+
+  it('returns empty array for whitespace-only input', () => {
+    expect(parseBulletList('   \n  \n')).toEqual([]);
+  });
+
+  it('handles lines with no bullet marker', () => {
+    expect(parseBulletList('plain text\nanother line')).toEqual(['plain text', 'another line']);
+  });
+
+  it('trims surrounding whitespace from each item', () => {
+    expect(parseBulletList('  -  padded item  ')).toEqual(['padded item']);
+  });
+
+  it('handles mixed bullet styles in the same body', () => {
+    const body = '- dash\n* asterisk\n1. numbered\n• bullet';
+    expect(parseBulletList(body)).toEqual(['dash', 'asterisk', 'numbered', 'bullet']);
+  });
+
+  it('discards lines that are empty after stripping the bullet marker', () => {
+    // "- " → stripped → "" → filtered out
+    expect(parseBulletList('- \n- actual item')).toEqual(['actual item']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseEvidenceMap
+// ---------------------------------------------------------------------------
+
+describe('parseEvidenceMap', () => {
+  it('parses a single key: value pair', () => {
+    expect(parseEvidenceMap('- pod status: OOMKilled')).toEqual({ 'pod status': 'OOMKilled' });
+  });
+
+  it('parses multiple key: value pairs', () => {
+    const body = '- OOMKilled pods: kubectl describe pod → exit 137\n- memory limit: 256Mi';
+    expect(parseEvidenceMap(body)).toEqual({
+      'OOMKilled pods': 'kubectl describe pod → exit 137',
+      'memory limit': '256Mi',
+    });
+  });
+
+  it('uses the first ": " as the separator, leaving later colons in the value', () => {
+    // "high memory: limits.memory: 256Mi" → key="high memory", value="limits.memory: 256Mi"
+    expect(parseEvidenceMap('- high memory: limits.memory: 256Mi')).toEqual({
+      'high memory': 'limits.memory: 256Mi',
+    });
+  });
+
+  it('returns null for an empty string', () => {
+    expect(parseEvidenceMap('')).toBeNull();
+  });
+
+  it('returns null when no line has a ": " separator', () => {
+    expect(parseEvidenceMap('no separator here\nanother line without one')).toBeNull();
+  });
+
+  it('skips lines where the separator is at position 0 (empty key)', () => {
+    // ": value" → sep = 0 → sep <= 0 → skipped
+    expect(parseEvidenceMap(': value only')).toBeNull();
+  });
+
+  it('skips lines where the value after the separator is empty', () => {
+    expect(parseEvidenceMap('- key: ')).toBeNull();
+  });
+
+  it('parses numbered-list evidence lines', () => {
+    const body = '1. pod phase: Pending\n2. node status: NotReady';
+    expect(parseEvidenceMap(body)).toEqual({
+      'pod phase': 'Pending',
+      'node status': 'NotReady',
+    });
+  });
+
+  it('skips blank lines silently', () => {
+    const body = '- key one: value one\n\n- key two: value two';
+    expect(parseEvidenceMap(body)).toEqual({ 'key one': 'value one', 'key two': 'value two' });
+  });
+
+  it('returns only valid pairs when some lines lack a separator', () => {
+    const body = '- valid: entry\nno separator\n- another: one';
+    expect(parseEvidenceMap(body)).toEqual({ valid: 'entry', another: 'one' });
   });
 });
