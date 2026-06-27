@@ -44,7 +44,7 @@ export function parseAlertManagerPayload(payload: unknown): ParsedAlert[] {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
   const p = payload as AlertManagerPayload;
   const raw = Array.isArray(p.alerts) ? p.alerts : [];
-  return raw.filter((a): a is AlertManagerAlert => Boolean(a)).map((a) => parseOneAlert(a));
+  return raw.filter((a): a is AlertManagerAlert => typeof a === 'object' && a !== null).map((a) => parseOneAlert(a));
 }
 
 function parseOneAlert(alert: AlertManagerAlert): ParsedAlert {

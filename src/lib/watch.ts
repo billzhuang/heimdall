@@ -58,6 +58,10 @@ export type CooldownState = Map<string, number>;
 
 const MAX_COOLDOWN_ENTRIES = 10_000;
 
+function eventNamespace(event: K8sEventObject, fallback = 'unknown'): string {
+  return event.metadata.namespace ?? event.involvedObject.namespace ?? fallback;
+}
+
 /**
  * Build the de-dup key for an event.
  * Uses `involvedObject.uid` when present so that a pod deleted and recreated
@@ -65,7 +69,7 @@ const MAX_COOLDOWN_ENTRIES = 10_000;
  * Falls back to `kind/name` when UID is absent (older kubectl / mock events).
  */
 export function eventCooldownKey(event: K8sEventObject): string {
-  const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? '';
+  const ns = eventNamespace(event, '');
   const objId = event.involvedObject.uid
     ?? `${event.involvedObject.kind ?? 'Unknown'}/${event.involvedObject.name ?? 'unknown'}`;
   return `${ns}/${objId}/${event.reason}`;
@@ -228,7 +232,7 @@ export function matchesWatchFilter(
   const { namespaces, reasons } = config;
 
   if (namespaces && namespaces.length > 0) {
-    const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? '';
+    const ns = eventNamespace(event, '');
     if (!namespaces.includes(ns)) return false;
   }
 
@@ -244,7 +248,7 @@ export function matchesWatchFilter(
  * when a Warning event is received.
  */
 export function buildDiagnosticPrompt(event: K8sEventObject): string {
-  const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? 'unknown';
+  const ns = eventNamespace(event);
   const objKind = event.involvedObject.kind ?? 'Unknown';
   const objName = event.involvedObject.name ?? 'unknown';
 
@@ -267,7 +271,7 @@ export function formatFinding(
 ): WatchFinding {
   const finding: WatchFinding = {
     ts,
-    namespace: event.metadata.namespace ?? event.involvedObject.namespace ?? 'unknown',
+    namespace: eventNamespace(event),
     reason: event.reason,
     objectKind: event.involvedObject.kind ?? 'Unknown',
     objectName: event.involvedObject.name ?? 'unknown',
