@@ -9,8 +9,8 @@
  * or Tempo (port 16686 via its Jaeger-compatible frontend).
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { parseDurationMs } from './duration.ts';
 import { makeTruncate } from './output-truncation.ts';
+import { resolveTimeUs } from './time-resolution.ts';
 
 export interface JaegerConfig {
   url: string;
@@ -25,36 +25,9 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a smaller limit, narrower t
 
 /**
  * Resolve a time expression to Unix microseconds for the Jaeger /api/traces API.
- *
- * - Relative (starting with '-'): subtract parsed duration from `nowMs`.
- * - Bare integer (≤13 chars): treated as Unix seconds → converted to microseconds.
- * - ISO8601 / RFC3339: parsed by Date and converted to microseconds.
- * - Returns null when the expression cannot be resolved (caller skips the param).
+ * See `resolveTimeUs` in time-resolution.ts for full semantics.
  */
-export function resolveJaegerTimeUs(expr: string, nowMs: number): number | null {
-  if (expr.startsWith('-')) {
-    const durationMs = parseDurationMs(expr.slice(1));
-    if (durationMs !== null) {
-      const ts = nowMs - durationMs;
-      if (!Number.isFinite(ts)) return null;
-      return Math.round(ts * 1_000);
-    }
-    return null;
-  }
-  // Bare integer timestamp (no fractional part, ≤13 digits).
-  // ≤10 digits = Unix seconds (covers epoch through year 2286); multiply by 1_000_000 for µs.
-  // 11–13 digits = Unix milliseconds (standard JS Date.now() range); multiply by 1_000 for µs.
-  if (/^\d{1,13}$/.test(expr)) {
-    const n = Number(expr);
-    return expr.length <= 10 ? n * 1_000_000 : n * 1_000;
-  }
-  // ISO8601 / RFC3339 — e.g. "2024-06-01T12:00:00Z".
-  const ts = Date.parse(expr);
-  if (!Number.isNaN(ts)) {
-    return Math.round(ts * 1_000);
-  }
-  return null;
-}
+export const resolveJaegerTimeUs = resolveTimeUs;
 
 export interface JaegerQueryParams {
   service: string;

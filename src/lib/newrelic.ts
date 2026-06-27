@@ -10,7 +10,7 @@
  * model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { resolveTimeISO } from './datadog.ts';
+import { resolveTimeISO } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
 
 export interface NewRelicConfig {
