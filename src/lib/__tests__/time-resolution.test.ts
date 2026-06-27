@@ -174,6 +174,11 @@ describe('resolveTimeUs', () => {
     const hugeNum = '1' + '0'.repeat(400);
     expect(resolveTimeUs(`-${hugeNum}d`, NOW)).toBeNull();
   });
+
+  it('returns null when microsecond value would exceed Number.MAX_SAFE_INTEGER', () => {
+    // 9007199254741 ms (year ~2255) * 1000 = 9_007_199_254_741_000 > MAX_SAFE_INTEGER (9_007_199_254_740_991)
+    expect(resolveTimeUs('9007199254741', NOW)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -70,7 +70,9 @@ export function resolveTimeISO(expr: string, nowMs: number): string | null {
  */
 export function resolveTimeUs(expr: string, nowMs: number): number | null {
   const ms = resolveTimeMs(expr, nowMs);
-  return ms === null ? null : Math.round(ms * 1_000);
+  if (ms === null) return null;
+  const us = ms * 1_000;
+  return Number.isSafeInteger(us) ? us : null;
 }
 
 /**
