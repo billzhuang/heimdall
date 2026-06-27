@@ -102,4 +102,14 @@ describe('appendJsonlLine', () => {
     await appendJsonlLine({}, path);
     expect(mockAppendFile.mock.calls[0][0]).toBe(path);
   });
+
+  it('throws TypeError for undefined input without calling appendFile', async () => {
+    await expect(appendJsonlLine(undefined as never, '/data.jsonl')).rejects.toThrow(TypeError);
+    expect(mockAppendFile).not.toHaveBeenCalled();
+  });
+
+  it('throws TypeError for function input without calling appendFile', async () => {
+    await expect(appendJsonlLine((() => {}) as never, '/data.jsonl')).rejects.toThrow(TypeError);
+    expect(mockAppendFile).not.toHaveBeenCalled();
+  });
 });

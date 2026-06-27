@@ -2,7 +2,11 @@ import { appendFile, readFile } from 'node:fs/promises';
 
 /** Append a single item as a JSONL line to a file (creates the file if absent). */
 export async function appendJsonlLine<T>(item: T, filePath: string): Promise<void> {
-  await appendFile(filePath, JSON.stringify(item) + '\n', 'utf8');
+  const serialized = JSON.stringify(item);
+  if (serialized === undefined) {
+    throw new TypeError(`appendJsonlLine: item is not JSON-serializable (got ${typeof item})`);
+  }
+  await appendFile(filePath, serialized + '\n', 'utf8');
 }
 
 /** Read all entries from a JSONL file. Returns [] when the file does not exist. */

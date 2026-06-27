@@ -8,8 +8,7 @@
  * Inspired by Karpathy's self-research loop and loop-engineer patterns:
  * run → evaluate → learn → improve → repeat.
  */
-import { appendFile } from 'node:fs/promises';
-import { readJsonlFile } from './jsonl.ts';
+import { appendJsonlLine, readJsonlFile } from './jsonl.ts';
 import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import type { TaskHistoryEntry } from './task-history.ts';
@@ -112,7 +111,7 @@ export function buildLearningEntry(
 
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */
 export async function appendLearningEntry(entry: LearningEntry, logPath: string): Promise<void> {
-  await appendFile(logPath, JSON.stringify(entry) + '\n', 'utf8');
+  await appendJsonlLine(entry, logPath);
 }
 
 /** Read all learning entries from a JSONL log file. Returns [] if the file does not exist. */
