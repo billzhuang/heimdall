@@ -44,7 +44,7 @@ export function parseInstantQueryValue(raw: string): ParsedInstantValue {
     return { error: `Failed to parse Prometheus response: ${raw.slice(0, 120)}` };
   }
 
-  if (parsed.status === 'success' && parsed.data?.result?.length) {
+  if (parsed && typeof parsed === 'object' && parsed.status === 'success' && parsed.data?.result?.length) {
     const rawValue = parsed.data.result[0]?.value?.[1];
     if (rawValue !== undefined) {
       const value = parseFloat(rawValue);

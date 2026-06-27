@@ -321,4 +321,10 @@ describe('parseInstantQueryValue — error paths', () => {
     expect('error' in result).toBe(true);
     if ('error' in result) expect(result.error).toMatch(/Failed to parse/);
   });
+
+  it('returns an error when the response is JSON null without throwing', () => {
+    const result = parseInstantQueryValue('null');
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toBe('No metric data returned for this SLO.');
+  });
 });
