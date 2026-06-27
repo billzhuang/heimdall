@@ -20,6 +20,7 @@ function mockFetch(body: string, status = 200): ReturnType<typeof vi.fn> {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -444,30 +445,37 @@ describe('runNewRelicQuery — timeout', () => {
     expect(result).toContain('ECONNREFUSED');
   });
 
-  it('fires the abort timer and returns timeout when request hangs', async () => {
+});
+
+// ---------------------------------------------------------------------------
+// Abort timeout — covers the `() => controller.abort()` setTimeout callback
+// ---------------------------------------------------------------------------
+
+describe('runNewRelicQuery — abort timeout', () => {
+  it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
     vi.useFakeTimers();
-    try {
-      vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () => {
-            const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-            reject(err);
-          });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+          );
         }),
-      ));
+      ),
+    );
 
-      const queryPromise = runNewRelicQuery(
-        { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
-        { ...BASE_CONFIG, timeoutMs: 5_000 },
-      );
+    const queryPromise = runNewRelicQuery(
+      { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
+      { ...BASE_CONFIG, timeoutMs: 3_000 },
+    );
 
-      await vi.runAllTimersAsync();
-      const result = await queryPromise;
-      expect(result).toMatch(/timed out/);
-      expect(result).toContain('5000ms');
-    } finally {
-      vi.useRealTimers();
-    }
+    await vi.advanceTimersByTimeAsync(3_001);
+    const result = await queryPromise;
+
+    expect(result).toMatch(/timed out/);
+    expect(result).toContain('3000ms');
   });
 });
 
