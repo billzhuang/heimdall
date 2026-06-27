@@ -83,3 +83,29 @@ describe('tokenizeShellArgs', () => {
     expect(tokenizeShellArgs("'foo''bar'", 'kubectl')).toEqual(['foobar']);
   });
 });
+
+describe('tokenizeShellArgs — omitted binaryName', () => {
+  it('keeps all tokens when binaryName is omitted', () => {
+    expect(tokenizeShellArgs('cdk ls')).toEqual(['cdk', 'ls']);
+  });
+
+  it('keeps a leading cdk token (validator needs it to detect isCdk)', () => {
+    expect(tokenizeShellArgs('cdk diff MyStack')).toEqual(['cdk', 'diff', 'MyStack']);
+  });
+
+  it('returns empty array for empty input when binaryName is omitted', () => {
+    expect(tokenizeShellArgs('')).toEqual([]);
+    expect(tokenizeShellArgs('   ')).toEqual([]);
+  });
+
+  it('handles quoted arguments when binaryName is omitted', () => {
+    expect(tokenizeShellArgs("cdk --app 'node app.js' diff")).toEqual([
+      'cdk', '--app', 'node app.js', 'diff',
+    ]);
+  });
+
+  it('does not strip the first token even when it matches a known binary name', () => {
+    // Without binaryName, 'kubectl' is kept — no implicit stripping.
+    expect(tokenizeShellArgs('kubectl get pods')).toEqual(['kubectl', 'get', 'pods']);
+  });
+});
