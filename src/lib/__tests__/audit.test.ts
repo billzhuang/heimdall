@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import * as fsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeAudit, type AuditEntry } from '../audit.ts';
+
+// Wrap appendFile and mkdir so individual tests can inject one-shot failures
+// without affecting unrelated tests (which use the real implementation by default).
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...mod, appendFile: vi.fn(mod.appendFile), mkdir: vi.fn(mod.mkdir) };
+});
 
 const SAMPLE_ENTRY: AuditEntry = {
   ts: '2026-06-20T00:00:00.000Z',
@@ -160,6 +168,28 @@ describe('writeAudit — non-ENOENT file error falls back to stderr', () => {
     const filePath = join(blockingFile, 'audit.jsonl');
 
     await expect(writeAudit(SAMPLE_ENTRY, { enabled: true, file: filePath })).resolves.toBeUndefined();
+    expect(lines.length).toBeGreaterThan(0);
+    const entry = JSON.parse(lines[0].trimEnd());
+    expect(entry.cmd).toBe('kubectl get pods -n default');
+  });
+});
+
+describe('writeAudit — mkdir succeeds but second appendFile fails: falls back to stderr', () => {
+  it('writes to stderr when the second appendFile throws after mkdir succeeds', async () => {
+    const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    vi.mocked(fsPromises.appendFile)
+      .mockRejectedValueOnce(enoent)
+      .mockRejectedValueOnce(new Error('EPERM'));
+    vi.mocked(fsPromises.mkdir).mockResolvedValueOnce(undefined as never);
+
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+
+    await writeAudit(SAMPLE_ENTRY, { enabled: true, file: '/fake/path/audit.jsonl' });
+
     expect(lines.length).toBeGreaterThan(0);
     const entry = JSON.parse(lines[0].trimEnd());
     expect(entry.cmd).toBe('kubectl get pods -n default');
