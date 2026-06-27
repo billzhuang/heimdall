@@ -9,8 +9,7 @@
  *
  * All functions that touch the filesystem are async; all diff / parse logic is pure.
  */
-import { readFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { appendJsonlLine } from './jsonl.ts';
 
 export interface WorkloadRef {
@@ -56,7 +55,6 @@ export function buildEmptyCheckpoint(timestamp: string): ClusterCheckpoint {
 
 /** Append a checkpoint snapshot as a JSONL line (creates the file and parent dirs if absent). */
 export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: string): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true });
   await appendJsonlLine(checkpoint, filePath);
 }
 

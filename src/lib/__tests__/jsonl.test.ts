@@ -6,6 +6,7 @@ vi.mock('node:fs/promises');
 
 const mockReadFile = vi.mocked(fs.readFile);
 const mockAppendFile = vi.mocked(fs.appendFile);
+const mockMkdir = vi.mocked(fs.mkdir);
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -88,12 +89,24 @@ describe('appendJsonlLine', () => {
     expect(mockAppendFile).toHaveBeenCalledWith('/data.jsonl', '42\n', 'utf8');
   });
 
-  it('propagates errors thrown by appendFile', async () => {
+  it('propagates non-ENOENT errors thrown by appendFile', async () => {
     const err = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
     mockAppendFile.mockRejectedValueOnce(err);
     await expect(appendJsonlLine({ id: 1 }, '/protected.jsonl')).rejects.toMatchObject({
       code: 'EACCES',
     });
+  });
+
+  it('creates the directory and retries if appendFile throws ENOENT', async () => {
+    const enoentErr = Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
+    mockAppendFile.mockRejectedValueOnce(enoentErr);
+    mockMkdir.mockResolvedValueOnce(undefined as never);
+    mockAppendFile.mockResolvedValueOnce(undefined as never);
+
+    await appendJsonlLine({ id: 1 }, '/nested/dir/data.jsonl');
+
+    expect(mockMkdir).toHaveBeenCalledWith('/nested/dir', { recursive: true });
+    expect(mockAppendFile).toHaveBeenCalledTimes(2);
   });
 
   it('uses the exact filePath provided', async () => {

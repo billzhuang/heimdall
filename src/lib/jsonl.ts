@@ -1,12 +1,22 @@
-import { appendFile, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
-/** Append a single item as a JSONL line to a file (creates the file if absent). */
+/** Append a single item as a JSONL line to a file (creates the file and parent dirs if absent). */
 export async function appendJsonlLine<T>(item: T, filePath: string): Promise<void> {
   const serialized = JSON.stringify(item);
   if (serialized === undefined) {
     throw new TypeError(`appendJsonlLine: item is not JSON-serializable (got ${typeof item})`);
   }
-  await appendFile(filePath, serialized + '\n', 'utf8');
+  try {
+    await appendFile(filePath, serialized + '\n', 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      await mkdir(dirname(filePath), { recursive: true });
+      await appendFile(filePath, serialized + '\n', 'utf8');
+    } else {
+      throw err;
+    }
+  }
 }
 
 /** Read all entries from a JSONL file. Returns [] when the file does not exist. */
