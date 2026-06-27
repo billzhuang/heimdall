@@ -724,3 +724,73 @@ describe('runDatadogQuery — abort timeout', () => {
     expect(result).toContain('3000ms');
   });
 });
+
+// ---------------------------------------------------------------------------
+// resolveTimeISO — Unix millisecond epoch (11-13 digits)
+// ---------------------------------------------------------------------------
+
+describe('resolveTimeISO — Unix millisecond epoch', () => {
+  const NOW = new Date('2024-06-01T12:00:00Z').getTime();
+
+  it('converts 13-digit Unix millisecond epoch to ISO8601', () => {
+    // 1717243200000 ms = 2024-06-01T12:00:00.000Z
+    expect(resolveTimeISO('1717243200000', NOW)).toBe('2024-06-01T12:00:00.000Z');
+  });
+
+  it('converts 11-digit Unix millisecond epoch to ISO8601', () => {
+    // 17172432000 ms = approximately 1970-07-18 (large ms value)
+    const result = resolveTimeISO('17172432000', NOW);
+    expect(result).not.toBeNull();
+    expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// effectiveLimit — via monitors query (covers the numeric-limit branches)
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — monitors numeric limit', () => {
+  it('uses the provided limit when a finite integer is given', async () => {
+    const fetchMock = mockFetch('[]');
+
+    await runDatadogQuery({ queryType: 'monitors', limit: 25 }, BASE_CONFIG);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(decodeURIComponent(url)).toContain('page_size=25');
+  });
+
+  it('falls back to the default limit when limit is Infinity (non-finite number)', async () => {
+    const fetchMock = mockFetch('[]');
+
+    await runDatadogQuery({ queryType: 'monitors', limit: Infinity }, BASE_CONFIG);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(decodeURIComponent(url)).toContain('page_size=100');
+  });
+
+  it('falls back to the default limit when limit is NaN', async () => {
+    const fetchMock = mockFetch('[]');
+
+    await runDatadogQuery({ queryType: 'monitors', limit: NaN }, BASE_CONFIG);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(decodeURIComponent(url)).toContain('page_size=100');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// catch block — non-Error thrown value (String(err) path)
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — non-Error thrown value', () => {
+  it('handles a thrown string via String(err) and returns a descriptive message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('plain string error'));
+
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/Datadog query failed/i);
+    expect(result).toContain('plain string error');
+  });
+});
