@@ -12,25 +12,41 @@ export const REDACTED_FORMAT_MESSAGE =
   'Secret values cannot be safely extracted in this output format. ' +
   'Use -o json or -o yaml to inspect Secrets — values will be redacted automatically.';
 
-function detectFormat(argv: string[]): 'json' | 'yaml' | 'other' {
+/**
+ * Detect the kubectl output format from the argv token list.
+ * Recognises both attached forms (`-ojson`, `-o=json`, `--output=json`) and
+ * separated forms (`-o json`, `--output yaml`). Returns 'other' when an -o flag
+ * is present but specifies neither json nor yaml, or 'other' when no -o flag exists.
+ */
+export function detectFormat(argv: string[]): 'json' | 'yaml' | 'other' {
+  let result: 'json' | 'yaml' | 'other' | null = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '-ojson' || a === '-o=json' || a === '--output=json') return 'json';
-    if (a === '-oyaml' || a === '-o=yaml' || a === '--output=yaml') return 'yaml';
-    if ((a === '-o' || a === '--output') && i + 1 < argv.length) {
-      const val = argv[i + 1];
-      if (val === 'json') return 'json';
-      if (val === 'yaml') return 'yaml';
-      return 'other';
+    if (a === '-ojson') {
+      result = 'json';
+    } else if (a === '-oyaml') {
+      result = 'yaml';
+    } else if (a.startsWith('-o=') || a.startsWith('--output=')) {
+      const val = a.slice(a.indexOf('=') + 1);
+      result = val === 'json' ? 'json' : val === 'yaml' ? 'yaml' : 'other';
+    } else if ((a === '-o' || a === '--output') && i + 1 < argv.length) {
+      const val = argv[++i];
+      result = val === 'json' ? 'json' : val === 'yaml' ? 'yaml' : 'other';
     }
   }
-  return 'other';
+  return result ?? 'other';
 }
 
 // Reuse the authoritative set from kubectl-safety.ts so the two parsers stay in sync.
 const FLAGS_CONSUMING_NEXT = OPTIONS_WITH_VALUE;
 
-function isSecretResource(token: string): boolean {
+/**
+ * Return true when a single resource-type token refers to a Kubernetes Secret.
+ * Handles singular/plural forms and slash-prefixed name forms (e.g. `secret/my-creds`).
+ * Also handles comma-separated resource lists where secret appears alongside other kinds
+ * (e.g. `secret,configmap`).
+ */
+export function isSecretResource(token: string): boolean {
   const lower = token.toLowerCase();
   return lower.split(',').some(
     (part) =>
@@ -73,8 +89,12 @@ export function isGetSecretCommand(argv: string[]): boolean {
   return false;
 }
 
-/** True when the parsed object is or contains a Kubernetes Secret. */
-function containsSecret(obj: unknown): boolean {
+/**
+ * Return true when the parsed JSON value is a Kubernetes Secret or a List/SecretList
+ * containing at least one Secret. Returns false for arrays, primitives, and all other
+ * resource types.
+ */
+export function containsSecret(obj: unknown): boolean {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
   const o = obj as Record<string, unknown>;
   if (o['kind'] === 'Secret') return true;
@@ -84,7 +104,14 @@ function containsSecret(obj: unknown): boolean {
   return false;
 }
 
-function redactDataFields(
+/**
+ * Replace every field value with a `<redacted: N bytes>` placeholder.
+ * When `isBase64` is true, the byte count is estimated from the base64-encoded
+ * string length (floor((len - padding) * 3/4)). Otherwise UTF-8 byte length is
+ * used directly. `null` and `undefined` values are treated as empty strings
+ * (0 bytes); other non-string values are coerced via `String()` before sizing.
+ */
+export function redactDataFields(
   fields: Record<string, unknown>,
   isBase64: boolean,
 ): Record<string, string> {
@@ -99,6 +126,7 @@ function redactDataFields(
   return result;
 }
 
+/** Redact `.data` and `.stringData` fields of a single Secret object. */
 function redactSecret(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...obj };
   if (result['data'] && typeof result['data'] === 'object' && !Array.isArray(result['data'])) {
@@ -110,7 +138,13 @@ function redactSecret(obj: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
-function redactObject(obj: unknown): unknown {
+/**
+ * Recursively redact a parsed kubectl object. Returns the input unchanged for
+ * anything that is not a Secret, List, or SecretList. For Secrets, `.data` and
+ * `.stringData` values are replaced with byte-count placeholders. For List /
+ * SecretList kinds, each item is redacted independently.
+ */
+export function redactObject(obj: unknown): unknown {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
   const o = obj as Record<string, unknown>;
   if (o['kind'] === 'Secret') return redactSecret(o);

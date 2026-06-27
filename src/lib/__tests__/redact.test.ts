@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { redactSecretValues, isGetSecretCommand, REDACTED_FORMAT_MESSAGE } from '../redact.ts';
+import {
+  redactSecretValues,
+  isGetSecretCommand,
+  REDACTED_FORMAT_MESSAGE,
+  detectFormat,
+  isSecretResource,
+  containsSecret,
+  redactDataFields,
+  redactObject,
+} from '../redact.ts';
 
 // ── isGetSecretCommand ───────────────────────────────────────────────────────
 
@@ -318,6 +327,296 @@ describe('redactSecretValues — other formats', () => {
 
   it('returns unchanged output for empty string', () => {
     expect(redactSecretValues('', argv('json'))).toBe('');
+  });
+});
+
+// ── detectFormat ─────────────────────────────────────────────────────────────
+
+describe('detectFormat', () => {
+  it('returns "json" for -o json (separated)', () => {
+    expect(detectFormat(['-o', 'json'])).toBe('json');
+  });
+
+  it('returns "yaml" for -o yaml (separated)', () => {
+    expect(detectFormat(['-o', 'yaml'])).toBe('yaml');
+  });
+
+  it('returns "json" for -ojson (attached)', () => {
+    expect(detectFormat(['-ojson'])).toBe('json');
+  });
+
+  it('returns "yaml" for -oyaml (attached)', () => {
+    expect(detectFormat(['-oyaml'])).toBe('yaml');
+  });
+
+  it('returns "json" for --output=json', () => {
+    expect(detectFormat(['--output=json'])).toBe('json');
+  });
+
+  it('returns "yaml" for --output=yaml', () => {
+    expect(detectFormat(['--output=yaml'])).toBe('yaml');
+  });
+
+  it('returns "json" for --output json (separated)', () => {
+    expect(detectFormat(['--output', 'json'])).toBe('json');
+  });
+
+  it('returns "yaml" for --output yaml (separated)', () => {
+    expect(detectFormat(['--output', 'yaml'])).toBe('yaml');
+  });
+
+  it('returns "other" for unknown format value', () => {
+    expect(detectFormat(['-o', 'jsonpath={.data}'])).toBe('other');
+    expect(detectFormat(['-o', 'go-template={{.data}}'])).toBe('other');
+    expect(detectFormat(['-o', 'wide'])).toBe('other');
+    expect(detectFormat(['--output', 'custom-columns=...'])).toBe('other');
+  });
+
+  it('returns "other" when no -o flag is present', () => {
+    expect(detectFormat([])).toBe('other');
+    expect(detectFormat(['get', 'pods'])).toBe('other');
+  });
+
+  it('picks up the -o flag anywhere in the argv list', () => {
+    expect(detectFormat(['get', 'secret', 'foo', '-o', 'json'])).toBe('json');
+    expect(detectFormat(['get', 'secret', 'foo', '-ojson'])).toBe('json');
+  });
+
+  it('respects the last -o flag when multiple are specified (last-one-wins)', () => {
+    // detectFormat scans the full argv and returns the last matched format,
+    // matching kubectl's own flag semantics.
+    expect(detectFormat(['-o', 'json', '-o', 'yaml'])).toBe('yaml');
+    expect(detectFormat(['-o', 'yaml', '-o', 'json'])).toBe('json');
+    expect(detectFormat(['-o', 'json', '-o', 'wide'])).toBe('other');
+    expect(detectFormat(['-o', 'wide', '-o', 'json'])).toBe('json');
+    expect(detectFormat(['-o', 'json', '-o=jsonpath={.data}'])).toBe('other');
+    expect(detectFormat(['-ojson', '-oyaml'])).toBe('yaml');
+    expect(detectFormat(['-oyaml', '-ojson'])).toBe('json');
+  });
+
+  it('handles -o=json (equals form without --)', () => {
+    // -o=json is handled the same as -ojson by the parser
+    expect(detectFormat(['-o=json'])).toBe('json');
+    expect(detectFormat(['-o=yaml'])).toBe('yaml');
+  });
+});
+
+// ── isSecretResource ──────────────────────────────────────────────────────────
+
+describe('isSecretResource', () => {
+  it('matches "secret" (singular, lowercase)', () => {
+    expect(isSecretResource('secret')).toBe(true);
+  });
+
+  it('matches "secrets" (plural)', () => {
+    expect(isSecretResource('secrets')).toBe(true);
+  });
+
+  it('matches "Secret" (capitalised)', () => {
+    expect(isSecretResource('Secret')).toBe(true);
+  });
+
+  it('matches "SECRETS" (all-caps)', () => {
+    expect(isSecretResource('SECRETS')).toBe(true);
+  });
+
+  it('matches "secret/<name>" form', () => {
+    expect(isSecretResource('secret/db-creds')).toBe(true);
+    expect(isSecretResource('secrets/my-token')).toBe(true);
+  });
+
+  it('does not match other resource types', () => {
+    expect(isSecretResource('pod')).toBe(false);
+    expect(isSecretResource('configmap')).toBe(false);
+    expect(isSecretResource('serviceaccount')).toBe(false);
+    expect(isSecretResource('')).toBe(false);
+  });
+
+  it('matches when secret appears in a comma-separated list', () => {
+    expect(isSecretResource('secret,configmap')).toBe(true);
+    expect(isSecretResource('configmap,secret')).toBe(true);
+    expect(isSecretResource('pod,secret,service')).toBe(true);
+  });
+
+  it('does not match when no part of a comma-separated list is a secret', () => {
+    expect(isSecretResource('pod,configmap,service')).toBe(false);
+  });
+
+  it('does not match a token that merely contains "secret" as a substring', () => {
+    // "supersecret" should not match — it's not exactly "secret"
+    expect(isSecretResource('supersecret')).toBe(false);
+  });
+});
+
+// ── containsSecret ────────────────────────────────────────────────────────────
+
+describe('containsSecret', () => {
+  it('returns true for a plain Secret object', () => {
+    expect(containsSecret({ kind: 'Secret', apiVersion: 'v1', data: {} })).toBe(true);
+  });
+
+  it('returns false for a Pod', () => {
+    expect(containsSecret({ kind: 'Pod', apiVersion: 'v1' })).toBe(false);
+  });
+
+  it('returns false for null and primitives', () => {
+    expect(containsSecret(null)).toBe(false);
+    expect(containsSecret(undefined)).toBe(false);
+    expect(containsSecret(42)).toBe(false);
+    expect(containsSecret('Secret')).toBe(false);
+  });
+
+  it('returns false for an array', () => {
+    expect(containsSecret([{ kind: 'Secret' }])).toBe(false);
+  });
+
+  it('returns true for a List that contains a Secret', () => {
+    expect(
+      containsSecret({
+        kind: 'List',
+        items: [
+          { kind: 'Pod' },
+          { kind: 'Secret', data: {} },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for a List with no Secrets', () => {
+    expect(
+      containsSecret({
+        kind: 'List',
+        items: [{ kind: 'Pod' }, { kind: 'ConfigMap' }],
+      }),
+    ).toBe(false);
+  });
+
+  it('returns true for a SecretList', () => {
+    expect(
+      containsSecret({
+        kind: 'SecretList',
+        items: [{ kind: 'Secret', data: {} }],
+      }),
+    ).toBe(true);
+  });
+
+  it('returns false for a List with a non-array items field', () => {
+    expect(containsSecret({ kind: 'List', items: 'oops' })).toBe(false);
+  });
+
+  it('returns false for an empty object', () => {
+    expect(containsSecret({})).toBe(false);
+  });
+});
+
+// ── redactDataFields ──────────────────────────────────────────────────────────
+
+describe('redactDataFields', () => {
+  it('replaces each value with a <redacted: N bytes> placeholder', () => {
+    const result = redactDataFields({ key: 'value' }, false);
+    expect(result['key']).toMatch(/^<redacted: \d+ bytes>$/);
+  });
+
+  it('counts UTF-8 bytes for stringData (isBase64=false)', () => {
+    // 'hello' = 5 ASCII bytes
+    expect(redactDataFields({ key: 'hello' }, false)['key']).toBe('<redacted: 5 bytes>');
+    // 3-byte UTF-8 char × 1 = 3 bytes
+    expect(redactDataFields({ key: '€' }, false)['key']).toBe('<redacted: 3 bytes>');
+  });
+
+  it('estimates base64-decoded byte length for .data (isBase64=true)', () => {
+    // "dGVzdA==" decodes to "test" = 4 bytes; floor((6 * 3) / 4) = 4
+    expect(redactDataFields({ key: 'dGVzdA==' }, true)['key']).toBe('<redacted: 4 bytes>');
+  });
+
+  it('treats null and undefined as empty string (0 bytes); coerces other non-strings via String()', () => {
+    const result = redactDataFields({ n: 42, nul: null, undef: undefined } as Record<string, unknown>, false);
+    // null and undefined → String(null ?? '') = '' → 0 bytes
+    expect(result['nul']).toBe('<redacted: 0 bytes>');
+    expect(result['undef']).toBe('<redacted: 0 bytes>');
+    // 42 → String(42) = '42' → 2 bytes
+    expect(result['n']).toBe('<redacted: 2 bytes>');
+  });
+
+  it('preserves all keys', () => {
+    const fields = { a: 'aaa', b: 'bbb', c: 'ccc' };
+    const result = redactDataFields(fields, false);
+    expect(Object.keys(result)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns an empty object for empty input', () => {
+    expect(redactDataFields({}, false)).toEqual({});
+  });
+
+  it('base64 with no padding: floor((4 * 3) / 4) = 3 bytes', () => {
+    // "dGVz" decodes to "tes" = 3 bytes; no padding chars to strip
+    expect(redactDataFields({ key: 'dGVz' }, true)['key']).toBe('<redacted: 3 bytes>');
+  });
+});
+
+// ── redactObject ──────────────────────────────────────────────────────────────
+
+describe('redactObject', () => {
+  it('redacts .data on a Secret', () => {
+    const secret = { kind: 'Secret', data: { password: 'dGVzdA==' } };
+    const result = redactObject(secret) as typeof secret;
+    expect((result.data as Record<string, string>)['password']).toMatch(/^<redacted:/);
+  });
+
+  it('redacts .stringData on a Secret', () => {
+    const secret = { kind: 'Secret', stringData: { token: 'my-token' } };
+    const result = redactObject(secret) as typeof secret;
+    expect((result.stringData as Record<string, string>)['token']).toMatch(/^<redacted:/);
+  });
+
+  it('passes through non-Secret objects unchanged', () => {
+    const pod = { kind: 'Pod', spec: { containers: [] } };
+    expect(redactObject(pod)).toBe(pod);
+  });
+
+  it('passes through null, undefined, and primitives unchanged', () => {
+    expect(redactObject(null)).toBeNull();
+    expect(redactObject(undefined)).toBeUndefined();
+    expect(redactObject(42)).toBe(42);
+    expect(redactObject('string')).toBe('string');
+  });
+
+  it('passes through arrays unchanged', () => {
+    const arr = [{ kind: 'Secret', data: { key: 'val' } }];
+    expect(redactObject(arr)).toBe(arr);
+  });
+
+  it('recursively redacts Secrets inside a List', () => {
+    const list = {
+      kind: 'List',
+      items: [
+        { kind: 'Secret', data: { key: 'dmFsdWU=' } },
+        { kind: 'Pod', spec: {} },
+      ],
+    };
+    const result = redactObject(list) as { kind: string; items: Array<Record<string, unknown>> };
+    const secretItem = result.items[0] as { data: Record<string, string> };
+    expect(secretItem.data['key']).toMatch(/^<redacted:/);
+    // Pod passes through unchanged
+    expect((result.items[1] as { kind: string }).kind).toBe('Pod');
+  });
+
+  it('recursively redacts Secrets inside a SecretList', () => {
+    const list = {
+      kind: 'SecretList',
+      items: [
+        { kind: 'Secret', data: { token: 'c2VjcmV0' } },
+      ],
+    };
+    const result = redactObject(list) as { items: Array<{ data: Record<string, string> }> };
+    expect(result.items[0].data['token']).toMatch(/^<redacted:/);
+  });
+
+  it('does not mutate the original object', () => {
+    const secret = { kind: 'Secret', data: { key: 'val' } };
+    const original = JSON.stringify(secret);
+    redactObject(secret);
+    expect(JSON.stringify(secret)).toBe(original);
   });
 });
 
