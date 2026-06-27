@@ -10,6 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
+import { tokenizeShellArgs } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
@@ -36,16 +37,12 @@ export interface RunCdkOptions {
 }
 
 /**
- * Tokenize CDK CLI args. Delegates to the shared `tokenizeCdkCommand` from
- * cdk-safety.ts (same tokenizer used at validation time) then strips the
- * leading `cdk` token if present, so validation and execution can never diverge.
+ * Tokenize CDK CLI args, stripping the leading `cdk` binary name if present.
+ * Uses the same tokenizer as `tokenizeCdkCommand` so validation and execution
+ * can never diverge.
  */
 export function tokenizeCdkArgs(input: string): string[] {
-  const tokens = tokenizeCdkCommand(input);
-  if (tokens.length > 0 && tokens[0].toLowerCase() === 'cdk') {
-    tokens.shift();
-  }
-  return tokens;
+  return tokenizeShellArgs(input, 'cdk');
 }
 
 /**

@@ -5,7 +5,7 @@
  * If the first token matches `binaryName` (case-insensitive) it is stripped,
  * so callers can pass either `"kubectl get pods"` or `"get pods"`.
  */
-export function tokenizeShellArgs(input: string, binaryName: string): string[] {
+export function tokenizeShellArgs(input: string, binaryName = ''): string[] {
   const tokens: string[] = [];
   let current = '';
   let inSingle = false;
@@ -50,7 +50,7 @@ export function tokenizeShellArgs(input: string, binaryName: string): string[] {
   }
   if (hasToken) tokens.push(current);
 
-  if (tokens.length > 0 && tokens[0].toLowerCase() === binaryName.toLowerCase()) {
+  if (binaryName && tokens.length > 0 && tokens[0].toLowerCase() === binaryName.toLowerCase()) {
     tokens.shift();
   }
   return tokens;

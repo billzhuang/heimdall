@@ -61,4 +61,12 @@ describe('tokenizeShellArgs', () => {
       'describe-instances',
     ]);
   });
+
+  it('does not strip any leading token when binaryName is omitted', () => {
+    expect(tokenizeShellArgs('cdk diff MyStack')).toEqual(['cdk', 'diff', 'MyStack']);
+  });
+
+  it('does not strip any leading token when binaryName is empty string', () => {
+    expect(tokenizeShellArgs('kubectl get pods', '')).toEqual(['kubectl', 'get', 'pods']);
+  });
 });
