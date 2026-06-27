@@ -197,6 +197,45 @@ describe('EventSink — webhook sink', () => {
 });
 
 // ---------------------------------------------------------------------------
+// EventSink — webhook timeout (abort path)
+// ---------------------------------------------------------------------------
+
+describe('EventSink — webhook abort timeout', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('aborts the hanging fetch after 10 seconds and logs webhook error to stderr', async () => {
+    vi.useFakeTimers();
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    // fetch hangs forever — resolves only when the AbortController fires
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+          );
+        }),
+      ),
+    );
+
+    const sink = new EventSink({ webhookUrl: 'https://example.com/hook' });
+    const writePromise = sink.write(makeFinding());
+
+    // Fire the 10-second timeout
+    await vi.advanceTimersByTimeAsync(11_000);
+    await writePromise;
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('webhook error'));
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('AbortError'));
+  });
+});
+
+// ---------------------------------------------------------------------------
 // EventSink — s3Bucket sink (reserved)
 // ---------------------------------------------------------------------------
 
