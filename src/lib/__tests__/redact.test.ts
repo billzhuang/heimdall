@@ -3,6 +3,7 @@ import fc from 'fast-check';
 import {
   redactSecretValues,
   isGetSecretCommand,
+  estimateBase64Bytes,
   REDACTED_FORMAT_MESSAGE,
   detectFormat,
   isSecretResource,
@@ -78,6 +79,49 @@ describe('isGetSecretCommand', () => {
 
   it('returns false for comma-separated types with no secret', () => {
     expect(isGetSecretCommand(['get', 'pod,configmap'])).toBe(false);
+  });
+});
+
+// ── estimateBase64Bytes ──────────────────────────────────────────────────────
+
+describe('estimateBase64Bytes', () => {
+  it('returns 0 for an empty string', () => {
+    expect(estimateBase64Bytes('')).toBe(0);
+  });
+
+  it('returns the correct byte count for "dGVzdA==" (encodes "test", 4 bytes)', () => {
+    expect(estimateBase64Bytes('dGVzdA==')).toBe(4);
+  });
+
+  it('returns the correct byte count for "aGVsbG8=" (encodes "hello", 5 bytes)', () => {
+    expect(estimateBase64Bytes('aGVsbG8=')).toBe(5);
+  });
+
+  it('returns the correct byte count for unpadded base64', () => {
+    // "abc" base64-encodes to "YWJj" (no padding, 3 bytes)
+    expect(estimateBase64Bytes('YWJj')).toBe(3);
+  });
+
+  it('property: result is always non-negative', () => {
+    fc.assert(
+      fc.property(
+        fc.string(),
+        (s) => estimateBase64Bytes(s) >= 0,
+      ),
+    );
+  });
+
+  it('property: stripping padding never increases the estimate', () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 0, maxLength: 64 }),
+        (s) => {
+          const withPad = s + '==';
+          // estimate with padding stripped should equal estimate without
+          expect(estimateBase64Bytes(withPad)).toBe(estimateBase64Bytes(s));
+        },
+      ),
+    );
   });
 });
 
@@ -297,6 +341,19 @@ describe('redactSecretValues — other formats', () => {
     const result = redactSecretValues(output, ['get', 'secret', 'db-creds', '-ojson']);
     const parsed = JSON.parse(result) as Record<string, unknown>;
     expect((parsed['data'] as Record<string, string>)['password']).toMatch(/^<redacted:/);
+  });
+
+  it('redacts when format is --output json (long flag, space-separated)', () => {
+    const output = secretJson({ password: 'dGVzdA==' });
+    const result = redactSecretValues(output, ['get', 'secret', 'db-creds', '--output', 'json']);
+    const parsed = JSON.parse(result) as Record<string, unknown>;
+    expect((parsed['data'] as Record<string, string>)['password']).toMatch(/^<redacted:/);
+  });
+
+  it('redacts when format is --output yaml (long flag, space-separated)', () => {
+    const yamlSecret = `apiVersion: v1\nkind: Secret\nmetadata:\n  name: x\ndata:\n  key: c2VjcmV0\n`;
+    const result = redactSecretValues(yamlSecret, ['get', 'secret', 'x', '--output', 'yaml']);
+    expect(result).toMatch(/<redacted: \d+ bytes>/);
   });
 
   it('redacts when format is -oyaml (attached, no space)', () => {
