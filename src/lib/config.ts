@@ -39,47 +39,29 @@ const ToolsSchema = v.nullish(
   { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false, cdkQuery: false },
 );
 
-// Prometheus HTTP API config — optional, disabled by default.
-const PrometheusSchema = v.nullish(
-  v.object({
-    // Base URL for the Prometheus HTTP API. Also readable from PROMETHEUS_URL env var.
+function makeUrlTimeoutSchema(defaultTimeoutMs = 10_000) {
+  return v.nullish(v.object({
     url: v.nullish(v.string()),
-    // Request timeout in milliseconds (default 10 000).
-    timeoutMs: v.nullish(v.number(), 10_000),
-  }),
-);
+    timeoutMs: v.nullish(v.number(), defaultTimeoutMs),
+  }));
+}
+
+// Prometheus HTTP API config — optional, disabled by default.
+// Base URL also readable from PROMETHEUS_URL env var.
+const PrometheusSchema = makeUrlTimeoutSchema();
 
 // Kubecost HTTP API config — optional, disabled by default.
-const KubecostSchema = v.nullish(
-  v.object({
-    // Base URL for the Kubecost HTTP API. Also readable from KUBECOST_URL env var.
-    url: v.nullish(v.string()),
-    // Request timeout in milliseconds (default 10 000).
-    timeoutMs: v.nullish(v.number(), 10_000),
-  }),
-);
+// Base URL also readable from KUBECOST_URL env var.
+const KubecostSchema = makeUrlTimeoutSchema();
 
 // Jaeger / Grafana Tempo HTTP API config — optional, disabled by default.
 // Point url at Jaeger Query (port 16686) or Tempo's Jaeger-compatible API.
 // Also readable from JAEGER_URL env var.
-const JaegerSchema = v.nullish(
-  v.object({
-    // Base URL for the Jaeger HTTP API. Also readable from JAEGER_URL env var.
-    url: v.nullish(v.string()),
-    // Request timeout in milliseconds (default 10 000).
-    timeoutMs: v.nullish(v.number(), 10_000),
-  }),
-);
+const JaegerSchema = makeUrlTimeoutSchema();
 
 // Grafana Loki HTTP API config — optional, disabled by default.
-const LokiSchema = v.nullish(
-  v.object({
-    // Base URL for the Loki HTTP API. Also readable from LOKI_URL env var.
-    url: v.nullish(v.string()),
-    // Request timeout in milliseconds (default 15 000).
-    timeoutMs: v.nullish(v.number(), 15_000),
-  }),
-);
+// Base URL also readable from LOKI_URL env var. Uses a 15 s timeout (log queries run longer).
+const LokiSchema = makeUrlTimeoutSchema(15_000);
 
 // Datadog API config — optional, disabled by default.
 // Requires a Datadog account and API/App keys.
