@@ -13,6 +13,7 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
+import { clampLimit } from './tool-config.ts';
 
 export interface DatadogConfig {
   apiKey: string;
@@ -62,12 +63,6 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 1_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific query');
 
-function effectiveLimit(limit: number | null | undefined): number {
-  if (typeof limit === 'number' && Number.isFinite(limit)) {
-    return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
-  }
-  return DEFAULT_LIMIT;
-}
 
 
 async function datadogErrorMessage(response: Response, queryType: string): Promise<string> {
@@ -131,7 +126,7 @@ async function queryLogs(
   if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
   if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
 
-  const limit = effectiveLimit(params.limit);
+  const limit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   const filterObj: Record<string, unknown> = { from, to };
   if (params.query?.trim()) filterObj['query'] = params.query.trim();
@@ -170,7 +165,7 @@ async function queryEvents(
   if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
   if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
 
-  const limit = effectiveLimit(params.limit);
+  const limit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   const url = new URL(`${baseUrl(config)}/api/v2/events`);
   url.searchParams.set('filter[from]', from);
@@ -195,7 +190,7 @@ async function queryMonitors(
   config: DatadogConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  const limit = effectiveLimit(params.limit);
+  const limit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   // group_states=all enriches the response with per-group state data.
   // It is NOT a filter — status filtering is applied client-side below.
