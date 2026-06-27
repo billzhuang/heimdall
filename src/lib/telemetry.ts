@@ -116,7 +116,7 @@ export function isTelemetryEnabled(): boolean {
 function percentileFromSorted(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
+  return sorted[Math.min(sorted.length - 1, Math.max(0, idx))];
 }
 
 /**
