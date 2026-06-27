@@ -368,8 +368,10 @@ Examples:
   process.stdout.write('Learning entries saved to: ' + logPath + '\n');
 }
 
-main().catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-self-loop] Fatal error: ${detail}\n`);
-  process.exit(1);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err: unknown) => {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[heimdall-self-loop] Fatal error: ${detail}\n`);
+    process.exit(1);
+  });
+}
