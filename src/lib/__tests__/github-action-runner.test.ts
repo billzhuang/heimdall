@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+import * as childProcess from 'node:child_process';
+
+// Make spawn mockable in ESM — Vitest hoists this before imports.
+vi.mock('node:child_process', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('node:child_process')>();
+  return { ...mod, spawn: vi.fn(mod.spawn) };
+});
 import {
   setOutput,
   appendSummary,
@@ -794,5 +803,61 @@ describe('main — dispatch', () => {
     expect(mockCapture).toHaveBeenCalledOnce();
     const [, args] = mockCapture.mock.calls[0] as [string, string[]];
     expect(args).toContain('-p');
+  });
+});
+
+// ── setOutput / appendSummary default-parameter env fallback ────────────────
+
+describe('setOutput — default outputPath env fallback', () => {
+  it('is a no-op when called without explicit path and GITHUB_OUTPUT is not set', () => {
+    // Covers the ?? arm-1 (null/undefined → '') in the default parameter.
+    delete process.env['GITHUB_OUTPUT'];
+    expect(() => setOutput('key', 'value')).not.toThrow();
+  });
+});
+
+describe('appendSummary — default summaryPath env fallback', () => {
+  it('is a no-op when called without explicit path and GITHUB_STEP_SUMMARY is not set', () => {
+    // Covers the ?? arm-1 (null/undefined → '') in the default parameter.
+    delete process.env['GITHUB_STEP_SUMMARY'];
+    expect(() => appendSummary('## heading')).not.toThrow();
+  });
+});
+
+// ── capture — BIN_PATH spawn redirect and null-code fallback ────────────────
+
+// The runner resolves BIN_PATH relative to its own __dirname (src/lib/).
+// From the test file's __dirname (src/lib/__tests__/), we go up one extra level.
+const TEST_BIN_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..', '..', '..', 'bin', 'heimdall',
+);
+
+function makeMockChild(closeCode: number | null): ReturnType<typeof childProcess.spawn> {
+  const child = new EventEmitter();
+  const stdout = Object.assign(new EventEmitter(), { setEncoding: () => {} });
+  (child as NodeJS.EventEmitter & { stdout: unknown }).stdout = stdout;
+  setImmediate(() => child.emit('close', closeCode));
+  return child as ReturnType<typeof childProcess.spawn>;
+}
+
+describe('capture — isShellScript path and null-code fallback', () => {
+  it('spawns via process.execPath with BIN_PATH prepended when cmd equals the Heimdall bin', async () => {
+    vi.mocked(childProcess.spawn).mockClear();
+    vi.mocked(childProcess.spawn).mockImplementationOnce(() => makeMockChild(0));
+
+    await capture(TEST_BIN_PATH, ['arg1', 'arg2']);
+
+    expect(vi.mocked(childProcess.spawn)).toHaveBeenCalledOnce();
+    const [cmd, args] = vi.mocked(childProcess.spawn).mock.calls[0] as [string, string[], unknown];
+    expect(cmd).toBe(process.execPath);
+    expect(args).toEqual([TEST_BIN_PATH, 'arg1', 'arg2']);
+  });
+
+  it('resolves with code 1 when child process closes with null exit code (signal kill)', async () => {
+    vi.mocked(childProcess.spawn).mockImplementationOnce(() => makeMockChild(null));
+
+    const { code } = await capture(process.execPath, ['--version']);
+    expect(code).toBe(1);
   });
 });
