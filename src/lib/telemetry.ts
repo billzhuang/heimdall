@@ -88,18 +88,14 @@ export function recordTokens(inputTokens: number, outputTokens: number): void {
 /** Return a snapshot of current telemetry state (does not flush). */
 export function getTelemetrySnapshot(): TelemetrySnapshot {
   const sorted = [..._latenciesMs].sort((a, b) => a - b);
-  const pct = (p: number) => {
-    if (sorted.length === 0) return 0;
-    return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
-  };
   return {
     totalInputTokens: _totalInputTokens,
     totalOutputTokens: _totalOutputTokens,
     cacheHits: _cacheHits,
     cacheMisses: _cacheMisses,
     toolCallCount: _latenciesMs.length,
-    p50LatencyMs: pct(50),
-    p99LatencyMs: pct(99),
+    p50LatencyMs: percentileFromSorted(sorted, 50),
+    p99LatencyMs: percentileFromSorted(sorted, 99),
   };
 }
 
@@ -116,15 +112,19 @@ export function isTelemetryEnabled(): boolean {
   return _enabled;
 }
 
+/** Core percentile computation over a pre-sorted array. Returns 0 for empty arrays. */
+function percentileFromSorted(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, idx)];
+}
+
 /**
  * Compute the nth percentile (0–100) of a sorted or unsorted array.
  * Returns 0 for empty arrays.
  */
 export function percentile(values: number[], p: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
+  return percentileFromSorted([...values].sort((a, b) => a - b), p);
 }
 
 function _emitSync(): void {
