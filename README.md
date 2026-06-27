@@ -37,7 +37,37 @@ Heimdall helps SREs and developers diagnose Kubernetes issues faster by combinin
 - `kubectl` configured with access to your cluster
 - `ANTHROPIC_API_KEY` in your environment
 
-## Setup
+## Install
+
+### Native install (recommended)
+
+One-liner — no `git clone` or `npm install` required:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/billzhuang/heimdall/main/install.sh | bash
+```
+
+The script checks prerequisites (Node.js ≥22.19, git, npm), clones the repo into
+`~/.local/share/heimdall`, builds it, and links `heimdall` into `~/.local/bin`.
+
+Options (pass after `bash -s --`):
+
+```bash
+# Custom install dir or bin dir
+curl -fsSL .../install.sh | bash -s -- --dir /opt/heimdall --bin /usr/local/bin
+
+# Upgrade an existing installation
+curl -fsSL .../install.sh | bash -s -- --upgrade
+```
+
+Or clone the script and run it locally:
+
+```bash
+bash install.sh           # default: ~/.local/share/heimdall
+bash install.sh --upgrade # pull latest and rebuild
+```
+
+### Manual setup (development)
 
 ```bash
 npm install
