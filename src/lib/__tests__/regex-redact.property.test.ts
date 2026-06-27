@@ -88,16 +88,14 @@ describe('applyRedaction (property-based)', () => {
     const rules = compileRules([{ name: 'tok', pattern: 'SECRET' }]);
     fc.assert(
       fc.property(
-        fc.integer({ min: 0, max: 5 }).chain((n) =>
-          fc.tuple(
-            fc.array(fc.string({ maxLength: 20 }), { minLength: n, maxLength: n }),
-            fc.array(fc.string({ maxLength: 20 }), { minLength: n + 1, maxLength: n + 1 }),
-          ),
+        fc.tuple(
+          fc.integer({ min: 1, max: 6 }),
+          fc.array(fc.string({ maxLength: 20 }), { minLength: 0, maxLength: 5 }),
         ),
-        ([fillers, secrets]) => {
+        ([count, fillers]) => {
           // Build a string interleaving fillers and "SECRET" tokens
           const parts: string[] = [];
-          for (let i = 0; i < secrets.length; i++) {
+          for (let i = 0; i < count; i++) {
             if (fillers[i]) parts.push(fillers[i]);
             parts.push('SECRET');
           }
