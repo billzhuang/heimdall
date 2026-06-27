@@ -66,6 +66,11 @@ describe('resolveTimeSeconds', () => {
     // Exercises the final `return null` branch after Date.parse() returns NaN.
     expect(resolveTimeSeconds('not-a-date', NOW)).toBeNull();
   });
+
+  it('returns null when the computed relative timestamp is not finite (nowMs=Infinity)', () => {
+    // nowMs - durationMs = Infinity - 3_600_000 = Infinity → !isFinite → null (line 80)
+    expect(resolveTimeSeconds('-1h', Infinity)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -96,6 +101,16 @@ describe('resolveTimeISO', () => {
   it('returns null for a completely unparseable non-date string', () => {
     // Exercises the final `return null` branch after Date.parse() returns NaN.
     expect(resolveTimeISO('not-a-date', NOW)).toBeNull();
+  });
+
+  it('returns null when the computed relative timestamp is not finite (nowMs=Infinity)', () => {
+    // nowMs - durationMs = Infinity - 3_600_000 = Infinity → !isFinite → null (line 109)
+    expect(resolveTimeISO('-1h', Infinity)).toBeNull();
+  });
+
+  it('converts 13-digit Unix millisecond epoch to ISO8601 (expr.length > 10 branch)', () => {
+    // 1717243200000 ms = 2024-06-01T12:00:00Z; the > 10-digit branch uses the value as ms directly
+    expect(resolveTimeISO('1717243200000', NOW)).toBe('2024-06-01T12:00:00.000Z');
   });
 });
 
@@ -528,6 +543,17 @@ describe('runDatadogQuery — timeout', () => {
     );
     expect(result).toMatch(/Datadog query failed/i);
   });
+
+  it('handles a non-Error thrown by fetch via String(err) (line 356 false branch)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('plain string thrown'));
+
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/Datadog query failed/i);
+    expect(result).toContain('plain string thrown');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -737,6 +763,26 @@ describe('runDatadogQuery — unparseable time expressions', () => {
 // ---------------------------------------------------------------------------
 
 describe('runDatadogQuery — monitors monitorStatus edge cases', () => {
+  it('uses DEFAULT_LIMIT when monitors limit is Infinity (effectiveLimit false branch, line 262)', async () => {
+    const fetchMock = mockFetch('[]');
+
+    await runDatadogQuery({ queryType: 'monitors', limit: Infinity }, BASE_CONFIG);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    // DEFAULT_LIMIT is 100 for monitors
+    expect(url).toContain('page_size=100');
+    expect(url).not.toContain('page_size=Infinity');
+  });
+
+  it('uses the provided finite limit clamped to [1, MAX_LIMIT] (effectiveLimit true branch, line 262)', async () => {
+    const fetchMock = mockFetch('[]');
+
+    await runDatadogQuery({ queryType: 'monitors', limit: 25 }, BASE_CONFIG);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('page_size=25');
+  });
+
   it('returns raw text when response body is not a JSON array', async () => {
     const payload = '{"status":"ok"}';
     mockFetch(payload);
