@@ -8,7 +8,8 @@
  * Disable logging per-invocation with --no-learn, or globally via
  * `learning.enabled: false` in heimdall.config.yaml.
  */
-import { appendFile, readFile } from 'node:fs/promises';
+import { appendFile } from 'node:fs/promises';
+import { readJsonlFile } from './jsonl.ts';
 import { randomBytes } from 'node:crypto';
 
 export interface TaskHistoryEntry {
@@ -53,25 +54,10 @@ export async function appendTaskHistoryEntry(
 }
 
 /** Read all task history entries from a JSONL file. Returns [] if the file does not exist. */
-export async function readTaskHistory(logPath: string): Promise<TaskHistoryEntry[]> {
-  let raw: string;
-  try {
-    raw = await readFile(logPath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw err;
-  }
-  const entries: TaskHistoryEntry[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      entries.push(JSON.parse(trimmed) as TaskHistoryEntry);
-    } catch {
-      console.warn(`[heimdall] task-history: skipping malformed JSONL line in ${logPath}`);
-    }
-  }
-  return entries;
+export function readTaskHistory(logPath: string): Promise<TaskHistoryEntry[]> {
+  return readJsonlFile<TaskHistoryEntry>(logPath, () => {
+    console.warn(`[heimdall] task-history: skipping malformed JSONL line in ${logPath}`);
+  });
 }
 
 /**
