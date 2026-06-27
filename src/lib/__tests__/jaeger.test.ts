@@ -6,6 +6,7 @@ import { mockFetch, makeAbortError } from './test-helpers.ts';
 const BASE_CONFIG: JaegerConfig = { url: 'http://jaeger:16686', timeoutMs: 5_000 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -347,27 +348,37 @@ describe('runJaegerQuery — network errors', () => {
     expect(result).toContain('plain string thrown');
   });
 
-  it('fires the abort timer and returns timeout when request hangs', async () => {
+});
+
+// ---------------------------------------------------------------------------
+// Abort timeout — covers the `() => controller.abort()` setTimeout callback
+// ---------------------------------------------------------------------------
+
+describe('runJaegerQuery — abort timeout', () => {
+  it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
     vi.useFakeTimers();
-    try {
-      vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () => {
-            const err = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-            reject(err);
-          });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+        new Promise<never>((_resolve, reject) => {
+          opts.signal?.addEventListener('abort', () =>
+            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
+          );
         }),
-      ));
+      ),
+    );
 
-      const queryPromise = runJaegerQuery({ service: 'api' }, { ...BASE_CONFIG, timeoutMs: 5_000 });
+    const queryPromise = runJaegerQuery(
+      { service: 'api' },
+      { ...BASE_CONFIG, timeoutMs: 3_000 },
+    );
 
-      await vi.runAllTimersAsync();
-      const result = await queryPromise;
-      expect(result).toMatch(/timed out/i);
-      expect(result).toContain('5000ms');
-    } finally {
-      vi.useRealTimers();
-    }
+    await vi.advanceTimersByTimeAsync(3_001);
+    const result = await queryPromise;
+
+    expect(result).toMatch(/timed out/i);
+    expect(result).toContain('3000ms');
   });
 });
 
