@@ -8,7 +8,7 @@
 export function tokenizeShellArgs(input: string, binaryName: string): string[] {
   const tokens: string[] = [];
   let current = '';
-  let quoteChar: string | null = null;
+  let quoteChar: '"' | "'" | null = null;
   let hasToken = false;
 
   for (let i = 0; i < input.length; i++) {
@@ -17,7 +17,7 @@ export function tokenizeShellArgs(input: string, binaryName: string): string[] {
     if (quoteChar !== null) {
       if (ch === quoteChar) {
         quoteChar = null;
-      } else if (quoteChar === '"' && ch === '\\' && i + 1 < input.length) {
+      } else if (quoteChar === '"' && ch === '\\') {
         const next = input[i + 1];
         // In double-quote mode only `\"` and `\\` are recognized escapes; all
         // other backslash sequences preserve the literal backslash.
