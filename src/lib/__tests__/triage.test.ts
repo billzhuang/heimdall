@@ -252,6 +252,14 @@ describe('resolveNamespaceScope — default (no options)', () => {
     expect(scope.multiClusterSuffix).toBe('');
   });
 
+  it('treats an empty namespace string as default scope', () => {
+    expect(resolveNamespaceScope({ namespace: '' })).toEqual({
+      kubectlSuffix: '',
+      scopeLabel: 'the default namespace',
+      multiClusterSuffix: '',
+    });
+  });
+
   it('returns the same defaults when both namespace and allNamespaces are falsy', () => {
     expect(resolveNamespaceScope({ namespace: undefined, allNamespaces: false }))
       .toEqual({ kubectlSuffix: '', scopeLabel: 'the default namespace', multiClusterSuffix: '' });
