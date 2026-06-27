@@ -149,6 +149,15 @@ describe('parseAlertManagerPayload', () => {
     expect(alerts).toHaveLength(1);
     expect(alerts[0].alertname).toBe('Real');
   });
+
+  it('skips array elements in the alerts array without throwing', () => {
+    const payload = {
+      alerts: [[], { labels: { alertname: 'Real' }, annotations: {} }],
+    };
+    const alerts = parseAlertManagerPayload(payload);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].alertname).toBe('Real');
+  });
 });
 
 // ── buildAlertPrompt ─────────────────────────────────────────────────────────

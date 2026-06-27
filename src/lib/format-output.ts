@@ -43,13 +43,15 @@ export interface OneShotFinding {
 const RCA_SECTION_HEADER_RE =
   /(?:^|\n)(?:##?\s+(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?|(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):)[ \t]*(?=\n|-?\d)/im;
 
+function makeSectionRe(sectionPattern: string, suffix: string): RegExp {
+  return new RegExp(`(?:^|\\n)(?:##?\\s+${sectionPattern}:?|${sectionPattern}:)[ \\t]*${suffix}`, 'i');
+}
+
 /** Header regex for each named RCA section. */
-const CAUSAL_CHAIN_RE = /(?:^|\n)(?:##?\s+Causal Chain:?|Causal Chain:)[ \t]*\n/i;
-const EVIDENCE_RE = /(?:^|\n)(?:##?\s+Evidence:?|Evidence:)[ \t]*\n/i;
-const VALIDITY_SCORE_RE =
-  /(?:^|\n)(?:##?\s+Validity Score:?|Validity Score:)[ \t]*(-?\d+(?:\.\d+)?)/i;
-const REMEDIATION_STEPS_RE =
-  /(?:^|\n)(?:##?\s+Remediation Steps?:?|Remediation Steps?:)[ \t]*\n/i;
+const CAUSAL_CHAIN_RE = makeSectionRe('Causal Chain', '\\n');
+const EVIDENCE_RE = makeSectionRe('Evidence', '\\n');
+const VALIDITY_SCORE_RE = makeSectionRe('Validity Score', '(-?\\d+(?:\\.\\d+)?)');
+const REMEDIATION_STEPS_RE = makeSectionRe('Remediation Steps?', '\\n');
 
 /** Strips leading bullet or numbered-list markers from a line. */
 const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
