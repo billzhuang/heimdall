@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadConfig } from '../config.ts';
+import { loadConfig, tryReadConfigFile } from '../config.ts';
 
 const EXPECTED_DEFAULT_TOOLS = {
   kubectl: true,
@@ -739,5 +739,70 @@ describe('loadConfig', () => {
       expect(config.learning?.rag?.topK).toBe(10);
       expect(config.learning?.rag?.minSimilarity).toBe(0.7);
     });
+  });
+});
+
+// ── tryReadConfigFile ─────────────────────────────────────────────────────────
+
+describe('tryReadConfigFile', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `heimdall-config-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('returns file contents on success', () => {
+    const configPath = join(tmpDir, 'test.yaml');
+    writeFileSync(configPath, 'tools:\n  kubectl: true\n');
+    expect(tryReadConfigFile(configPath)).toBe('tools:\n  kubectl: true\n');
+  });
+
+  it('returns null silently for ENOENT (file not found)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = tryReadConfigFile(join(tmpDir, 'nonexistent.yaml'));
+    expect(result).toBeNull();
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns null and warns for non-ENOENT errors (e.g. EISDIR)', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // A directory path triggers EISDIR on readFileSync — a real non-ENOENT error.
+    const result = tryReadConfigFile(tmpDir);
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Could not read config file'),
+      expect.anything(),
+    );
+  });
+});
+
+describe('loadConfig — non-ENOENT read errors', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `heimdall-config-test-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  it('returns defaultConfig and warns when explicit configPath is readable as EISDIR', () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Passing a directory as the configPath triggers EISDIR
+    const config = loadConfig(tmpDir);
+    expect(config.tools.kubectl).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Could not read config file'),
+      expect.anything(),
+    );
   });
 });

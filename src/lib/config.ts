@@ -5,7 +5,7 @@
  * `HEIMDALL_CONFIG`) and returns a validated config object.  Missing keys fall
  * back to safe defaults so the agent works out-of-the-box with zero config.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import * as yaml from 'js-yaml';
 import * as v from 'valibot';
@@ -497,6 +497,25 @@ function parseYamlContent(yamlStr: string, source: string): HeimdallConfig {
 }
 
 /**
+ * Read a config file, returning its contents or null.
+ * ENOENT is treated as "not configured" and returns null silently.
+ * Any other error (e.g. EISDIR, EPERM) logs a warning and also returns null.
+ *
+ * Using a single try/catch avoids the TOCTOU race between an existsSync check
+ * and the subsequent readFileSync call.
+ */
+export function tryReadConfigFile(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.warn(`[heimdall] Could not read config file ${path}:`, err);
+    }
+    return null;
+  }
+}
+
+/**
  * Load and validate the Heimdall config.
  *
  * Resolution order:
@@ -508,14 +527,8 @@ function parseYamlContent(yamlStr: string, source: string): HeimdallConfig {
  */
 export function loadConfig(configPath?: string): HeimdallConfig {
   if (configPath) {
-    if (!existsSync(configPath)) return defaultConfig();
-    let yamlStr: string;
-    try {
-      yamlStr = readFileSync(configPath, 'utf-8');
-    } catch (err) {
-      console.warn(`[heimdall] Could not read config file ${configPath}:`, err);
-      return defaultConfig();
-    }
+    const yamlStr = tryReadConfigFile(configPath);
+    if (yamlStr === null) return defaultConfig();
     return parseYamlContent(yamlStr, configPath);
   }
 
@@ -526,14 +539,7 @@ export function loadConfig(configPath?: string): HeimdallConfig {
   }
 
   const filePath = resolveConfigPath();
-  if (!existsSync(filePath)) return defaultConfig();
-
-  let yamlStr: string;
-  try {
-    yamlStr = readFileSync(filePath, 'utf-8');
-  } catch (err) {
-    console.warn(`[heimdall] Could not read config file ${filePath}:`, err);
-    return defaultConfig();
-  }
+  const yamlStr = tryReadConfigFile(filePath);
+  if (yamlStr === null) return defaultConfig();
   return parseYamlContent(yamlStr, filePath);
 }
