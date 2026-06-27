@@ -144,6 +144,34 @@ describe('validateCronExpression', () => {
     expect(validateCronExpression('5-1 * * * *')).toMatch(/out of range/);
   });
 
+  it('rejects a-b/s when b exceeds field upper bound', () => {
+    // minute upper bound is 59; b=99 must be caught
+    expect(validateCronExpression('1-99/2 * * * *')).toMatch(/out of range/);
+    // hour upper bound is 23
+    expect(validateCronExpression('* 0-25/5 * * *')).toMatch(/out of range/);
+  });
+
+  it('rejects a-b/s with inverted range (a > b)', () => {
+    expect(validateCronExpression('10-5/2 * * * *')).toMatch(/out of range/);
+  });
+
+  it('accepts valid a-b/s expressions', () => {
+    expect(validateCronExpression('0-30/10 * * * *')).toBeUndefined();
+    expect(validateCronExpression('* 1-23/6 * * *')).toBeUndefined();
+  });
+
+  it('rejects n/s when start value exceeds field upper bound', () => {
+    // minute upper bound is 59; start=75 must be caught
+    expect(validateCronExpression('75/5 * * * *')).toMatch(/out of range/);
+    // hour upper bound is 23; start=24 must be caught
+    expect(validateCronExpression('* 24/3 * * *')).toMatch(/out of range/);
+  });
+
+  it('accepts valid n/s expressions', () => {
+    expect(validateCronExpression('5/15 * * * *')).toBeUndefined();
+    expect(validateCronExpression('* 6/6 * * *')).toBeUndefined();
+  });
+
   it('rejects day-of-month 0 (dom lower bound is 1)', () => {
     expect(validateCronExpression('0 0 0 * *')).toMatch(/out of range/);
   });

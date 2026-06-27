@@ -104,6 +104,17 @@ export function validateCronExpression(cron: string): string | undefined {
     // Reject out-of-range tokens before checking for matches.
     for (const part of f.split(',')) {
       if (part === '*' || part.startsWith('*/')) continue;
+      // a-b/s — validate a, b, and step
+      const rangeStepM = part.match(/^(\d+)-(\d+)\/(\d+)$/);
+      if (rangeStepM) {
+        const a = parseInt(rangeStepM[1], 10);
+        const b = parseInt(rangeStepM[2], 10);
+        if (a > b || a < lo || b > hi) {
+          return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
+        }
+        continue;
+      }
+      // a-b — validate a and b
       const rangeM = part.match(/^(\d+)-(\d+)$/);
       if (rangeM) {
         const a = parseInt(rangeM[1], 10);
@@ -113,6 +124,16 @@ export function validateCronExpression(cron: string): string | undefined {
         }
         continue;
       }
+      // n/s — validate start value only (step is checked via hasMatch below)
+      const valStepM = part.match(/^(\d+)\/(\d+)$/);
+      if (valStepM) {
+        const n = parseInt(valStepM[1], 10);
+        if (n < lo || n > hi) {
+          return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
+        }
+        continue;
+      }
+      // plain n
       const n = parseInt(part, 10);
       if (isNaN(n) || n < lo || n > hi) {
         return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
