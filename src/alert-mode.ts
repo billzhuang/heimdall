@@ -25,6 +25,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const config = loadConfig();
 
+export function addKubectlResultIfValid(parts: string[], label: string, result: string): void {
+  if (result && !result.startsWith('Error:') && !result.startsWith(BLOCKED_PREFIX)) {
+    parts.push(`--- ${label} ---\n${result}`);
+  }
+}
+
 /**
  * Pre-fetch kubectl data for the alerted resource.
  * Returns combined stdout suitable for embedding in the investigation prompt.
@@ -34,23 +40,15 @@ async function seedKubectl(alert: ParsedAlert): Promise<string> {
   const opts = { audit: config.audit, redactSecrets: config.redactSecrets ?? true };
 
   if (alert.pod && alert.namespace) {
-    const describe = await runKubectl(`describe pod ${alert.pod} -n ${alert.namespace}`, opts).catch(() => '');
-    if (describe && !describe.startsWith('Error:') && !describe.startsWith(BLOCKED_PREFIX)) {
-      parts.push(`--- kubectl describe pod ${alert.pod} -n ${alert.namespace} ---\n${describe}`);
-    }
-    const logs = await runKubectl(`logs ${alert.pod} -n ${alert.namespace} --tail=50`, opts).catch(() => '');
-    if (logs && !logs.startsWith('Error:') && !logs.startsWith(BLOCKED_PREFIX)) {
-      parts.push(`--- kubectl logs ${alert.pod} -n ${alert.namespace} --tail=50 ---\n${logs}`);
-    }
+    addKubectlResultIfValid(parts, `kubectl describe pod ${alert.pod} -n ${alert.namespace}`,
+      await runKubectl(`describe pod ${alert.pod} -n ${alert.namespace}`, opts).catch(() => ''));
+    addKubectlResultIfValid(parts, `kubectl logs ${alert.pod} -n ${alert.namespace} --tail=50`,
+      await runKubectl(`logs ${alert.pod} -n ${alert.namespace} --tail=50`, opts).catch(() => ''));
   } else if (alert.namespace) {
-    const pods = await runKubectl(`get pods -n ${alert.namespace}`, opts).catch(() => '');
-    if (pods && !pods.startsWith('Error:') && !pods.startsWith(BLOCKED_PREFIX)) {
-      parts.push(`--- kubectl get pods -n ${alert.namespace} ---\n${pods}`);
-    }
-    const events = await runKubectl(`get events -n ${alert.namespace} --sort-by=.lastTimestamp`, opts).catch(() => '');
-    if (events && !events.startsWith('Error:') && !events.startsWith(BLOCKED_PREFIX)) {
-      parts.push(`--- kubectl get events -n ${alert.namespace} ---\n${events}`);
-    }
+    addKubectlResultIfValid(parts, `kubectl get pods -n ${alert.namespace}`,
+      await runKubectl(`get pods -n ${alert.namespace}`, opts).catch(() => ''));
+    addKubectlResultIfValid(parts, `kubectl get events -n ${alert.namespace}`,
+      await runKubectl(`get events -n ${alert.namespace} --sort-by=.lastTimestamp`, opts).catch(() => ''));
   }
 
   return parts.join('\n\n');
@@ -124,41 +122,42 @@ export async function runAlertMode(opts: { source: AlertSource; input: string; s
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
-const args = process.argv.slice(2);
-let source: AlertSource = 'raw';
-let seed = true;
-let input = '';
-let modelFlag: string | undefined;
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  const args = process.argv.slice(2);
+  let source: AlertSource = 'raw';
+  let seed = true;
+  let input = '';
+  let modelFlag: string | undefined;
 
-for (let i = 0; i < args.length; i++) {
-  const arg = args[i];
-  if ((arg === '--source' || arg === '-s') && args[i + 1]) {
-    const s = args[++i];
-    if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
-      process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
-    }
-    source = s;
-  } else if (arg.startsWith('--source=')) {
-    const s = arg.slice('--source='.length);
-    if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
-      process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
-    }
-    source = s as AlertSource;
-  } else if (arg === '--no-seed') {
-    seed = false;
-  } else if (arg === '--model') {
-    if (!args[i + 1] || args[i + 1].startsWith('-')) {
-      process.stderr.write(`Error: --model requires a value\n`); process.exit(1);
-    }
-    modelFlag = args[++i];
-  } else if (arg.startsWith('--model=')) {
-    const m = arg.slice('--model='.length);
-    if (!m) {
-      process.stderr.write(`Error: --model= requires a non-empty value\n`); process.exit(1);
-    }
-    modelFlag = m;
-  } else if (arg === '-h' || arg === '--help') {
-    process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if ((arg === '--source' || arg === '-s') && args[i + 1]) {
+      const s = args[++i];
+      if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
+        process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
+      }
+      source = s;
+    } else if (arg.startsWith('--source=')) {
+      const s = arg.slice('--source='.length);
+      if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
+        process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
+      }
+      source = s as AlertSource;
+    } else if (arg === '--no-seed') {
+      seed = false;
+    } else if (arg === '--model') {
+      if (!args[i + 1] || args[i + 1].startsWith('-')) {
+        process.stderr.write(`Error: --model requires a value\n`); process.exit(1);
+      }
+      modelFlag = args[++i];
+    } else if (arg.startsWith('--model=')) {
+      const m = arg.slice('--model='.length);
+      if (!m) {
+        process.stderr.write(`Error: --model= requires a non-empty value\n`); process.exit(1);
+      }
+      modelFlag = m;
+    } else if (arg === '-h' || arg === '--help') {
+      process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
 
 Options:
   --source <type>           Alert format: grafana, prometheus, pagerduty, or raw text (default: raw)
@@ -174,30 +173,31 @@ Examples:
   heimdall alert --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
   npm run alert -- --source raw "high latency on api deployment in prod"
 `);
-    process.exit(0);
-  } else if (!arg.startsWith('-')) {
-    input = arg;
-  } else {
-    process.stderr.write(`Error: unknown option: ${arg}\n`); process.exit(1);
+      process.exit(0);
+    } else if (!arg.startsWith('-')) {
+      input = arg;
+    } else {
+      process.stderr.write(`Error: unknown option: ${arg}\n`); process.exit(1);
+    }
   }
-}
 
-if (!input) {
-  process.stderr.write('Error: alert input (file path or raw text) is required\n');
-  process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">\n');
-  process.exit(1);
-}
+  if (!input) {
+    process.stderr.write('Error: alert input (file path or raw text) is required\n');
+    process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">\n');
+    process.exit(1);
+  }
 
-let resolvedModel: string;
-try {
-  resolvedModel = resolveModel(modelFlag);
-} catch (err) {
-  process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
-}
+  let resolvedModel: string;
+  try {
+    resolvedModel = resolveModel(modelFlag);
+  } catch (err) {
+    process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
 
-runAlertMode({ source, input, seed, model: resolvedModel }).catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-alert] Fatal: ${detail}\n`);
-  process.exit(1);
-});
+  runAlertMode({ source, input, seed, model: resolvedModel }).catch((err: unknown) => {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[heimdall-alert] Fatal: ${detail}\n`);
+    process.exit(1);
+  });
+}
