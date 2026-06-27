@@ -8,31 +8,32 @@
 export function tokenizeShellArgs(input: string, binaryName: string): string[] {
   const tokens: string[] = [];
   let current = '';
-  let inSingle = false;
-  let inDouble = false;
+  let quoteChar: string | null = null;
   let hasToken = false;
 
   for (let i = 0; i < input.length; i++) {
     const ch = input[i];
 
-    if (inSingle) {
-      if (ch === "'") inSingle = false;
-      else current += ch;
-      continue;
-    }
-    if (inDouble) {
-      if (ch === '"') inDouble = false;
-      else if (ch === '\\' && i + 1 < input.length && (input[i + 1] === '"' || input[i + 1] === '\\')) {
-        current += input[++i];
-      } else current += ch;
+    if (quoteChar !== null) {
+      if (ch === quoteChar) {
+        quoteChar = null;
+      } else if (quoteChar === '"' && ch === '\\' && i + 1 < input.length) {
+        const next = input[i + 1];
+        // In double-quote mode only `\"` and `\\` are recognized escapes; all
+        // other backslash sequences preserve the literal backslash.
+        if (next === '"' || next === '\\') {
+          current += input[++i];
+        } else {
+          current += ch;
+        }
+      } else {
+        current += ch;
+      }
       continue;
     }
 
-    if (ch === "'") {
-      inSingle = true;
-      hasToken = true;
-    } else if (ch === '"') {
-      inDouble = true;
+    if (ch === "'" || ch === '"') {
+      quoteChar = ch;
       hasToken = true;
     } else if (ch === '\\' && i + 1 < input.length) {
       current += input[++i];
