@@ -76,6 +76,22 @@ export function generateSuggestion(scenario: string, prompt: string, failures: s
   return parts.join(' | ');
 }
 
+/**
+ * Format a list of LearningEntry objects as a numbered Markdown scenario list.
+ * Used in both the interactive reflection prompt and the automated self-loop prompt.
+ */
+export function formatLearningEntries(entries: LearningEntry[]): string {
+  return entries
+    .map(
+      (e, i) =>
+        `### ${i + 1}. "${e.scenario}"\n` +
+        `**Prompt**: ${e.prompt}\n` +
+        `**Failures**:\n${e.failures.map((f) => `- ${f}`).join('\n')}\n` +
+        `**Auto-suggestion**: ${e.suggestion}`,
+    )
+    .join('\n\n');
+}
+
 /** Build a LearningEntry from a scenario name, prompt, and assertion failures. */
 export function buildLearningEntry(
   scenario: string,
@@ -181,17 +197,7 @@ export function buildReflectionPrompt(
 
   const hasHistory = relevantHistory.length > 0;
 
-  const scenarioList = hasFailures
-    ? entries
-        .map(
-          (e, i) =>
-            `### ${i + 1}. "${e.scenario}"\n` +
-            `**Prompt**: ${e.prompt}\n` +
-            `**Failures**:\n${e.failures.map(f => `- ${f}`).join('\n')}\n` +
-            `**Auto-suggestion**: ${e.suggestion}`,
-        )
-        .join('\n\n')
-    : '';
+  const scenarioList = hasFailures ? formatLearningEntries(entries) : '';
 
   const historyLabel = useRag && hasFailures
     ? 'semantically similar to the failing scenario prompts'

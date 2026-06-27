@@ -8,6 +8,7 @@
  * targeting src/lib/instructions.ts so changes are machine-parseable and reversible.
  */
 import { readFile, writeFile } from 'node:fs/promises';
+import { formatLearningEntries } from './self-improve.ts';
 import type { LearningEntry } from './self-improve.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
@@ -59,17 +60,7 @@ export function buildAutoReflectionPrompt(
   const hasFailures = entries.length > 0;
   const hasHistory = taskHistory.length > 0;
 
-  const scenarioList = hasFailures
-    ? entries
-        .map(
-          (e, i) =>
-            `### ${i + 1}. "${e.scenario}"\n` +
-            `**Prompt**: ${e.prompt}\n` +
-            `**Failures**:\n${e.failures.map(f => `- ${f}`).join('\n')}\n` +
-            `**Auto-suggestion**: ${e.suggestion}`,
-        )
-        .join('\n\n')
-    : '';
+  const scenarioList = hasFailures ? formatLearningEntries(entries) : '';
 
   const historySection = hasHistory
     ? `## Recent Real-World Investigations\n\n${buildTaskHistoryContext(taskHistory)}`
