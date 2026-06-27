@@ -15,7 +15,6 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
 import {
-  EVAL_TIMEOUT_MS,
   loadScenario,
   loadScenarios,
   resolveBinPath,
