@@ -9,7 +9,7 @@ export async function readJsonlFile<T>(
   try {
     raw = await readFile(filePath, 'utf8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return [];
     throw err;
   }
   const entries: T[] = [];
