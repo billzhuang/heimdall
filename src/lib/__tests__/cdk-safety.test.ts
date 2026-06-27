@@ -3,6 +3,7 @@ import {
   ALLOWED_CDK_COMMANDS,
   DESTRUCTIVE_CDK_COMMANDS,
   parseCdkCommand,
+  tokenizeCdkCommand,
   validateCdkCommand,
 } from '../cdk-safety.ts';
 
@@ -150,6 +151,12 @@ describe('validateCdkCommand', () => {
   it('correctly parses read-only commands following boolean flags', () => {
     const result = validateCdkCommand('cdk --no-color ls');
     expect(result?.allowed).toBe(true);
+  });
+});
+
+describe('tokenizeCdkCommand — backslash escape outside quotes', () => {
+  it('treats a backslash-escaped space as part of the current token', () => {
+    expect(tokenizeCdkCommand('foo\\ bar')).toEqual(['foo bar']);
   });
 });
 
