@@ -15,3 +15,19 @@ export function resolveTimeoutMs(
     ? rawTimeout
     : defaultMs;
 }
+
+/**
+ * Clamp a raw limit value from config/model input to [1, maxLimit].
+ * Falls back to `defaultLimit` when `rawLimit` is null, undefined, NaN, or
+ * non-finite. Finite values are truncated to an integer and clamped, so
+ * negatives and fractions below 1 resolve to 1 rather than `defaultLimit`.
+ */
+export function clampLimit(
+  rawLimit: number | null | undefined,
+  defaultLimit: number,
+  maxLimit: number,
+): number {
+  return typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+    ? Math.min(Math.max(Math.trunc(rawLimit), 1), maxLimit)
+    : defaultLimit;
+}

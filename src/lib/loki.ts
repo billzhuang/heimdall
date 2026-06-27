@@ -9,6 +9,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimePassthrough } from './time-resolution.ts';
 import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
+import { clampLimit } from './tool-config.ts';
 
 export interface LokiConfig {
   url: string;
@@ -86,11 +87,7 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
   const startResolved = resolveTime(params.start ?? '-1h', nowMs);
   const endResolved = resolveTime(params.end ?? new Date(nowMs).toISOString(), nowMs);
 
-  // Clamp limit: guard against expensive Loki scans from unbounded values.
-  const effectiveLimit =
-    typeof params.limit === 'number' && Number.isFinite(params.limit)
-      ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+  const effectiveLimit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   try {
     const baseUrl = new URL(config.url);

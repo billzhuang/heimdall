@@ -12,6 +12,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeUs } from './time-resolution.ts';
 import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
+import { clampLimit } from './tool-config.ts';
 
 export interface JaegerConfig {
   url: string;
@@ -52,10 +53,7 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
     return 'Error: service must be a non-empty string (e.g. "checkout", "payments").';
   }
 
-  const effectiveLimit =
-    typeof params.limit === 'number' && Number.isFinite(params.limit)
-      ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+  const effectiveLimit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   const nowMs = Date.now();
 

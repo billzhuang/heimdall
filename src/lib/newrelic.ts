@@ -12,6 +12,7 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { resolveTimeISO } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
+import { clampLimit } from './tool-config.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -53,12 +54,6 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 /** Resolve a Heimdall-style time expression to ISO8601 for NRQL SINCE/UNTIL clauses. */
 export const resolveNrqlTime = resolveTimeISO;
 
-function effectiveLimit(limit: number | null | undefined): number {
-  if (typeof limit === 'number' && Number.isFinite(limit)) {
-    return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
-  }
-  return DEFAULT_LIMIT;
-}
 
 /** Execute a NerdGraph GraphQL query and return the raw JSON response text. */
 async function nerdgraph(
@@ -105,7 +100,7 @@ async function queryMetrics(
     if (!/\bUNTIL\b/i.test(nrql)) nrql += ` UNTIL '${until}'`;
   }
   if (!/\bLIMIT\b/i.test(nrql)) {
-    nrql += ` LIMIT ${effectiveLimit(params.limit)}`;
+    nrql += ` LIMIT ${clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT)}`;
   }
 
   const gql = `{
@@ -137,7 +132,7 @@ async function queryApm(
   const qApm = params.query?.trim() ?? '';
   const whereClause = qApm ? `WHERE ${qApm} ` : '';
   const untilClause = until ? ` UNTIL '${until}'` : '';
-  const lim = effectiveLimit(params.limit);
+  const lim = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${untilClause} FACET appName LIMIT ${lim}`;
 
@@ -171,7 +166,7 @@ async function queryAlerts(
   const qAlerts = params.query?.trim() ?? '';
   const extraWhere = qAlerts ? ` AND (${qAlerts})` : '';
   const untilClause = until ? ` UNTIL '${until}'` : '';
-  const lim = effectiveLimit(params.limit);
+  const lim = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   // NrAiIncident captures New Relic AI (applied intelligence) incidents.
   // Filtering event = 'open' surfaces currently active violations.
