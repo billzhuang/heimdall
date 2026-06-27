@@ -606,6 +606,73 @@ describe('runDatadogQuery — missing credentials', () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveTimeSeconds — additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe('resolveTimeSeconds — non-finite nowMs', () => {
+  it('returns null when nowMs is Infinity (non-finite subtraction result)', () => {
+    expect(resolveTimeSeconds('-1h', Infinity)).toBeNull();
+  });
+
+  it('returns null for plain text that Date.parse cannot parse', () => {
+    const NOW = new Date('2024-06-01T12:00:00Z').getTime();
+    expect(resolveTimeSeconds('not-a-valid-date', NOW)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTimeISO — additional branch coverage
+// ---------------------------------------------------------------------------
+
+describe('resolveTimeISO — additional branches', () => {
+  const NOW = new Date('2024-06-01T12:00:00Z').getTime();
+
+  it('returns null when nowMs is Infinity (non-finite subtraction result)', () => {
+    expect(resolveTimeISO('-1h', Infinity)).toBeNull();
+  });
+
+  it('converts a 13-digit Unix millisecond epoch string to ISO8601', () => {
+    expect(resolveTimeISO('1717243200000', NOW)).toBe('2024-06-01T12:00:00.000Z');
+  });
+
+  it('returns null for plain text that Date.parse cannot parse', () => {
+    expect(resolveTimeISO('not-a-valid-date', NOW)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// monitors — effectiveLimit with numeric limit param
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — monitors effectiveLimit', () => {
+  it('uses the provided numeric limit clamped to [1, 1000] in the page_size param', async () => {
+    const fetchMock = mockFetch('[]');
+
+    await runDatadogQuery({ queryType: 'monitors', limit: 50 }, BASE_CONFIG);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(decodeURIComponent(url)).toContain('page_size=50');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// catch block — non-Error thrown
+// ---------------------------------------------------------------------------
+
+describe('runDatadogQuery — non-Error thrown', () => {
+  it('returns a failed message using String(err) when a non-Error value is thrown', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('network string error'));
+
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      BASE_CONFIG,
+    );
+    expect(result).toMatch(/Datadog query failed/i);
+    expect(result).toContain('network string error');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unparseable time expressions
 // ---------------------------------------------------------------------------
 
