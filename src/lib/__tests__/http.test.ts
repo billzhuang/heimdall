@@ -1,9 +1,57 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { fetchWithTimeout, readErrorDetail, formatQueryError } from '../http.ts';
+import { withTimeout, fetchWithTimeout, readErrorDetail, formatQueryError } from '../http.ts';
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+// ---------------------------------------------------------------------------
+// withTimeout
+// ---------------------------------------------------------------------------
+
+describe('withTimeout', () => {
+  it('calls the operation with an AbortSignal and returns its result', async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const result = await withTimeout(5_000, async (signal) => {
+      receivedSignal = signal;
+      return 'done';
+    });
+    expect(result).toBe('done');
+    expect(receivedSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('aborts the signal after timeoutMs', async () => {
+    vi.useFakeTimers();
+    try {
+      const abortErr = makeAbortError();
+      const promise = withTimeout(
+        3_000,
+        (signal) => new Promise<never>((_, reject) => {
+          signal.addEventListener('abort', () => reject(abortErr));
+        }),
+      );
+      const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not abort before timeoutMs elapses', async () => {
+    vi.useFakeTimers();
+    try {
+      const promise = withTimeout(
+        5_000,
+        () => new Promise<string>((resolve) => setTimeout(() => resolve('ok'), 1_000)),
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(promise).resolves.toBe('ok');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
