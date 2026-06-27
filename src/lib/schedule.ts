@@ -162,21 +162,19 @@ export function validateCronExpression(cron: string): string | undefined {
  *
  * @throws When no fire time is found within one year.
  */
+function validFieldValues(length: number, start: number, field: string, lowerBound: number): Set<number> {
+  return new Set(
+    Array.from({ length }, (_, i) => i + start).filter((v) => matchesCronField(v, field, lowerBound)),
+  );
+}
+
 export function nextFireTime(cronExpr: string, from: Date): Date {
   const [minuteField, hourField, domField, monthField, dowField] = cronExpr.trim().split(/\s+/);
 
-  const validMinutes = new Set(
-    Array.from({ length: 60 }, (_, i) => i).filter((m) => matchesCronField(m, minuteField, 0)),
-  );
-  const validHours = new Set(
-    Array.from({ length: 24 }, (_, i) => i).filter((h) => matchesCronField(h, hourField, 0)),
-  );
-  const validDoms = new Set(
-    Array.from({ length: 31 }, (_, i) => i + 1).filter((d) => matchesCronField(d, domField, 1)),
-  );
-  const validMonths = new Set(
-    Array.from({ length: 12 }, (_, i) => i + 1).filter((m) => matchesCronField(m, monthField, 1)),
-  );
+  const validMinutes = validFieldValues(60, 0, minuteField, 0);
+  const validHours = validFieldValues(24, 0, hourField, 0);
+  const validDoms = validFieldValues(31, 1, domField, 1);
+  const validMonths = validFieldValues(12, 1, monthField, 1);
   // dow=7 is a Sunday alias; map it to 0 before storing in the Set
   const validDows = new Set(
     Array.from({ length: 7 }, (_, i) => i).filter(
