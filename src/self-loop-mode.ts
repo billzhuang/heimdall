@@ -47,6 +47,14 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Write an error to stderr and exit(1) when n is not a positive integer. */
+export function requirePositiveInt(n: number, msg: string): void {
+  if (isNaN(n) || n < 1) {
+    process.stderr.write(`Error: ${msg}\n`);
+    process.exit(1);
+  }
+}
+
 const LEARNING_LOG_NAME = 'learning-log.jsonl';
 const TASK_HISTORY_NAME = 'task-history.jsonl';
 const DEFAULT_MAX_ITERATIONS = 3;
@@ -81,16 +89,10 @@ async function main(): Promise<void> {
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === '--max-iterations' || args[i] === '-n') && args[i + 1]) {
       maxIterations = parseInt(args[++i], 10);
-      if (isNaN(maxIterations) || maxIterations < 1) {
-        process.stderr.write('Error: --max-iterations must be a positive integer\n');
-        process.exit(1);
-      }
+      requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
     } else if (args[i].startsWith('--max-iterations=')) {
       maxIterations = parseInt(args[i].slice('--max-iterations='.length), 10);
-      if (isNaN(maxIterations) || maxIterations < 1) {
-        process.stderr.write('Error: --max-iterations must be a positive integer\n');
-        process.exit(1);
-      }
+      requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
     } else if (args[i] === '--dry-run') {
       dryRun = true;
     } else if ((args[i] === '--backend' || args[i] === '-b') && args[i + 1]) {
@@ -105,17 +107,11 @@ async function main(): Promise<void> {
       cliLogPath = args[++i];
     } else if (args[i] === '--timeout' && args[i + 1]) {
       const secs = parseInt(args[++i], 10);
-      if (isNaN(secs) || secs < 1) {
-        process.stderr.write('Error: --timeout must be a positive integer (seconds)\n');
-        process.exit(1);
-      }
+      requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
       reflectionTimeoutMs = secs * 1000;
     } else if (args[i].startsWith('--timeout=')) {
       const secs = parseInt(args[i].slice('--timeout='.length), 10);
-      if (isNaN(secs) || secs < 1) {
-        process.stderr.write('Error: --timeout must be a positive integer (seconds)\n');
-        process.exit(1);
-      }
+      requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
       reflectionTimeoutMs = secs * 1000;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(`Usage: heimdall self-loop [options]
@@ -372,8 +368,10 @@ Examples:
   process.stdout.write('Learning entries saved to: ' + logPath + '\n');
 }
 
-main().catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-self-loop] Fatal error: ${detail}\n`);
-  process.exit(1);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err: unknown) => {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    process.stderr.write(`[heimdall-self-loop] Fatal error: ${detail}\n`);
+    process.exit(1);
+  });
+}
