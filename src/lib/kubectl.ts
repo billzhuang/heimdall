@@ -183,6 +183,15 @@ async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<str
   return null;
 }
 
+function applyOutputRedaction(
+  text: string,
+  argv: string[],
+  redactSecrets: boolean,
+  rules: CompiledRedactionRule[],
+): string {
+  return applyRedaction(redactSecrets ? redactSecretValues(text, argv) : text, rules);
+}
+
 /** Extract a human-readable detail string from an unknown execFile error. */
 function extractExecError(err: unknown): string {
   if (typeof err === 'object' && err !== null) {
@@ -304,7 +313,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       // Apply redaction on cache reads too: cache entries written before
       // redaction was enabled (or while it was temporarily disabled) may
       // contain raw secret values.
-      const safeOutput = applyRedaction(redactSecrets ? redactSecretValues(cached, argv) : cached, regexRedactionRules);
+      const safeOutput = applyOutputRedaction(cached, argv, redactSecrets, regexRedactionRules);
       await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
       recordCacheHit();
       return truncate(safeOutput);
@@ -334,7 +343,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     });
 
     const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
-    const output = applyRedaction(redactSecrets ? redactSecretValues(rawOutput, argv) : rawOutput, regexRedactionRules);
+    const output = applyOutputRedaction(rawOutput, argv, redactSecrets, regexRedactionRules);
 
     if (cacheFile && stdout) {
       try {
@@ -350,7 +359,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return truncate(output);
   } catch (error) {
     const rawDetail = extractExecError(error).trim();
-    const detail = applyRedaction(redactSecrets ? redactSecretValues(rawDetail, argv) : rawDetail, regexRedactionRules);
+    const detail = applyOutputRedaction(rawDetail, argv, redactSecrets, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
   }
