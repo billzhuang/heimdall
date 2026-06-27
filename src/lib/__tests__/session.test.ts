@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -195,5 +195,42 @@ describe('listSessions', () => {
     process.env['HEIMDALL_SESSION_DIR'] = join(tmpDir, 'nonexistent');
     expect(listSessions()).toEqual([]);
     process.env['HEIMDALL_SESSION_DIR'] = tmpDir; // restore
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Non-ENOENT error rethrow paths (use real fs conditions to avoid ESM mock limits)
+// ---------------------------------------------------------------------------
+
+describe('loadSession — non-ENOENT read failure', () => {
+  it('rethrows EISDIR when the session file path is a directory', () => {
+    const s = createSession({});
+    // Replace the session file with a directory so readFileSync throws EISDIR.
+    const [file] = readdirSync(tmpDir).filter((f) => f.endsWith('.json'));
+    rmSync(join(tmpDir, file!));
+    mkdirSync(join(tmpDir, file!));
+    expect(() => loadSession(s.id)).toThrow();
+  });
+});
+
+describe('deleteSession — non-ENOENT unlink failure', () => {
+  it('rethrows EISDIR when the session file path is a directory', () => {
+    const s = createSession({});
+    // Replace the session file with a directory so unlinkSync throws EISDIR.
+    const [file] = readdirSync(tmpDir).filter((f) => f.endsWith('.json'));
+    rmSync(join(tmpDir, file!));
+    mkdirSync(join(tmpDir, file!));
+    expect(() => deleteSession(s.id)).toThrow();
+  });
+});
+
+describe('listSessions — non-ENOENT readdirSync failure', () => {
+  it('rethrows ENOTDIR when the session directory path is a file', () => {
+    // Point HEIMDALL_SESSION_DIR at a regular file so readdirSync throws ENOTDIR.
+    const fileAsDir = join(tmpDir, 'not-a-directory');
+    writeFileSync(fileAsDir, 'content');
+    process.env['HEIMDALL_SESSION_DIR'] = fileAsDir;
+    expect(() => listSessions()).toThrow();
+    process.env['HEIMDALL_SESSION_DIR'] = tmpDir;
   });
 });

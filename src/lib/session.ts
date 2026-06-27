@@ -14,7 +14,7 @@
  *   deleteSession(id) – remove the handle file
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -39,7 +39,7 @@ export function sessionDir(): string {
 }
 
 function ensureDir(dir: string): void {
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true });
 }
 
 function sessionPath(dir: string, id: string): string {
@@ -91,10 +91,15 @@ export function createSession(opts: {
 export function loadSession(id: string): SessionRecord {
   const dir = sessionDir();
   const file = sessionPath(dir, id);
-  if (!existsSync(file)) {
-    throw new Error(`Session not found: ${id}`);
+  let raw: string;
+  try {
+    raw = readFileSync(file, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Session not found: ${id}`);
+    }
+    throw err;
   }
-  const raw = readFileSync(file, 'utf-8');
   return parseSessionRecord(raw, id);
 }
 
@@ -108,16 +113,26 @@ export function updateSession(record: SessionRecord): void {
 export function deleteSession(id: string): void {
   const dir = sessionDir();
   const file = sessionPath(dir, id);
-  if (!existsSync(file)) {
-    throw new Error(`Session not found: ${id}`);
+  try {
+    unlinkSync(file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Session not found: ${id}`);
+    }
+    throw err;
   }
-  unlinkSync(file);
 }
 
 export function listSessions(): SessionRecord[] {
   const dir = sessionDir();
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+  return entries
     .filter((f) => f.endsWith('.json'))
     .flatMap((f) => {
       try {
