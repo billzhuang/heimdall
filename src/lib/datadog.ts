@@ -11,8 +11,8 @@
  * model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { parseDurationMs } from './duration.ts';
 import { makeTruncate } from './output-truncation.ts';
+import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
 
 export interface DatadogConfig {
   apiKey: string;
@@ -69,64 +69,6 @@ function effectiveLimit(limit: number | null | undefined): number {
   return DEFAULT_LIMIT;
 }
 
-/**
- * Resolve a time expression to Unix seconds (integer) for Datadog APIs that
- * use epoch seconds (metrics, events).
- *
- * - Relative (starting with '-'): subtract parsed duration from nowMs.
- * - Bare integer ≤ 13 chars: treated as Unix seconds (≤ 10 digits) or
- *   Unix milliseconds (11–13 digits), both normalised to seconds.
- * - ISO8601 / RFC3339: parsed by Date and converted to seconds.
- * - Returns null when the expression cannot be resolved.
- */
-export function resolveTimeSeconds(expr: string, nowMs: number): number | null {
-  if (expr.startsWith('-')) {
-    const durationMs = parseDurationMs(expr.slice(1));
-    if (durationMs !== null) {
-      const ts = nowMs - durationMs;
-      if (!Number.isFinite(ts)) return null;
-      return Math.floor(ts / 1_000);
-    }
-    return null;
-  }
-  if (/^\d{1,13}$/.test(expr)) {
-    const n = Number(expr);
-    // ≤ 10 digits: Unix seconds; 11–13 digits: Unix milliseconds
-    return expr.length <= 10 ? n : Math.floor(n / 1_000);
-  }
-  const ts = Date.parse(expr);
-  if (!Number.isNaN(ts)) return Math.floor(ts / 1_000);
-  return null;
-}
-
-/**
- * Resolve a time expression to an ISO8601 string for Datadog APIs that accept
- * ISO8601 (logs API).
- *
- * - Relative (starting with '-'): resolve relative to nowMs and return ISO8601.
- * - Bare integer (epoch seconds or ms): convert to ISO8601.
- * - ISO8601 / RFC3339: pass through unchanged.
- * - Returns null when unresolvable.
- */
-export function resolveTimeISO(expr: string, nowMs: number): string | null {
-  if (expr.startsWith('-')) {
-    const durationMs = parseDurationMs(expr.slice(1));
-    if (durationMs !== null) {
-      const ts = nowMs - durationMs;
-      if (!Number.isFinite(ts)) return null;
-      return new Date(ts).toISOString();
-    }
-    return null;
-  }
-  if (/^\d{1,13}$/.test(expr)) {
-    const n = Number(expr);
-    const ms = expr.length <= 10 ? n * 1_000 : n;
-    return new Date(ms).toISOString();
-  }
-  const ts = Date.parse(expr);
-  if (!Number.isNaN(ts)) return expr; // already valid ISO8601
-  return null;
-}
 
 function buildHeaders(config: DatadogConfig): Record<string, string> {
   return {

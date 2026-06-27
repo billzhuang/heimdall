@@ -6,8 +6,8 @@
  * never from model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { parseDurationMs } from './duration.ts';
 import { makeTruncate } from './output-truncation.ts';
+import { resolveTimePassthrough } from './time-resolution.ts';
 
 export interface LokiConfig {
   url: string;
@@ -24,32 +24,9 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 
 /**
  * Resolve a time expression to an ISO8601 string for the Loki API.
- *
- * - Relative (starting with '-'): subtract parsed duration from `nowMs`.
- *   Returns `expr` unchanged if the resulting timestamp is out of Date's range.
- * - Unix second epoch (all digits, ≤13 chars): convert to ISO8601 — Loki
- *   interprets bare integers as nanoseconds, so passing seconds unchanged
- *   would query around 1970 instead of the intended time.
- * - Everything else (ISO8601, RFC3339): passed through unchanged.
+ * See `resolveTimePassthrough` in time-resolution.ts for full semantics.
  */
-export function resolveTime(expr: string, nowMs: number): string {
-  if (expr.startsWith('-')) {
-    const durationMs = parseDurationMs(expr.slice(1));
-    if (durationMs !== null) {
-      const ts = nowMs - durationMs;
-      if (!Number.isFinite(ts)) return expr;
-      const date = new Date(ts);
-      if (Number.isNaN(date.getTime())) return expr;
-      return date.toISOString();
-    }
-  }
-  // Unix second epoch: all-digit string up to 13 chars (seconds, not ms/ns).
-  // Convert to ISO8601 so Loki receives RFC3339, which it always interprets correctly.
-  if (/^\d{1,13}$/.test(expr)) {
-    return new Date(Number(expr) * 1000).toISOString();
-  }
-  return expr;
-}
+export const resolveTime = resolveTimePassthrough;
 
 /**
  * Check that a LogQL query contains an exact namespace selector matching the

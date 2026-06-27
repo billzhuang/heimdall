@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { runDatadogQuery, resolveTimeSeconds, resolveTimeISO } from '../datadog.ts';
+import { runDatadogQuery } from '../datadog.ts';
+import { resolveTimeSeconds, resolveTimeISO } from '../time-resolution.ts';
 import type { DatadogConfig } from '../datadog.ts';
 
 const BASE_CONFIG: DatadogConfig = {
