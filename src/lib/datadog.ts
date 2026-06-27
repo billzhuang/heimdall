@@ -62,6 +62,13 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 1_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific query');
 
+function effectiveLimit(limit: number | null | undefined): number {
+  if (typeof limit === 'number' && Number.isFinite(limit)) {
+    return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIMIT);
+  }
+  return DEFAULT_LIMIT;
+}
+
 /**
  * Resolve a time expression to Unix seconds (integer) for Datadog APIs that
  * use epoch seconds (metrics, events).
@@ -180,10 +187,7 @@ async function queryLogs(
   if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
   if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
 
-  const effectiveLimit =
-    typeof params.limit === 'number' && Number.isFinite(params.limit)
-      ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+  const limit = effectiveLimit(params.limit);
 
   const filterObj: Record<string, unknown> = { from, to };
   if (params.query?.trim()) filterObj['query'] = params.query.trim();
@@ -194,7 +198,7 @@ async function queryLogs(
   const body = JSON.stringify({
     filter: filterObj,
     sort: 'timestamp',
-    page: { limit: effectiveLimit },
+    page: { limit },
   });
 
   const url = new URL(`${baseUrl(config)}/api/v2/logs/events/search`);
@@ -226,15 +230,12 @@ async function queryEvents(
   if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
   if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
 
-  const effectiveLimit =
-    typeof params.limit === 'number' && Number.isFinite(params.limit)
-      ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+  const limit = effectiveLimit(params.limit);
 
   const url = new URL(`${baseUrl(config)}/api/v2/events`);
   url.searchParams.set('filter[from]', from);
   url.searchParams.set('filter[to]', to);
-  url.searchParams.set('page[limit]', String(effectiveLimit));
+  url.searchParams.set('page[limit]', String(limit));
   url.searchParams.set('sort', '-timestamp');
   if (params.query?.trim()) url.searchParams.set('filter[query]', params.query.trim());
   if (params.tags?.trim()) url.searchParams.set('filter[tags]', params.tags.trim());
@@ -258,15 +259,12 @@ async function queryMonitors(
   config: DatadogConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  const effectiveLimit =
-    typeof params.limit === 'number' && Number.isFinite(params.limit)
-      ? Math.min(Math.max(Math.trunc(params.limit), 1), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+  const limit = effectiveLimit(params.limit);
 
   // group_states=all enriches the response with per-group state data.
   // It is NOT a filter — status filtering is applied client-side below.
   const url = new URL(`${baseUrl(config)}/api/v1/monitor`);
-  url.searchParams.set('page_size', String(effectiveLimit));
+  url.searchParams.set('page_size', String(limit));
   url.searchParams.set('page', '0');
   url.searchParams.set('group_states', 'all');
   if (params.query?.trim()) url.searchParams.set('name', params.query.trim());
