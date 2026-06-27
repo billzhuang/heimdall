@@ -11,7 +11,8 @@
  * - File path: configurable via `learning.baselineFile` in heimdall.config.yaml,
  *   defaulting to `scenarios/baselines.jsonl` alongside task-history.jsonl.
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { readJsonlFile } from './jsonl.ts';
 import { dirname, isAbsolute, resolve } from 'node:path';
 
 export interface BaselineEntry {
@@ -44,25 +45,8 @@ export function buildBaselineKey(
 }
 
 /** Read all baseline entries from a JSONL file. Returns [] when the file does not exist. */
-export async function readBaselines(filePath: string): Promise<BaselineEntry[]> {
-  let raw: string;
-  try {
-    raw = await readFile(filePath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw err;
-  }
-  const entries: BaselineEntry[] = [];
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      entries.push(JSON.parse(trimmed) as BaselineEntry);
-    } catch {
-      // Skip malformed lines.
-    }
-  }
-  return entries;
+export function readBaselines(filePath: string): Promise<BaselineEntry[]> {
+  return readJsonlFile<BaselineEntry>(filePath);
 }
 
 /**
