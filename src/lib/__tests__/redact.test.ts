@@ -111,6 +111,11 @@ describe('estimateBase64Bytes', () => {
     );
   });
 
+  it('handles base64 strings with internal newlines and trailing whitespace (YAML block scalars)', () => {
+    // "test" splits as "dGVz\ndA==\n" when parsed from a YAML block scalar
+    expect(estimateBase64Bytes('dGVz\ndA==\n')).toBe(4);
+  });
+
   it('property: stripping padding never increases the estimate', () => {
     fc.assert(
       fc.property(

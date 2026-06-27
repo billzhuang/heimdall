@@ -46,7 +46,7 @@ const FLAGS_CONSUMING_NEXT = OPTIONS_WITH_VALUE;
  * Strips trailing padding characters before computing the estimate.
  */
 export function estimateBase64Bytes(encoded: string): number {
-  return Math.floor(encoded.replace(/=+$/, '').length * 3 / 4);
+  return Math.floor(encoded.replace(/\s/g, '').replace(/=+$/, '').length * 3 / 4);
 }
 
 /**
