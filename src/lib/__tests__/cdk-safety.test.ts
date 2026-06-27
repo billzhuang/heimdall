@@ -86,6 +86,17 @@ describe('parseCdkCommand', () => {
     expect(result.subcommand).toBe('diff');
     expect(result.args).toEqual(['Stack1', 'Stack2', '--exclusively']);
   });
+
+  it('treats a trailing value-taking flag as having no subcommand', () => {
+    const resultApp = parseCdkCommand('cdk --app');
+    expect(resultApp.isCdk).toBe(true);
+    expect(resultApp.subcommand).toBeNull();
+    expect(resultApp.args).toEqual([]);
+    const resultC = parseCdkCommand('cdk -c');
+    expect(resultC.isCdk).toBe(true);
+    expect(resultC.subcommand).toBeNull();
+    expect(validateCdkCommand('cdk --app')?.allowed).toBe(true);
+  });
 });
 
 describe('validateCdkCommand', () => {
