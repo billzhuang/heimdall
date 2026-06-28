@@ -613,6 +613,26 @@ describe('runDatadogQuery — redaction', () => {
     expect(result).not.toContain('supersecret-xyz999');
     expect(result).toContain('[REDACTED:test-token]');
   });
+
+  it('surfaces a timeout message when response.text() throws AbortError on error path', async () => {
+    const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 403,
+        statusText: 'Forbidden',
+        text: () => Promise.reject(abortErr),
+      }),
+    );
+
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      { ...BASE_CONFIG, timeoutMs: 5_000 },
+    );
+    expect(result).toMatch(/timed out/i);
+    expect(result).not.toContain('Forbidden');
+  });
 });
 
 // ---------------------------------------------------------------------------
