@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   createSession,
   deleteSession,
+  isValidSessionRecord,
   listSessions,
   loadSession,
   sessionDir,
@@ -221,6 +222,70 @@ describe('deleteSession — non-ENOENT unlink failure', () => {
     rmSync(join(tmpDir, file!));
     mkdirSync(join(tmpDir, file!));
     expect(() => deleteSession(s.id)).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidSessionRecord — type guard
+// ---------------------------------------------------------------------------
+
+describe('isValidSessionRecord', () => {
+  const valid = {
+    id: 'abc',
+    serverUrl: 'http://localhost:3583',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    lastPromptAt: null,
+  };
+
+  it('accepts a minimal valid record (no name, null lastPromptAt)', () => {
+    expect(isValidSessionRecord(valid)).toBe(true);
+  });
+
+  it('accepts a record with an optional string name', () => {
+    expect(isValidSessionRecord({ ...valid, name: 'incident-42' })).toBe(true);
+  });
+
+  it('accepts a record with a string lastPromptAt', () => {
+    expect(isValidSessionRecord({ ...valid, lastPromptAt: '2026-01-02T00:00:00.000Z' })).toBe(true);
+  });
+
+  it('rejects null', () => {
+    expect(isValidSessionRecord(null)).toBe(false);
+  });
+
+  it('rejects a primitive', () => {
+    expect(isValidSessionRecord('string')).toBe(false);
+    expect(isValidSessionRecord(42)).toBe(false);
+  });
+
+  it('rejects an empty object', () => {
+    expect(isValidSessionRecord({})).toBe(false);
+  });
+
+  it('rejects when id is missing', () => {
+    const { id: _id, ...rest } = valid;
+    expect(isValidSessionRecord(rest)).toBe(false);
+  });
+
+  it('rejects when id is not a string', () => {
+    expect(isValidSessionRecord({ ...valid, id: 99 })).toBe(false);
+  });
+
+  it('rejects when serverUrl is missing', () => {
+    const { serverUrl: _u, ...rest } = valid;
+    expect(isValidSessionRecord(rest)).toBe(false);
+  });
+
+  it('rejects when createdAt is not a string', () => {
+    expect(isValidSessionRecord({ ...valid, createdAt: 0 })).toBe(false);
+  });
+
+  it('rejects when lastPromptAt is a number (not string or null)', () => {
+    expect(isValidSessionRecord({ ...valid, lastPromptAt: 0 })).toBe(false);
+  });
+
+  it('rejects when name is a non-string (e.g. a number)', () => {
+    expect(isValidSessionRecord({ ...valid, name: 42 })).toBe(false);
   });
 });
 

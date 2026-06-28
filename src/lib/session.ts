@@ -29,6 +29,19 @@ export interface SessionRecord {
   lastPromptAt: string | null;
 }
 
+/** Returns true when `v` is a structurally valid {@link SessionRecord}. */
+export function isValidSessionRecord(v: unknown): v is SessionRecord {
+  if (!v || typeof v !== 'object') return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r['id'] === 'string' &&
+    typeof r['createdAt'] === 'string' &&
+    typeof r['serverUrl'] === 'string' &&
+    (r['lastPromptAt'] === null || typeof r['lastPromptAt'] === 'string') &&
+    (r['name'] === undefined || typeof r['name'] === 'string')
+  );
+}
+
 /** Returns the directory where session handle files are stored. */
 export function sessionDir(): string {
   // Use || so an empty-string env var falls back to the default.
@@ -55,19 +68,10 @@ function parseSessionRecord(raw: string, context: string): SessionRecord {
   } catch (err) {
     throw new Error(`Failed to parse session ${context}: ${(err as Error).message}`);
   }
-  const rec = parsed as Record<string, unknown>;
-  if (
-    !parsed ||
-    typeof parsed !== 'object' ||
-    typeof rec['id'] !== 'string' ||
-    typeof rec['createdAt'] !== 'string' ||
-    typeof rec['serverUrl'] !== 'string' ||
-    !(rec['lastPromptAt'] === null || typeof rec['lastPromptAt'] === 'string') ||
-    (rec['name'] !== undefined && typeof rec['name'] !== 'string')
-  ) {
+  if (!isValidSessionRecord(parsed)) {
     throw new Error(`Invalid session record structure for ${context}`);
   }
-  return parsed as SessionRecord;
+  return parsed;
 }
 
 export function createSession(opts: {
