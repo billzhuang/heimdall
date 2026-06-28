@@ -388,6 +388,44 @@ describe('inferSeverity', () => {
     expect(inferSeverity('CRITICAL issue detected.')).toBe('critical');
     expect(inferSeverity('WARNING: degraded performance.')).toBe('warning');
   });
+
+  it('returns "info" for "no outage detected" (negation suppresses critical false positive)', () => {
+    expect(inferSeverity('All services healthy. No outage detected in the last 24h.')).toBe('info');
+  });
+
+  it('returns "info" for "no unavailable pods" (negation suppresses critical false positive)', () => {
+    expect(inferSeverity('Deployment stable. No unavailable pods found.')).toBe('info');
+  });
+
+  it('returns "info" for "no critical issues" (negation suppresses critical false positive)', () => {
+    expect(inferSeverity('Health check passed. No critical issues found.')).toBe('info');
+  });
+
+  it('returns "info" for "without outage" (without-negation suppresses critical false positive)', () => {
+    expect(inferSeverity('Maintenance completed without outage.')).toBe('info');
+  });
+
+  it('still returns "critical" for a real outage (not negated)', () => {
+    expect(inferSeverity('Active outage affecting 3 services.')).toBe('critical');
+  });
+
+  it('still returns "critical" for unavailable (not negated)', () => {
+    expect(inferSeverity('The api service has been unavailable for 30 minutes.')).toBe('critical');
+  });
+
+  it('returns "critical" when a real critical signal co-exists with a negated one', () => {
+    // "no outage in region-2" is negated, but "unavailable" is not
+    expect(inferSeverity('No outage in region-2, but the api is unavailable in region-1.')).toBe('critical');
+  });
+
+  it('returns "critical" when "critical" appears as a standalone positive signal', () => {
+    // "no outage" is negated but "critical" is not — the critical keyword should still fire
+    expect(inferSeverity('No outage detected, but this is a critical memory pressure event.')).toBe('critical');
+  });
+  it('returns "critical" when negated term and critical keyword are on separate lines', () => {
+    // "no" on one line, "critical" starting the next line — cross-line suppression must NOT fire
+    expect(inferSeverity('Deployment healthy; no\ncritical replicas are missing.')).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------
