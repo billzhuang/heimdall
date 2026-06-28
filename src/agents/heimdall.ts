@@ -37,6 +37,7 @@ import { loadRunbooks } from '../lib/runbooks.ts';
 import { selectDiverseEntries, buildRagContext } from '../lib/rag.ts';
 import type { TaskHistoryEntry } from '../lib/task-history.ts';
 import { queryTopBaselines, buildBaselineContext, resolveBaselineFilePath, type BaselineEntry } from '../lib/baseline.ts';
+import { getMessage } from '../lib/error-utils.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled ? compileRules(config.redaction.rules ?? []) : [];
@@ -99,7 +100,7 @@ function loadBaselinesSync(filePath: string): BaselineEntry[] {
     });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      process.stderr.write(`[heimdall] Warning: could not read baseline file: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(`[heimdall] Warning: could not read baseline file: ${getMessage(err)}\n`);
     }
     return [];
   }

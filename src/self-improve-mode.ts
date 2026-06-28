@@ -31,6 +31,7 @@ import {
 } from './lib/self-improve.ts';
 import { readTaskHistory } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
+import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -138,7 +139,7 @@ Examples:
     scenarios = await loadScenarios(scenariosDir, scenarioFilter);
   } catch (err) {
     process.stderr.write(
-      `Error loading scenarios: ${err instanceof Error ? err.message : String(err)}\n`,
+      `Error loading scenarios: ${getMessage(err)}\n`,
     );
     process.exit(1);
   }
@@ -233,7 +234,6 @@ Examples:
 }
 
 main().catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-self-improve] Fatal error: ${detail}\n`);
+  process.stderr.write(`[heimdall-self-improve] Fatal error: ${getStackOrMessage(err)}\n`);
   process.exit(1);
 });

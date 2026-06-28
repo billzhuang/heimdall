@@ -17,6 +17,7 @@ import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import { getExecErrorDetail } from './error-utils.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -88,10 +89,9 @@ export async function runTrivy(
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
-    const err = error as { stderr?: string; stdout?: string; message?: string };
     // Trivy exits non-zero when vulnerabilities are found (exit code 1) — that
     // is a valid result, not a tool failure. Capture stdout/stderr as output.
-    const rawDetail = (err.stdout || err.stderr || err.message || String(error)).trim();
+    const rawDetail = getExecErrorDetail(error, true);
     const detail = applyRedaction(rawDetail, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     // If there is actual scan output in stdout, return it even if the exit code was non-zero.

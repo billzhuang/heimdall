@@ -10,6 +10,7 @@
  */
 import type { OneShotFinding } from './format-output.ts';
 import { withTimeout } from './http.ts';
+import { getMessage } from './error-utils.ts';
 
 export interface SlackConfig {
   webhookUrl: string;
@@ -123,7 +124,7 @@ export async function sendSlackNotification(
       );
     } else {
       process.stderr.write(
-        `[heimdall] Slack notification error: ${err instanceof Error ? err.message : String(err)}\n`,
+        `[heimdall] Slack notification error: ${getMessage(err)}\n`,
       );
     }
   }

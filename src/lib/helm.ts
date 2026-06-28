@@ -13,6 +13,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { makeTruncate } from './output-truncation.ts';
+import { getExecErrorDetail } from './error-utils.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -89,8 +90,7 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
     const output = stdout.trim() || stderr.trim() || '(command produced no output)';
     return truncate(output);
   } catch (error) {
-    const err = error as { stderr?: string; stdout?: string; message?: string };
-    const detail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const detail = getExecErrorDetail(error);
     return truncate(`helm exited with an error:\n${detail}`);
   }
 }

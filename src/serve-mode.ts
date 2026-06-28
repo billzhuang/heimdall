@@ -34,6 +34,7 @@ import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { resolveModel } from './lib/model.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
+import { getMessage } from './lib/error-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -318,8 +319,7 @@ export function createServeApp(
       const finding = JSON.parse(trimmed) as OneShotFinding;
       return c.json(finding);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `Agent error: ${message}` }, 500);
+      return c.json({ error: `Agent error: ${getMessage(err)}` }, 500);
     }
   });
 
