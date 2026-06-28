@@ -252,7 +252,10 @@ export function extractKubectlCommands(text: string): string[] {
   return commands;
 }
 
-const CRITICAL_SIGNAL_RE = /\b(?:critical|outage|unavailable)\b/;
+// Negative lookbehind excludes "no <critical-term>" and "without <critical-term>" so
+// healthy summaries like "no outage detected" or "no unavailable replicas" don't
+// false-positive as critical. Uses variable-length lookbehind (ES2018+, Node 22+).
+const CRITICAL_SIGNAL_RE = /(?<!\b(?:no|without)\s+)\b(?:critical|outage|unavailable)\b/;
 
 /**
  * Matches healthy-summary phrases that should suppress a warning inference.
