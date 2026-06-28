@@ -206,7 +206,13 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
 - slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.
-- certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${optionalLines(awsSubagentLines)}${optionalLines(finopsSubagentLines)}${optionalLines(datadogSubagentLines)}${optionalLines(newRelicSubagentLines)}${optionalLines(goldenSignalsSubagentLines)}${optionalLines(cdkSubagentLines)}`);
+- certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${
+  optionalLines(awsSubagentLines)}${
+  optionalLines(finopsSubagentLines)}${
+  optionalLines(datadogSubagentLines)}${
+  optionalLines(newRelicSubagentLines)}${
+  optionalLines(goldenSignalsSubagentLines)}${
+  optionalLines(cdkSubagentLines)}`);
 
   sections.push(RESPONSE_FORMAT);
 
