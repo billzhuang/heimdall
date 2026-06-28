@@ -13,6 +13,8 @@ import {
   upsertBaseline,
   queryTopBaselines,
   buildBaselineContext,
+  formatBaselineDate,
+  formatBaselineEntry,
   parseTriageFindings,
   inferDiagnosisSeverity,
   truncateSummary,
@@ -251,6 +253,89 @@ describe('queryTopBaselines', () => {
     const entries = Array.from({ length: 20 }, (_, i) => makeEntry(`p${i}`, i));
     const top = queryTopBaselines(entries, 5);
     expect(top).toHaveLength(5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatBaselineDate
+// ---------------------------------------------------------------------------
+describe('formatBaselineDate', () => {
+  it('returns the first 10 chars of an ISO date string', () => {
+    expect(formatBaselineDate('2026-06-01T00:00:00.000Z')).toBe('2026-06-01');
+  });
+
+  it('returns a plain date string unchanged (already 10 chars)', () => {
+    expect(formatBaselineDate('2026-06-01')).toBe('2026-06-01');
+  });
+
+  it('returns "unknown" for a number', () => {
+    expect(formatBaselineDate(12345)).toBe('unknown');
+  });
+
+  it('returns "unknown" for null', () => {
+    expect(formatBaselineDate(null)).toBe('unknown');
+  });
+
+  it('returns "unknown" for undefined', () => {
+    expect(formatBaselineDate(undefined)).toBe('unknown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatBaselineEntry
+// ---------------------------------------------------------------------------
+describe('formatBaselineEntry', () => {
+  const entry: BaselineEntry = {
+    key: 'prod/ns/Pod/api',
+    cluster: 'prod',
+    namespace: 'ns',
+    kind: 'Pod',
+    name: 'api',
+    firstSeen: '2026-01-01T00:00:00.000Z',
+    lastSeen: '2026-06-01T00:00:00.000Z',
+    occurrences: 7,
+    summary: 'CrashLoopBackOff',
+    dismissed: false,
+  };
+
+  it('includes kind, name, namespace, and cluster in the heading', () => {
+    const result = formatBaselineEntry(entry);
+    expect(result).toContain('Pod/api');
+    expect(result).toContain('ns');
+    expect(result).toContain('prod');
+  });
+
+  it('formats firstSeen and lastSeen as date-only strings', () => {
+    const result = formatBaselineEntry(entry);
+    expect(result).toContain('First seen**: 2026-01-01');
+    expect(result).toContain('Last seen**: 2026-06-01');
+  });
+
+  it('includes occurrence count', () => {
+    expect(formatBaselineEntry(entry)).toContain('7');
+  });
+
+  it('includes the summary inside a fenced code block', () => {
+    const result = formatBaselineEntry(entry);
+    expect(result).toContain('```\nCrashLoopBackOff\n```');
+  });
+
+  it('replaces backticks in summary with single quotes', () => {
+    const tickEntry = { ...entry, summary: 'failed to pull `image:latest`' };
+    const result = formatBaselineEntry(tickEntry);
+    expect(result).toContain("failed to pull 'image:latest'");
+    expect(result).not.toMatch(/```\n.*`.*\n```/);
+  });
+
+  it('falls back to "unknown" for non-string date fields', () => {
+    const badDates = {
+      ...entry,
+      firstSeen: 99 as unknown as string,
+      lastSeen: null as unknown as string,
+    };
+    const result = formatBaselineEntry(badDates);
+    expect(result).toMatch(/First seen\*\*: unknown/);
+    expect(result).toMatch(/Last seen\*\*: unknown/);
   });
 });
 
