@@ -88,19 +88,14 @@ export function recordTokens(inputTokens: number, outputTokens: number): void {
 
 /** Return a snapshot of current telemetry state (does not flush). */
 export function getTelemetrySnapshot(): TelemetrySnapshot {
-  const sorted = [..._latenciesMs].sort((a, b) => a - b);
-  const pct = (p: number) => {
-    if (sorted.length === 0) return 0;
-    return sorted[Math.max(0, Math.ceil((p / 100) * sorted.length) - 1)];
-  };
   return {
     totalInputTokens: _totalInputTokens,
     totalOutputTokens: _totalOutputTokens,
     cacheHits: _cacheHits,
     cacheMisses: _cacheMisses,
     toolCallCount: _latenciesMs.length,
-    p50LatencyMs: pct(50),
-    p99LatencyMs: pct(99),
+    p50LatencyMs: percentile(_latenciesMs, 50),
+    p99LatencyMs: percentile(_latenciesMs, 99),
   };
 }
 
