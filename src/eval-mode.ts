@@ -21,6 +21,7 @@ import {
   type EvalResult,
 } from './lib/eval-runner.ts';
 import { resolveModel } from './lib/model.ts';
+import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -76,7 +77,7 @@ Examples:
   try {
     resolvedModel = resolveModel(modelFlag);
   } catch (err) {
-    process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`Error: ${getMessage(err)}\n`);
     process.exit(1);
   }
   process.env.HEIMDALL_MODEL = resolvedModel;
@@ -85,7 +86,7 @@ Examples:
   try {
     scenarios = await loadScenarios(scenariosDir, scenarioFilter);
   } catch (err) {
-    process.stderr.write(`Error loading scenarios: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
     process.exit(1);
   }
 
@@ -124,7 +125,6 @@ Examples:
 }
 
 main().catch((err: unknown) => {
-  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`[heimdall-eval] Fatal error: ${detail}\n`);
+  process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
   process.exit(1);
 });

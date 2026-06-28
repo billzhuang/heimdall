@@ -42,6 +42,7 @@ import {
   type CooldownState,
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
+import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
 // Backoff: 1 s → 2 s → 4 s … capped at 30 s, ±30 % jitter.
@@ -188,7 +189,7 @@ async function runWatchStream(
       try {
         await upsertBaseline(clusterName, ns, event.involvedObject.kind ?? 'Unknown', event.involvedObject.name ?? 'unknown', summary, baselineFile);
       } catch (err: unknown) {
-        process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${getMessage(err)}\n`);
       }
       void severity; // severity captured for future filtering; currently all watch events are recorded
     }
@@ -264,8 +265,7 @@ export async function runWatchMode(model?: string): Promise<void> {
       await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink, baselineFile, model);
     } catch (err: unknown) {
       if (controller.signal.aborted) break;
-      const detail = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[heimdall-watch] Stream error: ${detail}\n`);
+      process.stderr.write(`[heimdall-watch] Stream error: ${getMessage(err)}\n`);
     }
 
     if (controller.signal.aborted) break;
@@ -336,12 +336,11 @@ let resolvedWatchModel: string;
 try {
   resolvedWatchModel = resolveModel(watchModelFlag);
 } catch (err) {
-  process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(`Error: ${getMessage(err)}\n`);
   process.exit(1);
 }
 
 runWatchMode(resolvedWatchModel).catch((err: unknown) => {
-  const detail = err instanceof Error ? err.stack ?? err.message : String(err);
-  process.stderr.write(`[heimdall-watch] Fatal error: ${detail}\n`);
+  process.stderr.write(`[heimdall-watch] Fatal error: ${getStackOrMessage(err)}\n`);
   process.exit(1);
 });

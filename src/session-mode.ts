@@ -27,6 +27,7 @@ import {
   updateSession,
   type SessionRecord,
 } from './lib/session.ts';
+import { getMessage } from './lib/error-utils.ts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -155,9 +156,8 @@ async function cmdPrompt(args: string[]): Promise<void> {
   try {
     result = await client.agents.prompt('heimdall', session.id, { message });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
     die(
-      `Failed to reach Flue server at ${session.serverUrl}: ${msg}\n` +
+      `Failed to reach Flue server at ${session.serverUrl}: ${getMessage(err)}\n` +
       `Make sure a Heimdall Flue server is running:\n` +
       `  flue dev --target node\n` +
       `  (or pass a different URL with --server when creating the session)`
@@ -171,8 +171,7 @@ async function cmdPrompt(args: string[]): Promise<void> {
     session.lastPromptAt = new Date().toISOString();
     updateSession(session);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[heimdall-session] Warning: failed to persist session metadata: ${msg}\n`);
+    process.stderr.write(`[heimdall-session] Warning: failed to persist session metadata: ${getMessage(err)}\n`);
   }
 }
 
@@ -247,7 +246,7 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
       break;
     case 'prompt':
       cmdPrompt(rest).catch((err: unknown) => {
-        process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.stderr.write(`Error: ${getMessage(err)}\n`);
         process.exit(1);
       });
       break;

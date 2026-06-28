@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { load as loadYaml } from 'js-yaml';
 import type { OneShotFinding } from './format-output.ts';
+import { getMessage } from './error-utils.ts';
 
 export const EVAL_TIMEOUT_MS = 120_000;
 
@@ -124,7 +125,7 @@ export async function runScenario(
       }
     }
   } catch (err) {
-    failures.push(`Agent error: ${err instanceof Error ? err.message : String(err)}`);
+    failures.push(`Agent error: ${getMessage(err)}`);
   } finally {
     try { await unlink(tmpFile); } catch { /* ignore */ }
   }

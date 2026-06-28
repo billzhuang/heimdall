@@ -30,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import { nextFireTime, formatDelay, validateCronExpression } from './lib/schedule.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
+import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -122,8 +123,7 @@ async function runTriage(opts: TriageOptions, signal?: AbortSignal): Promise<boo
     process.stderr.write('[heimdall-schedule] Triage complete.\n');
     return true;
   } catch (err: unknown) {
-    const detail = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`[heimdall-schedule] Triage failed: ${detail}\n`);
+    process.stderr.write(`[heimdall-schedule] Triage failed: ${getMessage(err)}\n`);
     return false;
   }
 }
@@ -252,8 +252,7 @@ Examples:
   }
 
   runScheduleMode(runOnce).catch((err: unknown) => {
-    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    process.stderr.write(`[heimdall-schedule] Fatal error: ${detail}\n`);
+    process.stderr.write(`[heimdall-schedule] Fatal error: ${getStackOrMessage(err)}\n`);
     process.exit(1);
   });
 }

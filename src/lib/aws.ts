@@ -15,6 +15,7 @@ import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import { getExecErrorDetail } from './error-utils.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -103,8 +104,7 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
-    const err = error as { stderr?: string; stdout?: string; message?: string };
-    const rawDetail = (err.stderr || err.stdout || err.message || String(error)).trim();
+    const rawDetail = getExecErrorDetail(error);
     const detail = applyRedaction(rawDetail, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`aws exited with an error:\n${detail}`);

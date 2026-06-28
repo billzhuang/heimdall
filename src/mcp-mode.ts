@@ -55,6 +55,7 @@ import { datadogPlugin } from './tools/datadog.ts';
 import { newRelicPlugin } from './tools/newrelic.ts';
 import { cdkPlugin } from './tools/cdk.ts';
 import { buildToolRegistry, type ToolPlugin } from './lib/plugin.ts';
+import { getMessage } from './lib/error-utils.ts';
 
 const config = loadConfig();
 const regexRedactionRules = config.redaction?.enabled
@@ -204,7 +205,7 @@ export function createMcpServer(): Server {
         content: [
           {
             type: 'text' as const,
-            text: err instanceof Error ? err.message : String(err),
+            text: getMessage(err),
           },
         ],
       };

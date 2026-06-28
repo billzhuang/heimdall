@@ -37,6 +37,7 @@ import { runAgentDiagnose } from './serve-mode.ts';
 import { resolveModel } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
+import { getMessage } from './lib/error-utils.ts';
 
 const AGENTCORE_PORT_DEFAULT = 8080;
 
@@ -124,8 +125,7 @@ export function createAgentCoreApp(
       };
       return c.json(resp);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return c.json({ error: `Agent error: ${message}` }, 500);
+      return c.json({ error: `Agent error: ${getMessage(err)}` }, 500);
     }
   });
 

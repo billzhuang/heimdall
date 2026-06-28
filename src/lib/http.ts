@@ -1,4 +1,5 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import { getMessage } from './error-utils.ts';
 
 /**
  * Run an async operation under a hard AbortController timeout.
@@ -82,6 +83,6 @@ export function formatQueryError(
   if (err instanceof Error && err.name === 'AbortError') {
     return `${service} query timed out after ${timeoutMs}ms.`;
   }
-  const message = err instanceof Error ? err.message : String(err);
+  const message = getMessage(err);
   return `${service} query failed: ${applyRedaction(message, redactionRules)}`;
 }

@@ -44,6 +44,7 @@ import {
   extractInstructionsSnippet,
   type IterationResult,
 } from './lib/self-loop.ts';
+import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -179,7 +180,7 @@ Examples:
   try {
     scenarios = await loadScenarios(scenariosDir, scenarioFilter);
   } catch (err) {
-    process.stderr.write(`Error loading scenarios: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
     process.exit(1);
   }
 
@@ -246,7 +247,7 @@ Examples:
     try {
       llmResponse = await callLlm(reflectionPrompt, backend, reflectionTimeoutMs);
     } catch (err) {
-      process.stderr.write(`LLM call failed: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(`LLM call failed: ${getMessage(err)}\n`);
       process.stdout.write('Stopping self-loop due to LLM error.\n');
       break;
     }
@@ -304,7 +305,7 @@ Examples:
       newScore = scoreResults(newResults);
       improved = newScore > currentScore;
     } catch (err) {
-      process.stderr.write(`Error during patch/eval: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(`Error during patch/eval: ${getMessage(err)}\n`);
       process.stdout.write('Reverting patches due to error.\n');
       await revertToSnapshot(snapshot, instructionsPath);
       break;
@@ -370,8 +371,7 @@ Examples:
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((err: unknown) => {
-    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    process.stderr.write(`[heimdall-self-loop] Fatal error: ${detail}\n`);
+    process.stderr.write(`[heimdall-self-loop] Fatal error: ${getStackOrMessage(err)}\n`);
     process.exit(1);
   });
 }

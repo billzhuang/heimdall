@@ -33,6 +33,7 @@ import {
   type ClusterCheckpoint,
 } from './lib/drift.ts';
 import { runKubectl } from './lib/kubectl.ts';
+import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -155,7 +156,7 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
     if (current) {
       // Save the new checkpoint only when we got real data from the cluster.
       saveCheckpoint(current, checkpointFile).catch((err: unknown) => {
-        process.stderr.write(`[heimdall-triage] Warning: could not save drift checkpoint: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.stderr.write(`[heimdall-triage] Warning: could not save drift checkpoint: ${getMessage(err)}\n`);
       });
       const findings = detectDrift(current, previous);
       if (previous) {
@@ -202,7 +203,7 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
     const findings = parseTriageFindings(output);
     for (const finding of findings) {
       await upsertBaseline(clusterName, finding.namespace, finding.kind, finding.name, finding.summary, baselineFile).catch((err: unknown) => {
-        process.stderr.write(`[heimdall-triage] Warning: could not write baseline: ${err instanceof Error ? err.message : String(err)}\n`);
+        process.stderr.write(`[heimdall-triage] Warning: could not write baseline: ${getMessage(err)}\n`);
       });
     }
     if (findings.length > 0) {
@@ -299,13 +300,12 @@ Examples:
   try {
     resolvedModel = resolveModel(modelFlag);
   } catch (err) {
-    process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.stderr.write(`Error: ${getMessage(err)}\n`);
     process.exit(1);
   }
 
   runTriageMode(opts, resolvedModel).catch((err: unknown) => {
-    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
-    process.stderr.write(`[heimdall-triage] Fatal error: ${detail}\n`);
+    process.stderr.write(`[heimdall-triage] Fatal error: ${getStackOrMessage(err)}\n`);
     process.exit(1);
   });
 }
