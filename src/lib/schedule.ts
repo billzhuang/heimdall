@@ -81,6 +81,62 @@ export function matchesCronField(value: number, field: string, lowerBound = 0): 
 }
 
 /**
+ * Validate a single non-comma token from a cron field against the allowed range.
+ * Exported for direct unit testing.
+ * Returns an error string on violation, or undefined when valid.
+ *
+ * @param part  A single sub-expression (e.g. "*", "5", "1-5", "5/15", "1-10/2").
+ * @param name  Human-readable field name used in error messages.
+ * @param field The full original field string (used in error messages).
+ * @param lo    Inclusive lower bound of the field's valid range.
+ * @param hi    Inclusive upper bound of the field's valid range.
+ */
+export function validateCronPart(
+  part: string,
+  name: string,
+  field: string,
+  lo: number,
+  hi: number,
+): string | undefined {
+  if (part === '*' || part.startsWith('*/')) return undefined;
+
+  // a-b or a-b/n — validate range bounds and optional step
+  const rangeM = part.match(/^(\d+)-(\d+)(\/(\d+))?$/);
+  if (rangeM) {
+    const a = parseInt(rangeM[1], 10);
+    const b = parseInt(rangeM[2], 10);
+    if (a > b || a < lo || b > hi) {
+      return `${name} field "${field}" is out of range [${lo}-${hi}]`;
+    }
+    if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) {
+      return `${name} field "${field}" has an invalid step: step must be > 0`;
+    }
+    return undefined;
+  }
+
+  // n/s — start-value with step: validate starting value and step
+  const startStepM = part.match(/^(\d+)\/(\d+)$/);
+  if (startStepM) {
+    const n = parseInt(startStepM[1], 10);
+    const s = parseInt(startStepM[2], 10);
+    if (n < lo || n > hi) {
+      return `${name} field "${field}" is out of range [${lo}-${hi}]`;
+    }
+    if (s === 0) {
+      return `${name} field "${field}" has an invalid step: step must be > 0`;
+    }
+    return undefined;
+  }
+
+  // Exact numeric value
+  const n = parseInt(part, 10);
+  if (isNaN(n) || n < lo || n > hi) {
+    return `${name} field "${field}" is out of range [${lo}-${hi}]`;
+  }
+  return undefined;
+}
+
+/**
  * Validate a 5-field cron expression.
  * Returns an error message when invalid, or undefined when valid.
  */
@@ -103,37 +159,8 @@ export function validateCronExpression(cron: string): string | undefined {
     const lb = lowerBounds[i];
     // Reject out-of-range tokens before checking for matches.
     for (const part of f.split(',')) {
-      if (part === '*' || part.startsWith('*/')) continue;
-      // a-b or a-b/n — validate range bounds and optional step
-      const rangeM = part.match(/^(\d+)-(\d+)(\/(\d+))?$/);
-      if (rangeM) {
-        const a = parseInt(rangeM[1], 10);
-        const b = parseInt(rangeM[2], 10);
-        if (a > b || a < lo || b > hi) {
-          return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
-        }
-        if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) {
-          return `${names[i]} field "${f}" has an invalid step: step must be > 0`;
-        }
-        continue;
-      }
-      // n/s — start-value with step: validate starting value and step
-      const startStepM = part.match(/^(\d+)\/(\d+)$/);
-      if (startStepM) {
-        const n = parseInt(startStepM[1], 10);
-        const s = parseInt(startStepM[2], 10);
-        if (n < lo || n > hi) {
-          return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
-        }
-        if (s === 0) {
-          return `${names[i]} field "${f}" has an invalid step: step must be > 0`;
-        }
-        continue;
-      }
-      const n = parseInt(part, 10);
-      if (isNaN(n) || n < lo || n > hi) {
-        return `${names[i]} field "${f}" is out of range [${lo}-${hi}]`;
-      }
+      const err = validateCronPart(part, names[i], f, lo, hi);
+      if (err) return err;
     }
     // Verify at least one value in the valid range matches (non-empty field).
     const hasMatch = Array.from({ length: hi - lo + 1 }, (_, k) => lo + k).some((v) =>
@@ -195,6 +222,16 @@ export function nextFireTime(cronExpr: string, from: Date): Date {
   limit.setUTCFullYear(limit.getUTCFullYear() + 1);
 
   while (candidate < limit) {
+    // Skip to the 1st of the next month when the current month doesn't match.
+    // setUTCDate(1) first prevents JS date overflow (e.g. Jan 31 + month++ = Mar 3).
+    if (!validMonths.has(candidate.getUTCMonth() + 1)) {
+      candidate.setUTCDate(1);
+      candidate.setUTCMonth(candidate.getUTCMonth() + 1);
+      candidate.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+
+    // Skip to midnight of the next day when neither DOM nor DOW matches.
     const domMatch = validDoms.has(candidate.getUTCDate());
     const dowMatch = validDows.has(candidate.getUTCDay());
     const dayMatch =
@@ -202,12 +239,20 @@ export function nextFireTime(cronExpr: string, from: Date): Date {
         ? domMatch || dowMatch  // both restricted → OR semantics (POSIX cron)
         : domMatch && dowMatch; // wildcard involved → AND semantics
 
-    if (
-      validMonths.has(candidate.getUTCMonth() + 1) &&
-      dayMatch &&
-      validHours.has(candidate.getUTCHours()) &&
-      validMinutes.has(candidate.getUTCMinutes())
-    ) {
+    if (!dayMatch) {
+      candidate.setUTCDate(candidate.getUTCDate() + 1);
+      candidate.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+
+    // Skip to :00 of the next hour when the current hour doesn't match.
+    if (!validHours.has(candidate.getUTCHours())) {
+      candidate.setUTCHours(candidate.getUTCHours() + 1, 0, 0, 0);
+      continue;
+    }
+
+    // Within a valid hour, advance minute by minute until we hit a match.
+    if (validMinutes.has(candidate.getUTCMinutes())) {
       return new Date(candidate);
     }
     candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
