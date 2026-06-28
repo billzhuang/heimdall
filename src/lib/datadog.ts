@@ -62,7 +62,35 @@ export interface DatadogQueryParams {
 const MAX_RESULT_CHARS = 20_000;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 1_000;
+const DEFAULT_LOOKBACK_MS = 3_600_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific query');
+
+type ISORange = { from: string; to: string } | { error: string };
+type SecondsRange = { fromSec: number; toSec: number } | { error: string };
+
+function resolveISORange(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs: number,
+): ISORange {
+  const resolvedFrom = from ? resolveTimeISO(from, nowMs) : new Date(nowMs - DEFAULT_LOOKBACK_MS).toISOString();
+  const resolvedTo = to ? resolveTimeISO(to, nowMs) : new Date(nowMs).toISOString();
+  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
+  if (resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
+  return { from: resolvedFrom, to: resolvedTo };
+}
+
+function resolveSecondsRange(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs: number,
+): SecondsRange {
+  const resolvedFrom = from ? resolveTimeSeconds(from, nowMs) : Math.floor((nowMs - DEFAULT_LOOKBACK_MS) / 1_000);
+  const resolvedTo = to ? resolveTimeSeconds(to, nowMs) : Math.floor(nowMs / 1_000);
+  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
+  if (resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
+  return { fromSec: resolvedFrom, toSec: resolvedTo };
+}
 
 
 
@@ -93,12 +121,9 @@ async function queryMetrics(
   if (!params.query?.trim()) {
     return 'Error: query is required for metrics (e.g. "avg:system.cpu.user{*}" or "avg:kubernetes.cpu.usage.total{cluster_name:prod}").';
   }
-  const nowMs = Date.now();
-  const fromSec = params.from ? resolveTimeSeconds(params.from, nowMs) : Math.floor((nowMs - 3_600_000) / 1_000);
-  const toSec = params.to ? resolveTimeSeconds(params.to, nowMs) : Math.floor(nowMs / 1_000);
-
-  if (fromSec === null) return `Error: could not parse "from" time: "${params.from}".`;
-  if (toSec === null) return `Error: could not parse "to" time: "${params.to}".`;
+  const range = resolveSecondsRange(params.from, params.to, Date.now());
+  if ('error' in range) return range.error;
+  const { fromSec, toSec } = range;
 
   const url = new URL(`${baseUrl(config)}/api/v1/query`);
   url.searchParams.set('query', params.query.trim());
@@ -120,12 +145,9 @@ async function queryLogs(
   config: DatadogConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  const nowMs = Date.now();
-  const from = params.from ? resolveTimeISO(params.from, nowMs) : new Date(nowMs - 3_600_000).toISOString();
-  const to = params.to ? resolveTimeISO(params.to, nowMs) : new Date(nowMs).toISOString();
-
-  if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
-  if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
+  const range = resolveISORange(params.from, params.to, Date.now());
+  if ('error' in range) return range.error;
+  const { from, to } = range;
 
   const limit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
@@ -158,13 +180,9 @@ async function queryEvents(
   config: DatadogConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  const nowMs = Date.now();
-  // v2 Events API uses ISO8601 for from/to and supports free-text filter[query] and page[limit].
-  const from = params.from ? resolveTimeISO(params.from, nowMs) : new Date(nowMs - 3_600_000).toISOString();
-  const to = params.to ? resolveTimeISO(params.to, nowMs) : new Date(nowMs).toISOString();
-
-  if (from === null) return `Error: could not parse "from" time: "${params.from}".`;
-  if (to === null) return `Error: could not parse "to" time: "${params.to}".`;
+  const range = resolveISORange(params.from, params.to, Date.now());
+  if ('error' in range) return range.error;
+  const { from, to } = range;
 
   const limit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
