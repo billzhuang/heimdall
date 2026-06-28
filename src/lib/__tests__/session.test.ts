@@ -258,6 +258,11 @@ describe('isValidSessionRecord', () => {
     expect(isValidSessionRecord(42)).toBe(false);
   });
 
+  it('rejects an array (typeof [] is "object")', () => {
+    expect(isValidSessionRecord([])).toBe(false);
+    expect(isValidSessionRecord([valid])).toBe(false);
+  });
+
   it('rejects an empty object', () => {
     expect(isValidSessionRecord({})).toBe(false);
   });

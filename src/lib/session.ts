@@ -31,7 +31,7 @@ export interface SessionRecord {
 
 /** Returns true when `v` is a structurally valid {@link SessionRecord}. */
 export function isValidSessionRecord(v: unknown): v is SessionRecord {
-  if (!v || typeof v !== 'object') return false;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
   const r = v as Record<string, unknown>;
   return (
     typeof r['id'] === 'string' &&
