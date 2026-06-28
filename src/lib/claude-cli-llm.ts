@@ -10,13 +10,7 @@
  * kubectl or other tools. Use this backend when a raw ANTHROPIC_API_KEY is
  * unavailable but the Claude CLI is present and authenticated.
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const execFileAsync = promisify(execFile);
-
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_BUFFER_BYTES = 10 * 1024 * 1024; // 10 MB
+import { makeCliLlm } from './cli-llm.ts';
 
 export interface ClaudeCliOptions {
   /** Max execution time in milliseconds. Defaults to 120 000. */
@@ -25,25 +19,15 @@ export interface ClaudeCliOptions {
   model?: string;
 }
 
+const { callCli, isCliAvailable } = makeCliLlm('claude', '-p');
+
 /**
  * Invoke `claude -p <prompt>` and return the response text.
  *
  * Throws if the CLI is not installed, not authenticated, or exits non-zero.
  */
-export async function callClaudeCli(
-  prompt: string,
-  opts: ClaudeCliOptions = {},
-): Promise<string> {
-  const args: string[] = ['-p', prompt];
-  if (opts.model) args.push('--model', opts.model);
-
-  const { stdout } = await execFileAsync('claude', args, {
-    timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    maxBuffer: MAX_BUFFER_BYTES,
-  });
-
-  return stdout.trim();
-}
+export const callClaudeCli = (prompt: string, opts: ClaudeCliOptions = {}) =>
+  callCli(prompt, opts);
 
 /**
  * Return true if `claude` is on PATH and responds cleanly to `--version`.
@@ -51,11 +35,4 @@ export async function callClaudeCli(
  * Non-throwing: availability does not guarantee authentication — a real call
  * may still fail if the CLI is not logged in.
  */
-export async function isClaudeCliAvailable(): Promise<boolean> {
-  try {
-    await execFileAsync('claude', ['--version'], { timeout: 5_000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
+export const isClaudeCliAvailable = () => isCliAvailable();
