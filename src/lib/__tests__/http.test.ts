@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { withTimeout, fetchWithTimeout, readErrorDetail, formatQueryError } from '../http.ts';
+import { withTimeout, fetchWithTimeout, readErrorDetail, formatQueryError, makeResponseHandler } from '../http.ts';
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
@@ -182,6 +182,70 @@ describe('readErrorDetail', () => {
     const response = { text: () => Promise.resolve('token=secret123') } as unknown as Response;
     const rules = [{ name: 'token', re: /token=[^\s]+/g }];
     expect(await readErrorDetail(response, rules)).toBe(': [REDACTED:token]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// makeResponseHandler
+// ---------------------------------------------------------------------------
+
+describe('makeResponseHandler', () => {
+  it('returns a service error string for non-2xx responses', async () => {
+    const response = {
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      text: () => Promise.resolve('not found'),
+    } as unknown as Response;
+    const handler = makeResponseHandler('Prometheus', [], (s) => s);
+    expect(await handler(response)).toBe('Prometheus HTTP 404 Not Found: not found');
+  });
+
+  it('returns truncated redacted body for 2xx responses', async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: () => Promise.resolve('result data here'),
+    } as unknown as Response;
+    const handler = makeResponseHandler('Loki', [], (s) => s.slice(0, 6));
+    expect(await handler(response)).toBe('result');
+  });
+
+  it('applies redaction rules to the success body', async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: () => Promise.resolve('token=secret123'),
+    } as unknown as Response;
+    const rules = [{ name: 'token', re: /token=[^\s]+/g }];
+    const handler = makeResponseHandler('Jaeger', rules, (s) => s);
+    expect(await handler(response)).toBe('[REDACTED:token]');
+  });
+
+  it('applies redaction rules to the error body', async () => {
+    const response = {
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      text: () => Promise.resolve('key=topsecret'),
+    } as unknown as Response;
+    const rules = [{ name: 'key', re: /key=[^\s]+/g }];
+    const handler = makeResponseHandler('Kubecost', rules, (s) => s);
+    expect(await handler(response)).toBe('Kubecost HTTP 403 Forbidden: [REDACTED:key]');
+  });
+
+  it('re-throws AbortError from readErrorDetail', async () => {
+    const abortErr = makeAbortError();
+    const response = {
+      ok: false,
+      status: 0,
+      statusText: '',
+      text: () => Promise.reject(abortErr),
+    } as unknown as Response;
+    const handler = makeResponseHandler('Loki', [], (s) => s);
+    await expect(handler(response)).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
 

@@ -47,6 +47,28 @@ export async function readErrorDetail(
 }
 
 /**
+ * Create a reusable response handler for `fetchWithTimeout` calls.
+ *
+ * On a non-2xx response, returns `"${serviceName} HTTP <status> <statusText>[: <body>]"`.
+ * On success, returns `truncate(applyRedaction(body, rules))`.
+ * AbortErrors from `readErrorDetail` are re-thrown so the outer catch can report them as timeouts.
+ */
+export function makeResponseHandler(
+  serviceName: string,
+  rules: CompiledRedactionRule[],
+  truncate: (s: string) => string,
+): (response: Response) => Promise<string> {
+  return async (response) => {
+    if (!response.ok) {
+      const detail = await readErrorDetail(response, rules);
+      return `${serviceName} HTTP ${response.status} ${response.statusText}${detail}`;
+    }
+    const text = await response.text();
+    return truncate(applyRedaction(text, rules));
+  };
+}
+
+/**
  * Format a caught fetch error as a human-readable string.
  * AbortErrors produce a timeout message; all other errors produce a "failed" message.
  * The error message is redacted before returning.
