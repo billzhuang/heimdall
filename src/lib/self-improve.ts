@@ -32,7 +32,7 @@ export interface LearningEntry {
 
 /** Extract the first double-quoted string from a failure message, e.g. `"keyword"`. */
 function extractQuotedKeyword(failure: string): string | undefined {
-  return failure.match(/"(.+)"/)?.[1];
+  return failure.match(/"([^"]+)"/)?.[1];
 }
 
 /**
@@ -42,7 +42,8 @@ function extractQuotedKeyword(failure: string): string | undefined {
  */
 function classifySuggestion(failure: string, scenario: string): string {
   if (failure.startsWith('Severity:')) {
-    const m = failure.match(/expected "(.+)", got "(.+)"/);
+    const m = failure.match(/expected "([^"]+)", got "([^"]+)"/);
+
     if (!m) return '';
     return (
       `Severity miscalibrated: expected "${m[1]}", got "${m[2]}" for "${scenario}". ` +
