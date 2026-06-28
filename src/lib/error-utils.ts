@@ -29,8 +29,12 @@ export function getStackOrMessage(err: unknown): string {
  * (e.g. Trivy, which writes structured JSON errors to stdout).
  */
 export function getExecErrorDetail(error: unknown, stdoutFirst = false): string {
-  const err = error as { stderr?: string; stdout?: string; message?: string };
-  return stdoutFirst
-    ? (err.stdout || err.stderr || err.message || String(error)).trim()
-    : (err.stderr || err.stdout || err.message || String(error)).trim();
+  if (error && typeof error === 'object') {
+    const err = error as { stderr?: unknown; stdout?: unknown; message?: unknown };
+    const detail = stdoutFirst
+      ? (err.stdout || err.stderr || err.message)
+      : (err.stderr || err.stdout || err.message);
+    if (detail) return String(detail).trim();
+  }
+  return String(error).trim();
 }

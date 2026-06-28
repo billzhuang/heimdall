@@ -63,4 +63,18 @@ describe('getExecErrorDetail', () => {
     const err = { stderr: '  trimmed  ', stdout: '', message: '' };
     expect(getExecErrorDetail(err)).toBe('trimmed');
   });
+
+  it('does not throw when error is null', () => {
+    expect(() => getExecErrorDetail(null)).not.toThrow();
+    expect(getExecErrorDetail(null)).toBe('null');
+  });
+
+  it('does not throw when error is undefined', () => {
+    expect(() => getExecErrorDetail(undefined)).not.toThrow();
+    expect(getExecErrorDetail(undefined)).toBe('undefined');
+  });
+
+  it('does not throw when error is a primitive string', () => {
+    expect(getExecErrorDetail('raw error')).toBe('raw error');
+  });
 });
