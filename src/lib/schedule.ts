@@ -80,6 +80,14 @@ export function matchesCronField(value: number, field: string, lowerBound = 0): 
   return !isNaN(num) && value === num;
 }
 
+function outOfRangeError(name: string, field: string, lo: number, hi: number): string {
+  return `${name} field "${field}" is out of range [${lo}-${hi}]`;
+}
+
+function stepZeroError(name: string, field: string): string {
+  return `${name} field "${field}" has an invalid step: step must be > 0`;
+}
+
 /**
  * Validate a single non-comma token from a cron field against the allowed range.
  * Exported for direct unit testing.
@@ -105,12 +113,8 @@ export function validateCronPart(
   if (rangeM) {
     const a = parseInt(rangeM[1], 10);
     const b = parseInt(rangeM[2], 10);
-    if (a > b || a < lo || b > hi) {
-      return `${name} field "${field}" is out of range [${lo}-${hi}]`;
-    }
-    if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) {
-      return `${name} field "${field}" has an invalid step: step must be > 0`;
-    }
+    if (a > b || a < lo || b > hi) return outOfRangeError(name, field, lo, hi);
+    if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) return stepZeroError(name, field);
     return undefined;
   }
 
@@ -119,22 +123,25 @@ export function validateCronPart(
   if (startStepM) {
     const n = parseInt(startStepM[1], 10);
     const s = parseInt(startStepM[2], 10);
-    if (n < lo || n > hi) {
-      return `${name} field "${field}" is out of range [${lo}-${hi}]`;
-    }
-    if (s === 0) {
-      return `${name} field "${field}" has an invalid step: step must be > 0`;
-    }
+    if (n < lo || n > hi) return outOfRangeError(name, field, lo, hi);
+    if (s === 0) return stepZeroError(name, field);
     return undefined;
   }
 
   // Exact numeric value
   const n = parseInt(part, 10);
-  if (isNaN(n) || n < lo || n > hi) {
-    return `${name} field "${field}" is out of range [${lo}-${hi}]`;
-  }
+  if (isNaN(n) || n < lo || n > hi) return outOfRangeError(name, field, lo, hi);
   return undefined;
 }
+
+/** Per-field metadata for cron validation. day-of-week upper bound is 7 (Sunday alias). */
+const CRON_FIELDS = [
+  { name: 'minute',       lo: 0, hi: 59, lb: 0 },
+  { name: 'hour',         lo: 0, hi: 23, lb: 0 },
+  { name: 'day-of-month', lo: 1, hi: 31, lb: 1 },
+  { name: 'month',        lo: 1, hi: 12, lb: 1 },
+  { name: 'day-of-week',  lo: 0, hi:  7, lb: 0 },
+] as const;
 
 /**
  * Validate a 5-field cron expression.
@@ -145,21 +152,15 @@ export function validateCronExpression(cron: string): string | undefined {
   if (fields.length !== 5) {
     return `Expected 5 fields (minute hour dom month dow), got ${fields.length}`;
   }
-  // day-of-week upper bound is 7 to allow Sunday alias
-  const ranges = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 7]];
-  const lowerBounds = [0, 0, 1, 1, 0];
-  const names = ['minute', 'hour', 'day-of-month', 'month', 'day-of-week'];
-  for (let i = 0; i < 5; i++) {
+  for (const [i, { name, lo, hi, lb }] of CRON_FIELDS.entries()) {
     const f = fields[i];
     // Supports: *, */n, n, n-m, n/s, n-m/s and comma-separated combinations
     if (!/^(\*(\/\d+)?|\d+(-\d+)?(\/\d+)?)(,(\*(\/\d+)?|\d+(-\d+)?(\/\d+)?))*$/.test(f)) {
-      return `Invalid ${names[i]} field: "${f}"`;
+      return `Invalid ${name} field: "${f}"`;
     }
-    const [lo, hi] = ranges[i];
-    const lb = lowerBounds[i];
     // Reject out-of-range tokens before checking for matches.
     for (const part of f.split(',')) {
-      const err = validateCronPart(part, names[i], f, lo, hi);
+      const err = validateCronPart(part, name, f, lo, hi);
       if (err) return err;
     }
     // Verify at least one value in the valid range matches (non-empty field).
@@ -167,7 +168,7 @@ export function validateCronExpression(cron: string): string | undefined {
       matchesCronField(v, f, lb),
     );
     if (!hasMatch) {
-      return `${names[i]} field "${f}" matches no values in range [${lo}-${hi}]`;
+      return `${name} field "${f}" matches no values in range [${lo}-${hi}]`;
     }
   }
   return undefined;
