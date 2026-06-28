@@ -37,10 +37,10 @@ const INLINE_FLAG_RE = /^\(\?([gimsuy]+)\)/;
 function extractInlineFlags(pattern: string): { pattern: string; extraFlags: string } {
   let remaining = pattern;
   let allFlags = '';
-  let m: RegExpMatchArray | null;
-  while ((m = remaining.match(INLINE_FLAG_RE)) !== null) {
-    allFlags += m[1];
-    remaining = remaining.slice(m[0].length);
+  let flagMatch: RegExpMatchArray | null;
+  while ((flagMatch = remaining.match(INLINE_FLAG_RE)) !== null) {
+    allFlags += flagMatch[1];
+    remaining = remaining.slice(flagMatch[0].length);
   }
   return { pattern: remaining, extraFlags: allFlags };
 }
@@ -76,6 +76,10 @@ function buildFlags(extraFlags: string, ruleName: string): string {
   return Array.from(flagSet).join('');
 }
 
+function warnSkip(ruleName: string, reason: string): void {
+  console.warn(`[heimdall] Skipping redaction rule "${ruleName}": ${reason}`);
+}
+
 /**
  * Compile a single raw rule into a CompiledRedactionRule, or return null if the
  * rule should be skipped (invalid pattern, ReDoS risk, or empty after flag strip).
@@ -84,24 +88,18 @@ function buildFlags(extraFlags: string, ruleName: string): string {
 function compileSingleRule(rule: RedactionRule): CompiledRedactionRule | null {
   const { pattern, extraFlags } = extractInlineFlags(rule.pattern);
   if (!pattern) {
-    console.warn(
-      `[heimdall] Skipping invalid redaction rule "${rule.name}": pattern is empty after stripping inline flags`,
-    );
+    warnSkip(rule.name, 'pattern is empty after stripping inline flags');
     return null;
   }
   if (hasPotentialReDoS(pattern)) {
-    console.warn(
-      `[heimdall] Skipping redaction rule "${rule.name}": pattern "${rule.pattern}" may cause catastrophic backtracking`,
-    );
+    warnSkip(rule.name, `pattern "${rule.pattern}" may cause catastrophic backtracking`);
     return null;
   }
   const flags = buildFlags(extraFlags, rule.name);
   try {
     return { name: rule.name, re: new RegExp(pattern, flags) };
   } catch {
-    console.warn(
-      `[heimdall] Skipping invalid redaction rule "${rule.name}": pattern "${rule.pattern}" is not a valid regex`,
-    );
+    warnSkip(rule.name, `pattern "${rule.pattern}" is not a valid regex`);
     return null;
   }
 }
