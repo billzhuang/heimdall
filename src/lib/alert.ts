@@ -36,12 +36,17 @@ interface AlertManagerPayload {
   alerts?: AlertManagerAlert[];
 }
 
+/** Narrows `v` to a non-null, non-array object. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
 /**
  * Parse an AlertManager v4 webhook payload.
  * Returns one `ParsedAlert` per firing alert entry.
  */
 export function parseAlertManagerPayload(payload: unknown): ParsedAlert[] {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  if (!isPlainObject(payload)) return [];
   const p = payload as AlertManagerPayload;
   const raw = Array.isArray(p.alerts) ? p.alerts : [];
   return raw.filter((a): a is AlertManagerAlert => typeof a === 'object' && a !== null && !Array.isArray(a)).map((a) => parseOneAlert(a));
@@ -180,7 +185,7 @@ export function parsePagerDutyV2Payload(
   payload: unknown,
   serviceMap: PagerDutyServiceMap = {},
 ): ParsedAlert[] {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  if (!isPlainObject(payload)) return [];
   const p = payload as PagerDutyV2Payload;
   const messages = Array.isArray(p.messages) ? p.messages : [];
   return messages.flatMap((msg) => {
@@ -205,7 +210,7 @@ export function parsePagerDutyV3Payload(
   payload: unknown,
   serviceMap: PagerDutyServiceMap = {},
 ): ParsedAlert[] {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
+  if (!isPlainObject(payload)) return [];
   const p = payload as PagerDutyV3Payload;
   const eventList = Array.isArray(p.events) && p.events.length > 0
     ? p.events
@@ -234,9 +239,8 @@ export function parsePagerDutyPayload(
   payload: unknown,
   serviceMap: PagerDutyServiceMap = {},
 ): ParsedAlert[] {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return [];
-  const p = payload as Record<string, unknown>;
-  if (Array.isArray(p['messages'])) return parsePagerDutyV2Payload(payload, serviceMap);
+  if (!isPlainObject(payload)) return [];
+  if (Array.isArray(payload['messages'])) return parsePagerDutyV2Payload(payload, serviceMap);
   return parsePagerDutyV3Payload(payload, serviceMap);
 }
 
