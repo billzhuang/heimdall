@@ -596,6 +596,23 @@ describe('runDatadogQuery — redaction', () => {
     expect(result).not.toContain('supersecret-abc123');
     expect(result).toContain('[REDACTED:test-token]');
   });
+
+  it('applies regex redaction rules to HTTP error response bodies', async () => {
+    mockFetch('auth failed: token=supersecret-xyz999', 403);
+
+    const result = await runDatadogQuery(
+      { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },
+      {
+        ...BASE_CONFIG,
+        regexRedactionRules: [
+          { name: 'test-token', re: /supersecret-[a-z0-9]+/g },
+        ],
+      },
+    );
+    expect(result).toMatch(/403/);
+    expect(result).not.toContain('supersecret-xyz999');
+    expect(result).toContain('[REDACTED:test-token]');
+  });
 });
 
 // ---------------------------------------------------------------------------

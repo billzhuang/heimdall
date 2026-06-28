@@ -14,7 +14,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
 import { clampLimit } from './tool-config.ts';
-import { formatQueryError, withTimeout } from './http.ts';
+import { formatQueryError, readErrorDetail, withTimeout } from './http.ts';
 
 export interface DatadogConfig {
   apiKey: string;
@@ -94,12 +94,6 @@ function resolveSecondsRange(
 
 
 
-async function datadogErrorMessage(response: Response, queryType: string): Promise<string> {
-  const body = await response.text().catch(() => '');
-  const detail = body ? `: ${body.slice(0, 200)}` : '';
-  return `Datadog ${queryType} HTTP ${response.status} ${response.statusText}${detail}`;
-}
-
 function buildHeaders(config: DatadogConfig): Record<string, string> {
   return {
     'DD-API-KEY': config.apiKey,
@@ -136,7 +130,10 @@ async function queryMetrics(
     signal,
   });
 
-  if (!response.ok) return datadogErrorMessage(response, 'metrics');
+  if (!response.ok) {
+    const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+    return `Datadog metrics HTTP ${response.status} ${response.statusText}${detail}`;
+  }
   return await response.text();
 }
 
@@ -171,7 +168,10 @@ async function queryLogs(
     signal,
   });
 
-  if (!response.ok) return datadogErrorMessage(response, 'logs');
+  if (!response.ok) {
+    const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+    return `Datadog logs HTTP ${response.status} ${response.statusText}${detail}`;
+  }
   return await response.text();
 }
 
@@ -200,7 +200,10 @@ async function queryEvents(
     signal,
   });
 
-  if (!response.ok) return datadogErrorMessage(response, 'events');
+  if (!response.ok) {
+    const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+    return `Datadog events HTTP ${response.status} ${response.statusText}${detail}`;
+  }
   return await response.text();
 }
 
@@ -226,7 +229,10 @@ async function queryMonitors(
     signal,
   });
 
-  if (!response.ok) return datadogErrorMessage(response, 'monitors');
+  if (!response.ok) {
+    const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
+    return `Datadog monitors HTTP ${response.status} ${response.statusText}${detail}`;
+  }
 
   const text = await response.text();
 
