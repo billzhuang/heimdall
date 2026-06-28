@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesCronField, nextFireTime, validateCronExpression, formatDelay } from '../schedule.ts';
+import { matchesCronField, nextFireTime, validateCronExpression, validateCronPart, formatDelay } from '../schedule.ts';
 
 describe('matchesCronField', () => {
   it('* always matches', () => {
@@ -342,6 +342,122 @@ describe('nextFireTime', () => {
     const from = new Date('2024-01-15T09:00:00Z');
     const next = nextFireTime('0 8/4 * * *', from);
     expect(next.toISOString()).toBe('2024-01-15T12:00:00.000Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateCronPart — direct tests of the extracted helper
+// ---------------------------------------------------------------------------
+
+describe('validateCronPart', () => {
+  it('returns undefined for * wildcard', () => {
+    expect(validateCronPart('*', 'minute', '*', 0, 59)).toBeUndefined();
+  });
+
+  it('returns undefined for */n step wildcard', () => {
+    expect(validateCronPart('*/5', 'minute', '*/5', 0, 59)).toBeUndefined();
+  });
+
+  it('returns undefined for a valid exact value', () => {
+    expect(validateCronPart('30', 'minute', '30', 0, 59)).toBeUndefined();
+  });
+
+  it('returns error when exact value is below lo', () => {
+    const err = validateCronPart('0', 'day-of-month', '0', 1, 31);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns error when exact value is above hi', () => {
+    const err = validateCronPart('60', 'minute', '60', 0, 59);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns error for NaN exact value', () => {
+    const err = validateCronPart('abc', 'minute', 'abc', 0, 59);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns undefined for a valid inclusive range', () => {
+    expect(validateCronPart('1-12', 'month', '1-12', 1, 12)).toBeUndefined();
+  });
+
+  it('returns error when range lower bound is below lo', () => {
+    const err = validateCronPart('0-5', 'day-of-month', '0-5', 1, 31);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns error when range upper bound exceeds hi', () => {
+    const err = validateCronPart('0-60', 'minute', '0-60', 0, 59);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns error when range is inverted (lo > hi)', () => {
+    const err = validateCronPart('5-1', 'minute', '5-1', 0, 59);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns undefined for a valid range-with-step', () => {
+    expect(validateCronPart('0-23/6', 'hour', '0-23/6', 0, 23)).toBeUndefined();
+  });
+
+  it('returns error for range-with-step=0', () => {
+    const err = validateCronPart('0-59/0', 'minute', '0-59/0', 0, 59);
+    expect(err).toMatch(/step must be > 0/);
+  });
+
+  it('returns undefined for a valid start-value-with-step', () => {
+    expect(validateCronPart('5/15', 'minute', '5/15', 0, 59)).toBeUndefined();
+  });
+
+  it('returns error when start value of n/s is out of range', () => {
+    const err = validateCronPart('60/5', 'minute', '60/5', 0, 59);
+    expect(err).toMatch(/out of range/);
+  });
+
+  it('returns error for n/s with step=0', () => {
+    const err = validateCronPart('5/0', 'minute', '5/0', 0, 59);
+    expect(err).toMatch(/step must be > 0/);
+  });
+
+  it('includes the field name in the error message', () => {
+    const err = validateCronPart('99', 'hour', '99', 0, 23);
+    expect(err).toContain('hour');
+    expect(err).toContain('"99"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// nextFireTime skip-ahead paths
+// ---------------------------------------------------------------------------
+
+describe('nextFireTime skip-ahead optimisation', () => {
+  it('skips directly to the next valid month (multi-month gap)', () => {
+    // From May, "0 0 1 9 *" fires only in September — skip Jun, Jul, Aug entirely.
+    const from = new Date('2024-05-20T12:00:00Z');
+    const next = nextFireTime('0 0 1 9 *', from);
+    expect(next.toISOString()).toBe('2024-09-01T00:00:00.000Z');
+  });
+
+  it('skips directly to the next valid hour (multi-hour gap)', () => {
+    // From 03:30, "0 18 * * *" fires at 18:00 — skips 14.5 hours without per-minute iteration.
+    const from = new Date('2024-03-10T03:30:00Z');
+    const next = nextFireTime('0 18 * * *', from);
+    expect(next.toISOString()).toBe('2024-03-10T18:00:00.000Z');
+  });
+
+  it('handles month-end to 1st-of-next-month without JS date overflow', () => {
+    // Jan 31 + setUTCMonth(++) must not overflow into March.
+    // "0 0 * 3 *" fires in March — skip Feb via Jan 31 as starting point.
+    const from = new Date('2024-01-31T23:00:00Z');
+    const next = nextFireTime('0 0 * 3 *', from);
+    expect(next.toISOString()).toBe('2024-03-01T00:00:00.000Z');
+  });
+
+  it('skips invalid days and rolls to the next valid day', () => {
+    // "0 9 15 * *" fires on the 15th — skip days 1-14 from Jan 1.
+    const from = new Date('2024-01-01T00:00:00Z');
+    const next = nextFireTime('0 9 15 * *', from);
+    expect(next.toISOString()).toBe('2024-01-15T09:00:00.000Z');
   });
 });
 
