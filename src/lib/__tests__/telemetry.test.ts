@@ -578,6 +578,24 @@ describe('pushOtlpMetrics', () => {
 
     expect(stderrSpy.mock.calls.some((args) => String(args[0]).includes('ECONNREFUSED'))).toBe(true);
   });
+
+  it('logs to stderr when the 10 s timeout fires (abort path)', async () => {
+    vi.useFakeTimers();
+    // fetch hangs indefinitely — resolves only after the abort signal fires.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')));
+      }),
+    ));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    const pushPromise = pushOtlpMetrics('http://localhost:4318', {}, snapshot, 'heimdall', 0, 60_000);
+    await vi.advanceTimersByTimeAsync(10_000);
+    await pushPromise;
+
+    vi.useRealTimers();
+    expect(stderrSpy.mock.calls.some((args) => String(args[0]).includes('[heimdall-otel] OTLP push error:'))).toBe(true);
+  });
 });
 
 describe('startOtelExport / stopOtelExport', () => {

@@ -16,6 +16,7 @@
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { withTimeout } from './http.ts';
 
 export interface TelemetryConfig {
   enabled: boolean;
@@ -299,23 +300,21 @@ export async function pushOtlpMetrics(
 ): Promise<void> {
   const payload = buildOtlpPayload(snapshot, serviceName, startTimeMs, nowTimeMs);
   const url = endpoint.endsWith('/') ? `${endpoint}v1/metrics` : `${endpoint}/v1/metrics`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
+    await withTimeout(10_000, async (signal) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify(payload),
+        signal,
+      });
+      if (!res.ok) {
+        process.stderr.write(`[heimdall-otel] OTLP push failed: HTTP ${res.status}\n`);
+      }
+      await res.text(); // drain body to release the socket
     });
-    if (!res.ok) {
-      process.stderr.write(`[heimdall-otel] OTLP push failed: HTTP ${res.status}\n`);
-    }
-    await res.text(); // drain body to release the socket
   } catch (err) {
     process.stderr.write(`[heimdall-otel] OTLP push error: ${String(err)}\n`);
-  } finally {
-    clearTimeout(timer);
   }
 }
 
