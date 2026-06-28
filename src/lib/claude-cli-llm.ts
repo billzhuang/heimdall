@@ -26,7 +26,7 @@ const { callCli, isCliAvailable } = makeCliLlm('claude', '-p');
  *
  * Throws if the CLI is not installed, not authenticated, or exits non-zero.
  */
-export const callClaudeCli = (prompt: string, opts: ClaudeCliOptions = {}) =>
+export const callClaudeCli = (prompt: string, opts: ClaudeCliOptions = {}): Promise<string> =>
   callCli(prompt, opts);
 
 /**
@@ -35,4 +35,4 @@ export const callClaudeCli = (prompt: string, opts: ClaudeCliOptions = {}) =>
  * Non-throwing: availability does not guarantee authentication — a real call
  * may still fail if the CLI is not logged in.
  */
-export const isClaudeCliAvailable = () => isCliAvailable();
+export const isClaudeCliAvailable = (): Promise<boolean> => isCliAvailable();

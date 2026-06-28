@@ -23,7 +23,10 @@ export interface CliLlmOptions {
 /**
  * Returns `{ callCli, isCliAvailable }` bound to the given binary and prompt flag.
  */
-export function makeCliLlm(cliName: string, promptFlag: string) {
+export function makeCliLlm(cliName: string, promptFlag: string): {
+  callCli: (prompt: string, opts?: CliLlmOptions) => Promise<string>;
+  isCliAvailable: () => Promise<boolean>;
+} {
   async function callCli(prompt: string, opts: CliLlmOptions = {}): Promise<string> {
     const args: string[] = [promptFlag, prompt];
     if (opts.model) args.push('--model', opts.model);

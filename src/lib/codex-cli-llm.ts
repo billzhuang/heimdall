@@ -26,7 +26,7 @@ const { callCli, isCliAvailable } = makeCliLlm('codex', '-q');
  *
  * Throws if the CLI is not installed, not authenticated, or exits non-zero.
  */
-export const callCodexCli = (prompt: string, opts: CodexCliOptions = {}) =>
+export const callCodexCli = (prompt: string, opts: CodexCliOptions = {}): Promise<string> =>
   callCli(prompt, opts);
 
 /**
@@ -35,4 +35,4 @@ export const callCodexCli = (prompt: string, opts: CodexCliOptions = {}) =>
  * Non-throwing: availability does not guarantee authentication — a real call
  * may still fail if the CLI is not logged in.
  */
-export const isCodexCliAvailable = () => isCliAvailable();
+export const isCodexCliAvailable = (): Promise<boolean> => isCliAvailable();
