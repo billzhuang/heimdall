@@ -56,6 +56,29 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 export const resolveNrqlTime = resolveTimeISO;
 
 
+type NrqlTimeRange = { since: string; until: string | null } | { error: string };
+
+/**
+ * Resolve a `from`/`to` time range for NRQL SINCE/UNTIL clauses.
+ * Falls back to `defaultLookbackMs` before now when `params.from` is absent.
+ * Returns `{ error }` when either value fails to parse.
+ */
+function resolveNrqlTimeRange(
+  params: Pick<NewRelicQueryParams, 'from' | 'to'>,
+  nowMs: number,
+  defaultLookbackMs: number,
+): NrqlTimeRange {
+  const since = params.from
+    ? resolveNrqlTime(params.from, nowMs)
+    : new Date(nowMs - defaultLookbackMs).toISOString();
+  if (since === null) return { error: `Error: could not parse "from" time: "${params.from}".` };
+
+  const until = params.to ? resolveNrqlTime(params.to, nowMs) : null;
+  if (params.to && until === null) return { error: `Error: could not parse "to" time: "${params.to}".` };
+
+  return { since, until };
+}
+
 /** Execute a NerdGraph GraphQL query and return the raw JSON response text. */
 async function nerdgraph(
   gql: string,
@@ -124,11 +147,9 @@ async function queryApm(
   signal: AbortSignal,
 ): Promise<string> {
   const nowMs = Date.now();
-  const since = params.from ? resolveNrqlTime(params.from, nowMs) : new Date(nowMs - 3_600_000).toISOString();
-  const until = params.to ? resolveNrqlTime(params.to, nowMs) : null;
-
-  if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
-  if (params.to && until === null) return `Error: could not parse "to" time: "${params.to}".`;
+  const range = resolveNrqlTimeRange(params, nowMs, 3_600_000);
+  if ('error' in range) return range.error;
+  const { since, until } = range;
 
   const qApm = params.query?.trim() ?? '';
   const whereClause = qApm ? `WHERE ${qApm} ` : '';
@@ -157,11 +178,9 @@ async function queryAlerts(
   signal: AbortSignal,
 ): Promise<string> {
   const nowMs = Date.now();
-  const since = params.from ? resolveNrqlTime(params.from, nowMs) : new Date(nowMs - 86_400_000).toISOString();
-  const until = params.to ? resolveNrqlTime(params.to, nowMs) : null;
-
-  if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
-  if (params.to && until === null) return `Error: could not parse "to" time: "${params.to}".`;
+  const range = resolveNrqlTimeRange(params, nowMs, 86_400_000);
+  if ('error' in range) return range.error;
+  const { since, until } = range;
 
   // Wrap in parentheses so OR in the filter doesn't escape the event='open' predicate.
   const qAlerts = params.query?.trim() ?? '';
