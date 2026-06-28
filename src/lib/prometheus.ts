@@ -5,9 +5,9 @@
  * The Prometheus base URL and timeout come from trusted config/env — never from
  * model-selected arguments.
  */
-import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
+import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
 
 export interface PrometheusConfig {
   url: string;
@@ -62,14 +62,11 @@ export async function runPrometheusQuery(
     baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + endpoint;
     searchParams.forEach((value, key) => baseUrl.searchParams.set(key, value));
 
-    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
-      if (!response.ok) {
-        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
-        return `Prometheus HTTP ${response.status} ${response.statusText}${detail}`;
-      }
-      const text = await response.text();
-      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
-    });
+    return await fetchWithTimeout(
+      baseUrl.toString(),
+      config.timeoutMs,
+      makeResponseHandler('Prometheus', config.regexRedactionRules ?? [], truncate),
+    );
   } catch (err) {
     return formatQueryError(err, 'Prometheus', config.timeoutMs, config.regexRedactionRules ?? []);
   }

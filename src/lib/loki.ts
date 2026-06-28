@@ -5,10 +5,10 @@
  * or deletes logs. The Loki base URL and timeout come from trusted config/env,
  * never from model-selected arguments.
  */
-import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimePassthrough } from './time-resolution.ts';
-import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
+import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
 import { clampLimit } from './tool-config.ts';
 
 export interface LokiConfig {
@@ -99,14 +99,11 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
     baseUrl.searchParams.set('limit', String(effectiveLimit));
     baseUrl.searchParams.set('direction', params.direction ?? DEFAULT_DIRECTION);
 
-    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
-      if (!response.ok) {
-        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
-        return `Loki HTTP ${response.status} ${response.statusText}${detail}`;
-      }
-      const text = await response.text();
-      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
-    });
+    return await fetchWithTimeout(
+      baseUrl.toString(),
+      config.timeoutMs,
+      makeResponseHandler('Loki', config.regexRedactionRules ?? [], truncate),
+    );
   } catch (err) {
     return formatQueryError(err, 'Loki', config.timeoutMs, config.regexRedactionRules ?? []);
   }

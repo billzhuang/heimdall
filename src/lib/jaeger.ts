@@ -8,10 +8,10 @@
  * implementation covers both. Point `url` at either Jaeger Query (port 16686)
  * or Tempo (port 16686 via its Jaeger-compatible frontend).
  */
-import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeUs } from './time-resolution.ts';
-import { fetchWithTimeout, readErrorDetail, formatQueryError } from './http.ts';
+import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
 import { clampLimit } from './tool-config.ts';
 
 export interface JaegerConfig {
@@ -77,14 +77,11 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
       if (endUs !== null) baseUrl.searchParams.set('end', String(endUs));
     }
 
-    return await fetchWithTimeout(baseUrl.toString(), config.timeoutMs, async (response) => {
-      if (!response.ok) {
-        const detail = await readErrorDetail(response, config.regexRedactionRules ?? []);
-        return `Jaeger HTTP ${response.status} ${response.statusText}${detail}`;
-      }
-      const text = await response.text();
-      return truncate(applyRedaction(text, config.regexRedactionRules ?? []));
-    });
+    return await fetchWithTimeout(
+      baseUrl.toString(),
+      config.timeoutMs,
+      makeResponseHandler('Jaeger', config.regexRedactionRules ?? [], truncate),
+    );
   } catch (err) {
     return formatQueryError(err, 'Jaeger', config.timeoutMs, config.regexRedactionRules ?? []);
   }
