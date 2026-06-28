@@ -9,6 +9,7 @@
  * without throwing so the calling code can emit its result normally.
  */
 import type { OneShotFinding } from './format-output.ts';
+import { withTimeout } from './http.ts';
 
 export interface SlackConfig {
   webhookUrl: string;
@@ -97,24 +98,24 @@ export async function sendSlackNotification(
   if (!meetsMinSeverity(finding.severity, config.minSeverity)) return;
 
   const payload = buildBlockKitPayload(finding, config.channel);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
   try {
-    const response = await fetch(config.webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    await withTimeout(config.timeoutMs, async (signal) => {
+      const response = await fetch(config.webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal,
+      });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      const detail = body ? `: ${body.slice(0, 200)}` : '';
-      process.stderr.write(
-        `[heimdall] Slack notification failed (HTTP ${response.status})${detail}\n`,
-      );
-    }
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const detail = body ? `: ${body.slice(0, 200)}` : '';
+        process.stderr.write(
+          `[heimdall] Slack notification failed (HTTP ${response.status})${detail}\n`,
+        );
+      }
+    });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       process.stderr.write(
@@ -125,7 +126,5 @@ export async function sendSlackNotification(
         `[heimdall] Slack notification error: ${err instanceof Error ? err.message : String(err)}\n`,
       );
     }
-  } finally {
-    clearTimeout(timer);
   }
 }
