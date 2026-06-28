@@ -99,6 +99,17 @@ export function parseEvidenceMap(body: string): Record<string, string> | null {
 }
 
 /**
+ * Extract an RCA bullet/numbered-list section and parse it into trimmed strings.
+ * Returns undefined when the section is absent or its list is empty.
+ */
+function extractBulletSection(raw: string, headerRe: RegExp): string[] | undefined {
+  const body = extractRcaSection(raw, headerRe);
+  if (!body) return undefined;
+  const items = parseBulletList(body);
+  return items.length > 0 ? items : undefined;
+}
+
+/**
  * Parse raw agent output into a structured OneShotFinding.
  *
  * The agent emits:
@@ -152,11 +163,8 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
 
   // ── Structured RCA fields (searched within rcaRaw only) ──────────────────
 
-  const causalBody = extractRcaSection(rcaRaw, CAUSAL_CHAIN_RE);
-  if (causalBody) {
-    const items = parseBulletList(causalBody);
-    if (items.length > 0) finding.causalChain = items;
-  }
+  const causal = extractBulletSection(rcaRaw, CAUSAL_CHAIN_RE);
+  if (causal) finding.causalChain = causal;
 
   const evidenceBody = extractRcaSection(rcaRaw, EVIDENCE_RE);
   if (evidenceBody) {
@@ -170,11 +178,8 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
     finding.validityScore = Math.min(1, Math.max(0, score));
   }
 
-  const remBody = extractRcaSection(rcaRaw, REMEDIATION_STEPS_RE);
-  if (remBody) {
-    const items = parseBulletList(remBody);
-    if (items.length > 0) finding.remediationSteps = items;
-  }
+  const rem = extractBulletSection(rcaRaw, REMEDIATION_STEPS_RE);
+  if (rem) finding.remediationSteps = rem;
 
   return finding;
 }
