@@ -5,7 +5,7 @@
  * each diagnosis completes. Failures are logged to stderr and never propagate
  * so the watch loop continues uninterrupted.
  */
-import * as fs from 'node:fs';
+import { appendJsonlLine } from './jsonl.ts';
 import { withTimeout } from './http.ts';
 import type { WatchFinding } from './watch.ts';
 
@@ -56,11 +56,10 @@ export class EventSink {
 
   async write(finding: WatchFinding): Promise<void> {
     const record = findingToRecord(finding);
-    const line = JSON.stringify(record);
 
     if (this.cfg.filePath) {
       try {
-        fs.appendFileSync(this.cfg.filePath, line + '\n', 'utf-8');
+        await appendJsonlLine(record, this.cfg.filePath);
       } catch (err) {
         process.stderr.write(`[heimdall-watch] EventSink file error: ${String(err)}\n`);
       }
@@ -68,12 +67,13 @@ export class EventSink {
 
     if (this.cfg.webhookUrl) {
       const url = this.cfg.webhookUrl;
+      const body = JSON.stringify(record);
       try {
         await withTimeout(10_000, async (signal) => {
           const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: line,
+            body,
             signal,
           });
           if (!res.ok) {

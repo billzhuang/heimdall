@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { EventSink, createEventSink, type EventSinkConfig } from '../event-sink.ts';
 import type { WatchFinding } from '../watch.ts';
+
+vi.mock('../jsonl.ts', () => ({
+  appendJsonlLine: vi.fn(),
+}));
+
+import { appendJsonlLine } from '../jsonl.ts';
+const mockAppendJsonlLine = vi.mocked(appendJsonlLine);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function makeFinding(overrides: Partial<WatchFinding> = {}): WatchFinding {
   return {
@@ -58,61 +66,41 @@ describe('createEventSink', () => {
 
 describe('EventSink — file sink', () => {
   beforeEach(() => {
-    vi.doMock('node:fs', () => ({ appendFileSync: vi.fn() }));
+    mockAppendJsonlLine.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('writes a JSONL record with the correct shape', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'heimdall-test-'));
-    const filePath = join(tmpDir, 'events.jsonl');
-    try {
-      const sink = new EventSink({ filePath });
-      const finding = makeFinding();
-      await sink.write(finding);
+  it('calls appendJsonlLine with the correct record shape', async () => {
+    const sink = new EventSink({ filePath: '/tmp/events.jsonl' });
+    const finding = makeFinding();
+    await sink.write(finding);
 
-      const content = await readFile(filePath, 'utf-8');
-      const record = JSON.parse(content.trimEnd());
-      expect(record.timestamp).toBe(finding.ts);
-      expect(record.event.namespace).toBe('prod');
-      expect(record.event.reason).toBe('BackOff');
-      expect(record.event.objectKind).toBe('Pod');
-      expect(record.event.objectName).toBe('api-xyz');
-      expect(record.diagnosis).toBe(finding.diagnosis);
-      expect(record.severity).toBe('warning');
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+    expect(mockAppendJsonlLine).toHaveBeenCalledOnce();
+    const [record, path] = mockAppendJsonlLine.mock.calls[0] as [
+      { timestamp: string; event: Record<string, string>; diagnosis: string | undefined; severity: string },
+      string,
+    ];
+    expect(path).toBe('/tmp/events.jsonl');
+    expect(record.timestamp).toBe(finding.ts);
+    expect(record.event['namespace']).toBe('prod');
+    expect(record.event['reason']).toBe('BackOff');
+    expect(record.event['objectKind']).toBe('Pod');
+    expect(record.event['objectName']).toBe('api-xyz');
+    expect(record.diagnosis).toBe(finding.diagnosis);
+    expect(record.severity).toBe('warning');
   });
 
-  it('appends a newline after the JSON', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'heimdall-test-'));
-    const filePath = join(tmpDir, 'events.jsonl');
-    try {
-      const sink = new EventSink({ filePath });
-      await sink.write(makeFinding());
-
-      const content = await readFile(filePath, 'utf-8');
-      expect(content).toMatch(/\n$/);
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it('logs to stderr and continues when appendFileSync throws', async () => {
+  it('logs to stderr and continues when appendJsonlLine throws', async () => {
+    mockAppendJsonlLine.mockRejectedValue(new Error('disk full'));
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const origModule = await import('node:fs');
-    const spy = vi.spyOn(origModule, 'appendFileSync').mockImplementation(() => {
-      throw new Error('disk full');
-    });
 
-    const sink = new EventSink({ filePath: '/test/events.jsonl' });
+    const sink = new EventSink({ filePath: '/tmp/events.jsonl' });
     await expect(sink.write(makeFinding())).resolves.toBeUndefined();
 
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('EventSink file error'));
-    spy.mockRestore();
     stderrSpy.mockRestore();
   });
 });
@@ -122,6 +110,15 @@ describe('EventSink — file sink', () => {
 // ---------------------------------------------------------------------------
 
 describe('EventSink — webhook sink', () => {
+  beforeEach(() => {
+    mockAppendJsonlLine.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it('POSTs JSON to the configured webhook URL', async () => {
     const capturedRequests: { url: string; body: unknown }[] = [];
     const mockFetch = vi.fn().mockImplementation(async (url: string, opts: RequestInit) => {
@@ -132,7 +129,6 @@ describe('EventSink — webhook sink', () => {
 
     const sink = new EventSink({ webhookUrl: 'https://example.com/hook' });
     await sink.write(makeFinding());
-    vi.unstubAllGlobals();
 
     expect(capturedRequests).toHaveLength(1);
     expect(capturedRequests[0].url).toBe('https://example.com/hook');
@@ -153,7 +149,6 @@ describe('EventSink — webhook sink', () => {
 
     const sink = new EventSink({ webhookUrl: 'https://example.com/hook' });
     await sink.write(makeFinding());
-    vi.unstubAllGlobals();
 
     expect((capturedHeaders as Record<string, string>)['Content-Type']).toBe('application/json');
   });
@@ -166,7 +161,6 @@ describe('EventSink — webhook sink', () => {
     await expect(sink.write(makeFinding())).resolves.toBeUndefined();
 
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('503'));
-    vi.unstubAllGlobals();
     stderrSpy.mockRestore();
   });
 
@@ -178,7 +172,6 @@ describe('EventSink — webhook sink', () => {
     await expect(sink.write(makeFinding())).resolves.toBeUndefined();
 
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('ECONNREFUSED'));
-    vi.unstubAllGlobals();
     stderrSpy.mockRestore();
   });
 
@@ -191,7 +184,6 @@ describe('EventSink — webhook sink', () => {
     await expect(sink.write(makeFinding())).resolves.toBeUndefined();
 
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('AbortError'));
-    vi.unstubAllGlobals();
     stderrSpy.mockRestore();
   });
 });
@@ -201,6 +193,10 @@ describe('EventSink — webhook sink', () => {
 // ---------------------------------------------------------------------------
 
 describe('EventSink — webhook abort timeout', () => {
+  beforeEach(() => {
+    mockAppendJsonlLine.mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -258,30 +254,30 @@ describe('EventSink — s3Bucket sink', () => {
 // ---------------------------------------------------------------------------
 
 describe('EventSink — multiple sinks', () => {
-  it('writes to both file and webhook when both are configured', async () => {
-    const tmpDir = await mkdtemp(join(tmpdir(), 'heimdall-test-'));
-    const filePath = join(tmpDir, 'events.jsonl');
+  beforeEach(() => {
+    mockAppendJsonlLine.mockResolvedValue(undefined);
+  });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('writes to both file and webhook when both are configured', async () => {
     const capturedUrls: string[] = [];
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => {
       capturedUrls.push(url as string);
       return { ok: true, text: async () => '' };
     }));
 
-    try {
-      const cfg: EventSinkConfig = {
-        filePath,
-        webhookUrl: 'https://example.com/hook',
-      };
-      const sink = new EventSink(cfg);
-      await sink.write(makeFinding());
+    const cfg: EventSinkConfig = {
+      filePath: '/tmp/events.jsonl',
+      webhookUrl: 'https://example.com/hook',
+    };
+    const sink = new EventSink(cfg);
+    await sink.write(makeFinding());
 
-      const content = await readFile(filePath, 'utf-8');
-      expect(content.trim().length).toBeGreaterThan(0);
-      expect(capturedUrls).toHaveLength(1);
-    } finally {
-      vi.unstubAllGlobals();
-      await rm(tmpDir, { recursive: true, force: true });
-    }
+    expect(mockAppendJsonlLine).toHaveBeenCalledOnce();
+    expect(capturedUrls).toHaveLength(1);
   });
 });
