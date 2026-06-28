@@ -422,6 +422,10 @@ describe('inferSeverity', () => {
     // "no outage" is negated but "critical" is not — the critical keyword should still fire
     expect(inferSeverity('No outage detected, but this is a critical memory pressure event.')).toBe('critical');
   });
+  it('returns "critical" when negated term and critical keyword are on separate lines', () => {
+    // "no" on one line, "critical" starting the next line — cross-line suppression must NOT fire
+    expect(inferSeverity('Deployment healthy; no\ncritical replicas are missing.')).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------
