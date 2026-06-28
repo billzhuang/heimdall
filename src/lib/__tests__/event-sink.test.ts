@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { EventSink, createEventSink, type EventSinkConfig } from '../event-sink.ts';
+import { EventSink, createEventSink, type EventSinkConfig, type EventSinkRecord } from '../event-sink.ts';
 import type { WatchFinding } from '../watch.ts';
 
 vi.mock('../jsonl.ts', () => ({
@@ -79,16 +79,13 @@ describe('EventSink — file sink', () => {
     await sink.write(finding);
 
     expect(mockAppendJsonlLine).toHaveBeenCalledOnce();
-    const [record, path] = mockAppendJsonlLine.mock.calls[0] as [
-      { timestamp: string; event: Record<string, string>; diagnosis: string | undefined; severity: string },
-      string,
-    ];
+    const [record, path] = mockAppendJsonlLine.mock.calls[0] as [EventSinkRecord, string];
     expect(path).toBe('/tmp/events.jsonl');
     expect(record.timestamp).toBe(finding.ts);
-    expect(record.event['namespace']).toBe('prod');
-    expect(record.event['reason']).toBe('BackOff');
-    expect(record.event['objectKind']).toBe('Pod');
-    expect(record.event['objectName']).toBe('api-xyz');
+    expect(record.event.namespace).toBe('prod');
+    expect(record.event.reason).toBe('BackOff');
+    expect(record.event.objectKind).toBe('Pod');
+    expect(record.event.objectName).toBe('api-xyz');
     expect(record.diagnosis).toBe(finding.diagnosis);
     expect(record.severity).toBe('warning');
   });
