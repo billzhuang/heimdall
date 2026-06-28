@@ -93,8 +93,7 @@ export function parseEvidenceMap(body: string): Record<string, string> | null {
     if (sep <= 0) continue;
     const key = stripped.slice(0, sep).trim();
     const value = stripped.slice(sep + 2).trim();
-    /* v8 ignore next */
-    if (key && value) map[key] = value;
+    map[key] = value;
   }
   return Object.keys(map).length > 0 ? map : null;
 }
@@ -168,8 +167,7 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
   const vsMatch = VALIDITY_SCORE_RE.exec(rcaRaw);
   if (vsMatch) {
     const score = parseFloat(vsMatch[1]);
-    /* v8 ignore next */
-    if (!isNaN(score)) finding.validityScore = Math.min(1, Math.max(0, score));
+    finding.validityScore = Math.min(1, Math.max(0, score));
   }
 
   const remBody = extractRcaSection(rcaRaw, REMEDIATION_STEPS_RE);
