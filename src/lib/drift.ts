@@ -96,6 +96,17 @@ function diffStringSet(prev: Set<string>, curr: Set<string>): { added: string[];
   };
 }
 
+/** Push one finding per added key and one per removed key into `findings`. */
+function appendDiffFindings(
+  findings: DriftFinding[],
+  diff: { added: string[]; removed: string[] },
+  makeAdded: (key: string) => DriftFinding,
+  makeRemoved: (key: string) => DriftFinding,
+): void {
+  for (const key of diff.added) findings.push(makeAdded(key));
+  for (const key of diff.removed) findings.push(makeRemoved(key));
+}
+
 /**
  * Compare two snapshots and return classified drift findings.
  * Returns an empty array when `previous` is null (no baseline yet) or when
@@ -109,68 +120,30 @@ export function detectDrift(
   const findings: DriftFinding[] = [];
 
   // Namespace changes
-  const { added: newNs, removed: deletedNs } = diffStringSet(
-    new Set(previous.namespaces),
-    new Set(current.namespaces),
+  appendDiffFindings(
+    findings,
+    diffStringSet(new Set(previous.namespaces), new Set(current.namespaces)),
+    (ns) => ({ type: 'new_namespace', resource: `Namespace/${ns}`, message: `Namespace "${ns}" appeared since the last triage run.` }),
+    (ns) => ({ type: 'deleted_namespace', resource: `Namespace/${ns}`, message: `Namespace "${ns}" was present at the last triage run but is now gone.` }),
   );
-  for (const ns of newNs) {
-    findings.push({
-      type: 'new_namespace',
-      resource: `Namespace/${ns}`,
-      message: `Namespace "${ns}" appeared since the last triage run.`,
-    });
-  }
-  for (const ns of deletedNs) {
-    findings.push({
-      type: 'deleted_namespace',
-      resource: `Namespace/${ns}`,
-      message: `Namespace "${ns}" was present at the last triage run but is now gone.`,
-    });
-  }
 
   // Workload changes
   const prevWl = new Map(previous.workloads.map((w) => [workloadKey(w), w]));
   const currWl = new Map(current.workloads.map((w) => [workloadKey(w), w]));
-  const { added: newWlKeys, removed: deletedWlKeys } = diffStringSet(
-    new Set(prevWl.keys()),
-    new Set(currWl.keys()),
+  appendDiffFindings(
+    findings,
+    diffStringSet(new Set(prevWl.keys()), new Set(currWl.keys())),
+    (key) => { const w = currWl.get(key)!; return { type: 'new_workload', resource: `${w.kind}/${w.name} in ${w.namespace}`, message: `${w.kind} "${w.name}" in namespace "${w.namespace}" appeared since the last triage run.` }; },
+    (key) => { const w = prevWl.get(key)!; return { type: 'deleted_workload', resource: `${w.kind}/${w.name} in ${w.namespace}`, message: `${w.kind} "${w.name}" in namespace "${w.namespace}" was present at the last triage run but is now gone.` }; },
   );
-  for (const key of newWlKeys) {
-    const w = currWl.get(key)!;
-    findings.push({
-      type: 'new_workload',
-      resource: `${w.kind}/${w.name} in ${w.namespace}`,
-      message: `${w.kind} "${w.name}" in namespace "${w.namespace}" appeared since the last triage run.`,
-    });
-  }
-  for (const key of deletedWlKeys) {
-    const w = prevWl.get(key)!;
-    findings.push({
-      type: 'deleted_workload',
-      resource: `${w.kind}/${w.name} in ${w.namespace}`,
-      message: `${w.kind} "${w.name}" in namespace "${w.namespace}" was present at the last triage run but is now gone.`,
-    });
-  }
 
   // Node topology changes
-  const { added: newNodes, removed: deletedNodes } = diffStringSet(
-    new Set(previous.nodes.map((n) => n.name)),
-    new Set(current.nodes.map((n) => n.name)),
+  appendDiffFindings(
+    findings,
+    diffStringSet(new Set(previous.nodes.map((n) => n.name)), new Set(current.nodes.map((n) => n.name))),
+    (name) => ({ type: 'topology_change', resource: `Node/${name}`, message: `Node "${name}" joined the cluster since the last triage run.` }),
+    (name) => ({ type: 'topology_change', resource: `Node/${name}`, message: `Node "${name}" was present at the last triage run but is now absent.` }),
   );
-  for (const name of newNodes) {
-    findings.push({
-      type: 'topology_change',
-      resource: `Node/${name}`,
-      message: `Node "${name}" joined the cluster since the last triage run.`,
-    });
-  }
-  for (const name of deletedNodes) {
-    findings.push({
-      type: 'topology_change',
-      resource: `Node/${name}`,
-      message: `Node "${name}" was present at the last triage run but is now absent.`,
-    });
-  }
 
   return findings;
 }
