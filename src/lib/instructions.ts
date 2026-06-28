@@ -41,6 +41,16 @@ Remediation Steps:
 
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
+/**
+ * Format a conditional list of subagent description lines as a newline-prefixed
+ * block. Returns '\n' + the joined lines when the array is non-empty, or '' when
+ * empty. Used to append optional tool-gated subagent groups to the specialist
+ * subagents section without repeating the same ternary in the template literal.
+ */
+function optionalLines(lines: string[]): string {
+  return lines.length > 0 ? '\n' + lines.join('\n') : '';
+}
+
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
 export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery' | 'newRelicQuery' | 'cdkQuery';
 
@@ -196,7 +206,13 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
 - slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.
-- certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${awsSubagentLines.length > 0 ? '\n' + awsSubagentLines.join('\n') : ''}${finopsSubagentLines.length > 0 ? '\n' + finopsSubagentLines.join('\n') : ''}${datadogSubagentLines.length > 0 ? '\n' + datadogSubagentLines.join('\n') : ''}${newRelicSubagentLines.length > 0 ? '\n' + newRelicSubagentLines.join('\n') : ''}${goldenSignalsSubagentLines.length > 0 ? '\n' + goldenSignalsSubagentLines.join('\n') : ''}${cdkSubagentLines.length > 0 ? '\n' + cdkSubagentLines.join('\n') : ''}`);
+- certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${
+  optionalLines(awsSubagentLines)}${
+  optionalLines(finopsSubagentLines)}${
+  optionalLines(datadogSubagentLines)}${
+  optionalLines(newRelicSubagentLines)}${
+  optionalLines(goldenSignalsSubagentLines)}${
+  optionalLines(cdkSubagentLines)}`);
 
   sections.push(RESPONSE_FORMAT);
 
