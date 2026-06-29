@@ -144,8 +144,6 @@ export function parseCdkCommand(command: string): ParsedCdkCommand {
   if (!trimmed) return result;
 
   const parts = tokenizeCdkCommand(trimmed);
-  if (parts.length === 0) return result;
-
   const binary = parts[0].toLowerCase();
   // Accept "cdk" and path variants like "/usr/local/bin/cdk".
   if (binary !== 'cdk' && !binary.endsWith('/cdk')) return result;

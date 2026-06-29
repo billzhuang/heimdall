@@ -129,8 +129,6 @@ export function parseAwsCommand(command: string): ParsedAwsCommand {
   if (!trimmed) return result;
 
   const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return result;
-
   if (parts[0].toLowerCase() !== 'aws') return result;
   result.isAws = true;
 
