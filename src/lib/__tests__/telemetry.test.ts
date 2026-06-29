@@ -62,6 +62,10 @@ describe('percentile', () => {
     percentile(values, 50);
     expect(values).toEqual([3, 1, 2]);
   });
+
+  it('clamps to the last element for p > 100', () => {
+    expect(percentile([10, 20, 30], 200)).toBe(30);
+  });
 });
 
 describe('recording functions are no-ops when disabled', () => {
