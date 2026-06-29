@@ -154,10 +154,6 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
   }
 
   const parts = trimmed.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return result;
-  }
-
   if (parts[0].toLowerCase() !== 'kubectl') {
     return result;
   }
