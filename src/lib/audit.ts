@@ -27,8 +27,9 @@ export async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | 
       return;
     }
     const file = audit.file;
-    await withMkdirRetry(file, () => appendFile(file, line, 'utf8'), () => {
+    await withMkdirRetry(file, () => appendFile(file, line, 'utf8'), (err) => {
       process.stderr.write(line);
+      process.stderr.write(`[heimdall] audit write to ${file} failed, wrote to stderr instead: ${err}\n`);
     });
   } catch {
     // Audit failures must never disrupt the main execution path.
