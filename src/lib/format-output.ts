@@ -199,6 +199,14 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
 }
 
 /**
+ * Strip the trailing backslash continuation marker from a (already-trimmed) line
+ * and remove any whitespace that preceded it (e.g. "kubectl get pods \" → "kubectl get pods").
+ */
+function stripContinuation(trimmed: string): string {
+  return trimmed.slice(0, -1).trim();
+}
+
+/**
  * Walk fenced-block lines, joining backslash continuations and collecting
  * all kubectl commands. Non-kubectl lines are ignored unless they continue
  * a preceding kubectl line.
@@ -212,14 +220,14 @@ function extractCommandsFromLines(lines: string[]): string[] {
     const trimmed = line.trim();
     if (current !== '') {
       if (trimmed.endsWith('\\')) {
-        current += ' ' + trimmed.slice(0, -1).trim();
+        current += ' ' + stripContinuation(trimmed);
       } else {
         commands.push(trimmed ? current + ' ' + trimmed : current);
         current = '';
       }
     } else if (trimmed.startsWith('kubectl ')) {
       if (trimmed.endsWith('\\')) {
-        current = trimmed.slice(0, -1).trim();
+        current = stripContinuation(trimmed);
       } else {
         commands.push(trimmed);
       }
