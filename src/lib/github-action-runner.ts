@@ -141,6 +141,28 @@ export function checkFailOnSeverity(failOn: string, severity: ActionSeverity): v
 
 type CaptureFn = typeof capture;
 
+// ── Shared output helpers ───────────────────────────────────────────────────
+
+const EMPTY_FINDING_KEYS = ['summary', 'answer', 'suggested-commands', 'remediation-steps'] as const;
+
+/** Write the empty finding-shaped outputs used by modes with no structured finding. */
+function setEmptyFindingOutputs(config: ActionConfig): void {
+  for (const key of EMPTY_FINDING_KEYS) {
+    setOutput(key, '', config.githubOutput);
+  }
+}
+
+/** Write the summary-markdown output, post the step summary, then apply fail-on gating. */
+function finishOutputs(config: ActionConfig, summaryMd: string, severity: ActionSeverity): void {
+  setOutput('summary-markdown', summaryMd, config.githubOutput);
+
+  if (config.postSummary) {
+    appendSummary(summaryMd, config.githubStepSummary);
+  }
+
+  checkFailOnSeverity(config.failOn, severity);
+}
+
 // ── Prompt mode ────────────────────────────────────────────────────────────
 
 /**
@@ -173,13 +195,7 @@ export async function runPromptMode(config: ActionConfig, captureImpl: CaptureFn
   }
 
   const summaryMd = renderJobSummary(finding, config.prompt);
-  setOutput('summary-markdown', summaryMd, config.githubOutput);
-
-  if (config.postSummary) {
-    appendSummary(summaryMd, config.githubStepSummary);
-  }
-
-  checkFailOnSeverity(config.failOn, normaliseSeverity(finding.severity));
+  finishOutputs(config, summaryMd, normaliseSeverity(finding.severity));
 }
 
 // ── Triage mode ────────────────────────────────────────────────────────────
@@ -204,19 +220,10 @@ export async function runTriageMode(config: ActionConfig, captureImpl: CaptureFn
 
   const severity = detectTriageSeverity(stdout);
   setOutput('severity', severity, config.githubOutput);
-  setOutput('summary', '', config.githubOutput);
-  setOutput('answer', '', config.githubOutput);
-  setOutput('suggested-commands', '', config.githubOutput);
-  setOutput('remediation-steps', '', config.githubOutput);
+  setEmptyFindingOutputs(config);
 
   const summaryMd = renderTriageJobSummary(stdout);
-  setOutput('summary-markdown', summaryMd, config.githubOutput);
-
-  if (config.postSummary) {
-    appendSummary(summaryMd, config.githubStepSummary);
-  }
-
-  checkFailOnSeverity(config.failOn, severity);
+  finishOutputs(config, summaryMd, severity);
 }
 
 // ── Schedule-once mode ─────────────────────────────────────────────────────
@@ -238,13 +245,7 @@ export async function runScheduleOnceMode(config: ActionConfig, captureImpl: Cap
   setOutput('answer', '', config.githubOutput);
   setOutput('suggested-commands', '', config.githubOutput);
   setOutput('remediation-steps', '', config.githubOutput);
-  setOutput('summary-markdown', summaryMd, config.githubOutput);
-
-  if (config.postSummary) {
-    appendSummary(summaryMd, config.githubStepSummary);
-  }
-
-  checkFailOnSeverity(config.failOn, 'ok');
+  finishOutputs(config, summaryMd, 'ok');
 }
 
 // ── Dispatch ───────────────────────────────────────────────────────────────
