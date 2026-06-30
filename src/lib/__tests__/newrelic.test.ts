@@ -494,9 +494,16 @@ describe('augmentNrqlClauses', () => {
   const NOW = new Date('2024-06-01T12:00:00Z').getTime();
   const BASE = 'SELECT count(*) FROM Transaction';
 
-  it('returns the query unchanged when from/to/limit are all absent', () => {
-    const result = augmentNrqlClauses(BASE, {}, NOW);
-    expect(result).toBe(`${BASE} LIMIT 100`);
+  it('returns the query unchanged when all clauses are already present', () => {
+    const nrql = BASE + " SINCE '2024-06-01T11:00:00.000Z' UNTIL '2024-06-01T11:30:00.000Z' LIMIT 50";
+    const result = augmentNrqlClauses(nrql, {}, NOW);
+    expect(result).toBe(nrql);
+  });
+
+  it('ignores explicit null values for from, to, and limit', () => {
+    const nrql = BASE + " SINCE '2024-06-01T11:00:00.000Z' UNTIL '2024-06-01T11:30:00.000Z' LIMIT 50";
+    const result = augmentNrqlClauses(nrql, { from: null, to: null, limit: null }, NOW);
+    expect(result).toBe(nrql);
   });
 
   it('appends SINCE when from is provided and SINCE is absent', () => {
