@@ -55,6 +55,32 @@ export function findingToOutputs(finding: OneShotFinding): Record<string, string
   };
 }
 
+// ── Private rendering helpers ────────────────────────────────────────────────
+
+/** Append a named text section (header + content + blank line). No-op when content is falsy. */
+function pushTextSection(lines: string[], title: string, content: string | undefined): void {
+  if (!content) return;
+  lines.push(`### ${title}`);
+  lines.push(content);
+  lines.push('');
+}
+
+/** Append a named bullet-list section (header + `- item` lines + blank line). No-op when items is empty. */
+function pushBulletSection(lines: string[], title: string, items: string[]): void {
+  if (items.length === 0) return;
+  lines.push(`### ${title}`);
+  for (const item of items) lines.push(`- ${item}`);
+  lines.push('');
+}
+
+/** Append the Heimdall branding footer (`---` + attribution line). */
+function pushFooter(lines: string[]): void {
+  lines.push('---');
+  lines.push('*Powered by [Heimdall](https://github.com/billzhuang/heimdall) — AI-powered K8s SRE agent*');
+}
+
+// ── Public render functions ───────────────────────────────────────────────────
+
 /**
  * Render a GitHub job-summary Markdown document from a finding.
  * The result is safe to append directly to $GITHUB_STEP_SUMMARY.
@@ -72,33 +98,10 @@ export function renderJobSummary(finding: OneShotFinding, prompt?: string): stri
     lines.push('');
   }
 
-  if (finding.summary) {
-    lines.push('### Summary');
-    lines.push(finding.summary);
-    lines.push('');
-  }
-
-  if (finding.answer) {
-    lines.push('### Answer');
-    lines.push(finding.answer);
-    lines.push('');
-  }
-
-  if (finding.causalChain && finding.causalChain.length > 0) {
-    lines.push('### Causal Chain');
-    for (const step of finding.causalChain) {
-      lines.push(`- ${step}`);
-    }
-    lines.push('');
-  }
-
-  if (finding.remediationSteps && finding.remediationSteps.length > 0) {
-    lines.push('### Remediation Steps');
-    for (const step of finding.remediationSteps) {
-      lines.push(`- ${step}`);
-    }
-    lines.push('');
-  }
+  pushTextSection(lines, 'Summary', finding.summary);
+  pushTextSection(lines, 'Answer', finding.answer);
+  pushBulletSection(lines, 'Causal Chain', finding.causalChain ?? []);
+  pushBulletSection(lines, 'Remediation Steps', finding.remediationSteps ?? []);
 
   if (finding.suggestedCommands && finding.suggestedCommands.length > 0) {
     lines.push('### Suggested Commands');
@@ -115,8 +118,7 @@ export function renderJobSummary(finding: OneShotFinding, prompt?: string): stri
     lines.push('');
   }
 
-  lines.push('---');
-  lines.push('*Powered by [Heimdall](https://github.com/billzhuang/heimdall) — AI-powered K8s SRE agent*');
+  pushFooter(lines);
 
   return lines.join('\n');
 }
@@ -141,8 +143,7 @@ export function renderTriageJobSummary(report: string): string {
   lines.push('');
   lines.push('</details>');
   lines.push('');
-  lines.push('---');
-  lines.push('*Powered by [Heimdall](https://github.com/billzhuang/heimdall) — AI-powered K8s SRE agent*');
+  pushFooter(lines);
 
   return lines.join('\n');
 }
