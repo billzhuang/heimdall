@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { appendJsonlLine, readJsonlFile } from '../jsonl.ts';
+import { appendJsonlLine, readJsonlFile, writeJsonlFile } from '../jsonl.ts';
 import * as fs from 'node:fs/promises';
 
 vi.mock('node:fs/promises');
 
 const mockReadFile = vi.mocked(fs.readFile);
 const mockAppendFile = vi.mocked(fs.appendFile);
+const mockWriteFile = vi.mocked(fs.writeFile);
 const mockMkdir = vi.mocked(fs.mkdir);
 
 afterEach(() => {
@@ -124,5 +125,47 @@ describe('appendJsonlLine', () => {
   it('throws TypeError for function input without calling appendFile', async () => {
     await expect(appendJsonlLine((() => {}) as never, '/data.jsonl')).rejects.toThrow(TypeError);
     expect(mockAppendFile).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// writeJsonlFile
+// ---------------------------------------------------------------------------
+
+describe('writeJsonlFile', () => {
+  it('writes items as JSONL with a trailing newline', async () => {
+    mockWriteFile.mockResolvedValueOnce(undefined as never);
+    await writeJsonlFile([{ id: 1 }, { id: 2 }], '/data.jsonl');
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      '/data.jsonl',
+      '{"id":1}\n{"id":2}\n',
+      'utf8',
+    );
+  });
+
+  it('writes an empty string for an empty items array', async () => {
+    mockWriteFile.mockResolvedValueOnce(undefined as never);
+    await writeJsonlFile([], '/data.jsonl');
+    expect(mockWriteFile).toHaveBeenCalledWith('/data.jsonl', '', 'utf8');
+  });
+
+  it('creates the parent directory and retries when writeFile throws ENOENT', async () => {
+    const enoentErr = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    mockWriteFile.mockRejectedValueOnce(enoentErr);
+    mockMkdir.mockResolvedValueOnce(undefined as never);
+    mockWriteFile.mockResolvedValueOnce(undefined as never);
+
+    await writeJsonlFile([{ id: 1 }], '/nested/dir/data.jsonl');
+
+    expect(mockMkdir).toHaveBeenCalledWith('/nested/dir', { recursive: true });
+    expect(mockWriteFile).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates non-ENOENT errors thrown by writeFile', async () => {
+    const err = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    mockWriteFile.mockRejectedValueOnce(err);
+    await expect(writeJsonlFile([{ id: 1 }], '/protected.jsonl')).rejects.toMatchObject({
+      code: 'EACCES',
+    });
   });
 });

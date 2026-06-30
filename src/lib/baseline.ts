@@ -11,9 +11,8 @@
  * - File path: configurable via `learning.baselineFile` in heimdall.config.yaml,
  *   defaulting to `scenarios/baselines.jsonl` alongside task-history.jsonl.
  */
-import { mkdir, writeFile } from 'node:fs/promises';
-import { readJsonlFile } from './jsonl.ts';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { readJsonlFile, writeJsonlFile } from './jsonl.ts';
+import { isAbsolute, resolve } from 'node:path';
 
 export interface BaselineEntry {
   /** Canonical key: "cluster/namespace/Kind/name". */
@@ -90,17 +89,7 @@ export async function upsertBaseline(
     });
   }
 
-  const lines = entries.map((e) => JSON.stringify(e)).join('\n') + '\n';
-  try {
-    await writeFile(filePath, lines, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, lines, 'utf8');
-    } else {
-      throw err;
-    }
-  }
+  await writeJsonlFile(entries, filePath);
 }
 
 /**
