@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { runNewRelicQuery, resolveNrqlTime } from '../newrelic.ts';
+import { runNewRelicQuery, resolveNrqlTime, augmentNrqlClauses } from '../newrelic.ts';
 import type { NewRelicConfig } from '../newrelic.ts';
 import { mockFetch } from './test-helpers.ts';
 
@@ -483,6 +483,95 @@ describe('runNewRelicQuery — truncation', () => {
     );
     expect(result.length).toBeLessThan(25_000);
     expect(result).toContain('[output truncated');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// augmentNrqlClauses — pure unit tests (no fetch mock required)
+// ---------------------------------------------------------------------------
+
+describe('augmentNrqlClauses', () => {
+  const NOW = new Date('2024-06-01T12:00:00Z').getTime();
+  const BASE = 'SELECT count(*) FROM Transaction';
+
+  it('returns the query unchanged when from/to/limit are all absent', () => {
+    const result = augmentNrqlClauses(BASE, {}, NOW);
+    expect(result).toBe(`${BASE} LIMIT 100`);
+  });
+
+  it('appends SINCE when from is provided and SINCE is absent', () => {
+    const result = augmentNrqlClauses(BASE, { from: '-1h' }, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain("SINCE '2024-06-01T11:00:00.000Z'");
+  });
+
+  it('does not double-append SINCE when query already contains it', () => {
+    const nrql = `${BASE} SINCE 1 hour ago`;
+    const result = augmentNrqlClauses(nrql, { from: '-1h' }, NOW);
+    expect(typeof result).toBe('string');
+    expect((result as string).match(/\bSINCE\b/gi) ?? []).toHaveLength(1);
+  });
+
+  it('appends UNTIL when to is provided and UNTIL is absent', () => {
+    const result = augmentNrqlClauses(BASE, { to: '-30m' }, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain("UNTIL '2024-06-01T11:30:00.000Z'");
+  });
+
+  it('does not double-append UNTIL when query already contains it', () => {
+    const nrql = `${BASE} UNTIL now()`;
+    const result = augmentNrqlClauses(nrql, { to: '-30m' }, NOW);
+    expect(typeof result).toBe('string');
+    expect((result as string).match(/\bUNTIL\b/gi) ?? []).toHaveLength(1);
+  });
+
+  it('appends LIMIT using the provided limit value', () => {
+    const result = augmentNrqlClauses(BASE, { limit: 42 }, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain('LIMIT 42');
+  });
+
+  it('uses default LIMIT 100 when limit is absent', () => {
+    const result = augmentNrqlClauses(BASE, {}, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain('LIMIT 100');
+  });
+
+  it('does not double-append LIMIT when query already contains it', () => {
+    const nrql = `${BASE} SINCE 1 hour ago LIMIT 500`;
+    const result = augmentNrqlClauses(nrql, { limit: 42 }, NOW);
+    expect(typeof result).toBe('string');
+    expect((result as string).match(/\bLIMIT\b/gi) ?? []).toHaveLength(1);
+  });
+
+  it('returns { error } when from time cannot be parsed', () => {
+    const result = augmentNrqlClauses(BASE, { from: '-5y' }, NOW);
+    expect(typeof result).toBe('object');
+    expect((result as { error: string }).error).toMatch(/could not parse "from" time/);
+    expect((result as { error: string }).error).toContain('-5y');
+  });
+
+  it('returns { error } when to time cannot be parsed', () => {
+    const result = augmentNrqlClauses(BASE, { to: '-5y' }, NOW);
+    expect(typeof result).toBe('object');
+    expect((result as { error: string }).error).toMatch(/could not parse "to" time/);
+    expect((result as { error: string }).error).toContain('-5y');
+  });
+
+  it('appends SINCE, UNTIL, and LIMIT together when all are provided and absent', () => {
+    const result = augmentNrqlClauses(BASE, { from: '-1h', to: '-30m', limit: 200 }, NOW);
+    expect(typeof result).toBe('string');
+    const nrql = result as string;
+    expect(nrql).toContain("SINCE '2024-06-01T11:00:00.000Z'");
+    expect(nrql).toContain("UNTIL '2024-06-01T11:30:00.000Z'");
+    expect(nrql).toContain('LIMIT 200');
+  });
+
+  it('is case-insensitive when checking for existing SINCE clause', () => {
+    const nrql = `${BASE} since 1 hour ago`;
+    const result = augmentNrqlClauses(nrql, { from: '-1h' }, NOW);
+    expect(typeof result).toBe('string');
+    expect((result as string).match(/\bsince\b/gi) ?? []).toHaveLength(1);
   });
 });
 

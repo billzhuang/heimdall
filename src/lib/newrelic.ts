@@ -100,6 +100,37 @@ async function nerdgraph(
   return await response.text();
 }
 
+/**
+ * Conditionally append missing SINCE, UNTIL, and LIMIT clauses to a NRQL string.
+ * Each clause is only appended when it is not already present (case-insensitive).
+ * Returns the augmented NRQL string, or `{ error }` when a time value fails to parse.
+ *
+ * Exported for direct unit testing — this is the pure core of queryMetrics time handling.
+ */
+export function augmentNrqlClauses(
+  nrql: string,
+  params: Pick<NewRelicQueryParams, 'from' | 'to' | 'limit'>,
+  nowMs: number,
+): string | { error: string } {
+  let result = nrql;
+
+  if (params.from) {
+    const since = resolveNrqlTime(params.from, nowMs);
+    if (since === null) return { error: `Error: could not parse "from" time: "${params.from}".` };
+    if (!/\bSINCE\b/i.test(result)) result += ` SINCE '${since}'`;
+  }
+  if (params.to) {
+    const until = resolveNrqlTime(params.to, nowMs);
+    if (until === null) return { error: `Error: could not parse "to" time: "${params.to}".` };
+    if (!/\bUNTIL\b/i.test(result)) result += ` UNTIL '${until}'`;
+  }
+  if (!/\bLIMIT\b/i.test(result)) {
+    result += ` LIMIT ${clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT)}`;
+  }
+
+  return result;
+}
+
 async function queryMetrics(
   params: NewRelicQueryParams,
   config: NewRelicConfig,
@@ -110,27 +141,13 @@ async function queryMetrics(
     return 'Error: query is required for metrics (e.g. "SELECT average(cpuPercent) FROM SystemSample SINCE 1 hour ago").';
   }
 
-  let nrql = q;
-  const nowMs = Date.now();
-
-  if (params.from) {
-    const since = resolveNrqlTime(params.from, nowMs);
-    if (since === null) return `Error: could not parse "from" time: "${params.from}".`;
-    if (!/\bSINCE\b/i.test(nrql)) nrql += ` SINCE '${since}'`;
-  }
-  if (params.to) {
-    const until = resolveNrqlTime(params.to, nowMs);
-    if (until === null) return `Error: could not parse "to" time: "${params.to}".`;
-    if (!/\bUNTIL\b/i.test(nrql)) nrql += ` UNTIL '${until}'`;
-  }
-  if (!/\bLIMIT\b/i.test(nrql)) {
-    nrql += ` LIMIT ${clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT)}`;
-  }
+  const augmented = augmentNrqlClauses(q, params, Date.now());
+  if (typeof augmented === 'object') return augmented.error;
 
   const gql = `{
   actor {
     account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(nrql)}) {
+      nrql(query: ${JSON.stringify(augmented)}) {
         results
         metadata { facets timeWindow { begin end since until } }
       }
