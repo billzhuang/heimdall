@@ -143,12 +143,13 @@ type CaptureFn = typeof capture;
 
 // ── Shared output helpers ───────────────────────────────────────────────────
 
+const EMPTY_FINDING_KEYS = ['summary', 'answer', 'suggested-commands', 'remediation-steps'] as const;
+
 /** Write the empty finding-shaped outputs used by modes with no structured finding. */
 function setEmptyFindingOutputs(config: ActionConfig): void {
-  setOutput('summary', '', config.githubOutput);
-  setOutput('answer', '', config.githubOutput);
-  setOutput('suggested-commands', '', config.githubOutput);
-  setOutput('remediation-steps', '', config.githubOutput);
+  for (const key of EMPTY_FINDING_KEYS) {
+    setOutput(key, '', config.githubOutput);
+  }
 }
 
 /** Write the summary-markdown output, post the step summary, then apply fail-on gating. */
