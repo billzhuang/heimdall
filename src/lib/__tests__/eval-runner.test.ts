@@ -15,6 +15,7 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
 import {
+  checkFinding,
   loadScenario,
   loadScenarios,
   resolveBinPath,
@@ -64,6 +65,89 @@ const MINIMAL_SCENARIO: EvalScenario = {
   prompt: 'check the cluster',
   mocks: {},
 };
+
+// ---------------------------------------------------------------------------
+// checkFinding — pure assertion helper
+// ---------------------------------------------------------------------------
+
+type PartialFinding = { summary?: string; answer?: string; severity: string; suggestedCommands: string[] };
+const finding = (overrides: Partial<PartialFinding> = {}): PartialFinding => ({
+  summary: 'pod crashed',
+  answer: 'oomkilled due to memory limit',
+  severity: 'critical',
+  suggestedCommands: [],
+  ...overrides,
+});
+
+describe('checkFinding', () => {
+  it('returns [] when finding is undefined (no assertions run)', () => {
+    expect(checkFinding(undefined, { description: 'd', prompt: 'p', mocks: {} })).toEqual([]);
+  });
+
+  it('returns [] when no assertions are configured', () => {
+    expect(checkFinding(finding() as never, { description: 'd', prompt: 'p', mocks: {} })).toEqual([]);
+  });
+
+  it('returns [] when severity matches expectedSeverity', () => {
+    expect(checkFinding(finding({ severity: 'warning' }) as never, {
+      description: 'd', prompt: 'p', mocks: {}, expectedSeverity: 'warning',
+    })).toEqual([]);
+  });
+
+  it('returns a severity failure when severity does not match', () => {
+    const failures = checkFinding(finding({ severity: 'info' }) as never, {
+      description: 'd', prompt: 'p', mocks: {}, expectedSeverity: 'critical',
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatch(/severity/i);
+    expect(failures[0]).toContain('"critical"');
+    expect(failures[0]).toContain('"info"');
+  });
+
+  it('returns [] when all expectedKeywords are present', () => {
+    expect(checkFinding(finding() as never, {
+      description: 'd', prompt: 'p', mocks: {}, expectedKeywords: ['oomkilled', 'memory'],
+    })).toEqual([]);
+  });
+
+  it('returns a failure for each missing expected keyword', () => {
+    const failures = checkFinding(finding({ summary: 'all good', answer: 'running' }) as never, {
+      description: 'd', prompt: 'p', mocks: {}, expectedKeywords: ['oomkill', 'memory'],
+    });
+    expect(failures).toHaveLength(2);
+    expect(failures.some(f => f.includes('oomkill'))).toBe(true);
+    expect(failures.some(f => f.includes('memory'))).toBe(true);
+  });
+
+  it('returns [] when no forbiddenKeyword is present', () => {
+    expect(checkFinding(finding() as never, {
+      description: 'd', prompt: 'p', mocks: {}, forbiddenKeywords: ['healthy'],
+    })).toEqual([]);
+  });
+
+  it('returns a failure for each forbidden keyword found', () => {
+    const failures = checkFinding(finding({ summary: 'healthy pod', answer: 'running fine' }) as never, {
+      description: 'd', prompt: 'p', mocks: {}, forbiddenKeywords: ['healthy', 'fine'],
+    });
+    expect(failures).toHaveLength(2);
+    expect(failures.some(f => f.includes('healthy'))).toBe(true);
+    expect(failures.some(f => f.includes('fine'))).toBe(true);
+  });
+
+  it('keyword matching is case-insensitive', () => {
+    expect(checkFinding(finding({ summary: 'OOMKILLED', answer: '' }) as never, {
+      description: 'd', prompt: 'p', mocks: {}, expectedKeywords: ['oomkilled'],
+    })).toEqual([]);
+  });
+
+  it('treats undefined summary and answer as empty strings (no crash)', () => {
+    const failures = checkFinding(finding({ summary: undefined, answer: undefined }) as never, {
+      description: 'd', prompt: 'p', mocks: {}, expectedKeywords: ['oomkilled'],
+    });
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain('oomkilled');
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Temp dir shared by loadScenario / loadScenarios tests
