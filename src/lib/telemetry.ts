@@ -219,6 +219,60 @@ function msToNanoStr(ms: number): string {
 }
 
 /**
+ * Canonical descriptor for a single Heimdall telemetry metric.
+ * Drives both `buildOtlpPayload` and `formatPrometheusMetrics` so each metric
+ * only needs to be registered once.
+ */
+interface MetricDescriptor {
+  readonly field: keyof TelemetrySnapshot;
+  readonly kind: 'sum' | 'gauge';
+  readonly otlpName: string;
+  readonly otlpDescription: string;
+  readonly otlpUnit: string;
+  readonly promName: string;
+  readonly promHelp: string;
+}
+
+const METRIC_DESCRIPTORS: readonly MetricDescriptor[] = [
+  { field: 'toolCallCount',     kind: 'sum',   otlpName: 'heimdall.tool.calls',              otlpDescription: 'Total tool calls',              otlpUnit: '{calls}',  promName: 'heimdall_tool_calls_total',                promHelp: 'Total tool calls executed' },
+  { field: 'cacheHits',         kind: 'sum',   otlpName: 'heimdall.kubectl.cache_hits',       otlpDescription: 'kubectl cache hits',             otlpUnit: '{hits}',   promName: 'heimdall_kubectl_cache_hits_total',         promHelp: 'Total kubectl cache hits' },
+  { field: 'cacheMisses',       kind: 'sum',   otlpName: 'heimdall.kubectl.cache_misses',     otlpDescription: 'kubectl cache misses',           otlpUnit: '{misses}', promName: 'heimdall_kubectl_cache_misses_total',       promHelp: 'Total kubectl cache misses' },
+  { field: 'totalInputTokens',  kind: 'sum',   otlpName: 'heimdall.llm.input_tokens',         otlpDescription: 'LLM input tokens consumed',      otlpUnit: '{tokens}', promName: 'heimdall_llm_input_tokens_total',           promHelp: 'Total LLM input tokens consumed' },
+  { field: 'totalOutputTokens', kind: 'sum',   otlpName: 'heimdall.llm.output_tokens',        otlpDescription: 'LLM output tokens produced',     otlpUnit: '{tokens}', promName: 'heimdall_llm_output_tokens_total',          promHelp: 'Total LLM output tokens produced' },
+  { field: 'p50LatencyMs',      kind: 'gauge', otlpName: 'heimdall.tool.latency_p50_ms',      otlpDescription: 'P50 tool-call latency',          otlpUnit: 'ms',       promName: 'heimdall_tool_latency_p50_milliseconds',    promHelp: 'P50 tool-call latency in milliseconds' },
+  { field: 'p99LatencyMs',      kind: 'gauge', otlpName: 'heimdall.tool.latency_p99_ms',      otlpDescription: 'P99 tool-call latency',          otlpUnit: 'ms',       promName: 'heimdall_tool_latency_p99_milliseconds',    promHelp: 'P99 tool-call latency in milliseconds' },
+];
+
+/** Build a single OTLP metric entry for a descriptor and snapshot value. */
+function buildOtlpMetric(
+  descriptor: MetricDescriptor,
+  value: number,
+  startNs: string,
+  nowNs: string,
+): Record<string, unknown> {
+  if (descriptor.kind === 'sum') {
+    return {
+      name: descriptor.otlpName,
+      description: descriptor.otlpDescription,
+      unit: descriptor.otlpUnit,
+      sum: {
+        dataPoints: [{ startTimeUnixNano: startNs, timeUnixNano: nowNs, asInt: Math.round(value), attributes: [] }],
+        aggregationTemporality: 2, // AGGREGATION_TEMPORALITY_CUMULATIVE
+        isMonotonic: true,
+      },
+    };
+  }
+  return {
+    name: descriptor.otlpName,
+    description: descriptor.otlpDescription,
+    unit: descriptor.otlpUnit,
+    gauge: {
+      dataPoints: [{ startTimeUnixNano: startNs, timeUnixNano: nowNs, asDouble: value, attributes: [] }],
+    },
+  };
+}
+
+/**
  * Build an OTLP/HTTP JSON metrics payload from the current snapshot.
  * startTimeMs and nowTimeMs are Unix timestamps in milliseconds.
  */
@@ -230,41 +284,6 @@ export function buildOtlpPayload(
 ): object {
   const startNs = msToNanoStr(startTimeMs);
   const nowNs = msToNanoStr(nowTimeMs);
-
-  function sumMetric(name: string, description: string, unit: string, value: number) {
-    return {
-      name,
-      description,
-      unit,
-      sum: {
-        dataPoints: [{
-          startTimeUnixNano: startNs,
-          timeUnixNano: nowNs,
-          asInt: Math.round(value),
-          attributes: [],
-        }],
-        aggregationTemporality: 2, // AGGREGATION_TEMPORALITY_CUMULATIVE
-        isMonotonic: true,
-      },
-    };
-  }
-
-  function gaugeMetric(name: string, description: string, unit: string, value: number) {
-    return {
-      name,
-      description,
-      unit,
-      gauge: {
-        dataPoints: [{
-          startTimeUnixNano: startNs,
-          timeUnixNano: nowNs,
-          asDouble: value,
-          attributes: [],
-        }],
-      },
-    };
-  }
-
   return {
     resourceMetrics: [{
       resource: {
@@ -272,15 +291,7 @@ export function buildOtlpPayload(
       },
       scopeMetrics: [{
         scope: { name: 'heimdall/telemetry', version: '1.0.0' },
-        metrics: [
-          sumMetric('heimdall.tool.calls', 'Total tool calls', '{calls}', snapshot.toolCallCount),
-          sumMetric('heimdall.kubectl.cache_hits', 'kubectl cache hits', '{hits}', snapshot.cacheHits),
-          sumMetric('heimdall.kubectl.cache_misses', 'kubectl cache misses', '{misses}', snapshot.cacheMisses),
-          sumMetric('heimdall.llm.input_tokens', 'LLM input tokens consumed', '{tokens}', snapshot.totalInputTokens),
-          sumMetric('heimdall.llm.output_tokens', 'LLM output tokens produced', '{tokens}', snapshot.totalOutputTokens),
-          gaugeMetric('heimdall.tool.latency_p50_ms', 'P50 tool-call latency', 'ms', snapshot.p50LatencyMs),
-          gaugeMetric('heimdall.tool.latency_p99_ms', 'P99 tool-call latency', 'ms', snapshot.p99LatencyMs),
-        ],
+        metrics: METRIC_DESCRIPTORS.map((d) => buildOtlpMetric(d, snapshot[d.field], startNs, nowNs)),
       }],
     }],
   };
@@ -389,20 +400,11 @@ export function formatPrometheusMetrics(
   const label = `{service="${escapedService}"}`;
   const lines: string[] = [];
 
-  const metrics: Array<[string, 'counter' | 'gauge', string, number]> = [
-    ['heimdall_tool_calls_total', 'counter', 'Total tool calls executed', snapshot.toolCallCount],
-    ['heimdall_kubectl_cache_hits_total', 'counter', 'Total kubectl cache hits', snapshot.cacheHits],
-    ['heimdall_kubectl_cache_misses_total', 'counter', 'Total kubectl cache misses', snapshot.cacheMisses],
-    ['heimdall_llm_input_tokens_total', 'counter', 'Total LLM input tokens consumed', snapshot.totalInputTokens],
-    ['heimdall_llm_output_tokens_total', 'counter', 'Total LLM output tokens produced', snapshot.totalOutputTokens],
-    ['heimdall_tool_latency_p50_milliseconds', 'gauge', 'P50 tool-call latency in milliseconds', snapshot.p50LatencyMs],
-    ['heimdall_tool_latency_p99_milliseconds', 'gauge', 'P99 tool-call latency in milliseconds', snapshot.p99LatencyMs],
-  ];
-
-  for (const [name, type, help, value] of metrics) {
-    lines.push(`# HELP ${name} ${help}`);
-    lines.push(`# TYPE ${name} ${type}`);
-    lines.push(`${name}${label} ${value}`);
+  for (const d of METRIC_DESCRIPTORS) {
+    const type = d.kind === 'sum' ? 'counter' : 'gauge';
+    lines.push(`# HELP ${d.promName} ${d.promHelp}`);
+    lines.push(`# TYPE ${d.promName} ${type}`);
+    lines.push(`${d.promName}${label} ${snapshot[d.field]}`);
   }
 
   return lines.join('\n') + '\n';
