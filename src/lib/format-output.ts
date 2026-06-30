@@ -57,6 +57,20 @@ const REMEDIATION_STEPS_RE = makeSectionRe('Remediation Steps?', '\\n');
 const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
 
 /**
+ * Slice `raw` from `fromIdx` to the next RCA section header (or end of string).
+ * Returns the trimmed body and the remainder of `raw` starting at that header
+ * (empty string when no next header exists).
+ */
+function sliceToNextRcaSection(raw: string, fromIdx: number): { body: string; rcaRaw: string } {
+  const stop = RCA_SECTION_HEADER_RE.exec(raw.slice(fromIdx));
+  const bodyEnd = stop !== null ? fromIdx + stop.index : raw.length;
+  return {
+    body: raw.slice(fromIdx, bodyEnd).trim(),
+    rcaRaw: stop !== null ? raw.slice(fromIdx + stop.index) : '',
+  };
+}
+
+/**
  * Extract the body of a named section from raw output.
  * Stops at the next RCA section header or end of string.
  * Returns null when the section is absent or its body is empty.
@@ -64,10 +78,8 @@ const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
 function extractRcaSection(raw: string, headerRe: RegExp): string | null {
   const m = headerRe.exec(raw);
   if (!m) return null;
-  const bodyStart = m.index + m[0].length;
-  const stop = RCA_SECTION_HEADER_RE.exec(raw.slice(bodyStart));
-  const bodyEnd = stop !== null ? bodyStart + stop.index : raw.length;
-  return raw.slice(bodyStart, bodyEnd).trim() || null;
+  const { body } = sliceToNextRcaSection(raw, m.index + m[0].length);
+  return body || null;
 }
 
 /** Parse a bullet/numbered list body into an array of trimmed strings. */
@@ -145,14 +157,11 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
   }
 
   if (answerMatch !== null) {
-    const bodyStart = answerMatch.index + answerMatch[0].length;
-    const firstRca = RCA_SECTION_HEADER_RE.exec(raw.slice(bodyStart));
-    const bodyEnd = firstRca !== null ? bodyStart + firstRca.index : raw.length;
-    answer = raw.slice(bodyStart, bodyEnd).trim();
-    if (firstRca !== null) rcaRaw = raw.slice(bodyStart + firstRca.index);
+    const sliced = sliceToNextRcaSection(raw, answerMatch.index + answerMatch[0].length);
+    answer = sliced.body;
+    rcaRaw = sliced.rcaRaw;
   } else {
-    const firstRca = RCA_SECTION_HEADER_RE.exec(raw);
-    if (firstRca !== null) rcaRaw = raw.slice(firstRca.index);
+    rcaRaw = sliceToNextRcaSection(raw, 0).rcaRaw;
   }
 
   const suggestedCommands = extractKubectlCommands(answer);
