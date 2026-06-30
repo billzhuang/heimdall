@@ -69,7 +69,7 @@ const FAILURE_HANDLERS: Array<[string, FailureHandler]> = [
   [
     'Agent error:',
     (failure, scenario) =>
-      `Agent execution failed for "${scenario}": ${failure.slice('Agent error: '.length).slice(0, 120)}. ` +
+      `Agent execution failed for "${scenario}": ${failure.slice('Agent error:'.length).trimStart().slice(0, 120)}. ` +
       `Check prompt clarity, tool availability, or ANTHROPIC_API_KEY.`,
   ],
 ];
