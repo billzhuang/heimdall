@@ -8,7 +8,7 @@
  * targeting src/lib/instructions.ts so changes are machine-parseable and reversible.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { formatLearningEntries } from './self-improve.ts';
+import { formatScenarioSection, joinSections } from './self-improve.ts';
 import type { LearningEntry } from './self-improve.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
@@ -60,7 +60,7 @@ export function buildAutoReflectionPrompt(
   const hasFailures = entries.length > 0;
   const hasHistory = taskHistory.length > 0;
 
-  const scenarioList = hasFailures ? formatLearningEntries(entries) : '';
+  const scenarioList = formatScenarioSection(entries);
 
   const historySection = hasHistory
     ? `## Recent Real-World Investigations\n\n${buildTaskHistoryContext(taskHistory)}`
@@ -99,7 +99,7 @@ Rules:
     patchFormat,
   ];
 
-  return sections.join('\n\n---\n\n');
+  return joinSections(sections);
 }
 
 /**

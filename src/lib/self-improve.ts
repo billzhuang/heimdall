@@ -119,6 +119,19 @@ export function buildLearningEntry(
   return { id, timestamp, scenario, prompt, failures, suggestion: generateSuggestion(scenario, prompt, failures) };
 }
 
+/** Separator joining distinct sections of a reflection prompt. */
+export const SECTION_SEPARATOR = '\n\n---\n\n';
+
+/** Join reflection-prompt sections with the standard separator. */
+export function joinSections(sections: string[]): string {
+  return sections.join(SECTION_SEPARATOR);
+}
+
+/** Format a learning-entries scenario list for a reflection prompt, or '' when there are none. */
+export function formatScenarioSection(entries: LearningEntry[]): string {
+  return entries.length > 0 ? formatLearningEntries(entries) : '';
+}
+
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */
 export async function appendLearningEntry(entry: LearningEntry, logPath: string): Promise<void> {
   await appendJsonlLine(entry, logPath);
@@ -190,7 +203,7 @@ export function buildReflectionPrompt(
 
   const hasHistory = relevantHistory.length > 0;
 
-  const scenarioList = hasFailures ? formatLearningEntries(entries) : '';
+  const scenarioList = formatScenarioSection(entries);
 
   const historyLabel = useRag && hasFailures
     ? 'semantically similar to the failing scenario prompts'
@@ -233,5 +246,5 @@ export function buildReflectionPrompt(
   sections.push(`## Your task\n\n` + taskItems.join('\n\n'));
   sections.push(`Focus on changes with the highest impact-to-risk ratio. Prefer small, targeted edits over broad rewrites.`);
 
-  return sections.join('\n\n---\n\n');
+  return joinSections(sections);
 }
