@@ -44,7 +44,7 @@ function ensureDir(dir: string): void {
 
 /** Translate ENOENT into a "Session not found" error; rethrow everything else. */
 function rethrowOrNotFound(err: unknown, id: string): never {
-  if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+  if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') {
     throw new Error(`Session not found: ${id}`);
   }
   throw err;
