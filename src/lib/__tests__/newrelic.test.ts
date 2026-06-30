@@ -538,6 +538,24 @@ describe('augmentNrqlClauses', () => {
     expect(result as string).toContain('LIMIT 42');
   });
 
+  it('clamps non-positive limits up to 1', () => {
+    const result = augmentNrqlClauses(BASE, { limit: 0 }, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain('LIMIT 1');
+  });
+
+  it('truncates fractional limits before appending', () => {
+    const result = augmentNrqlClauses(BASE, { limit: 42.9 }, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain('LIMIT 42');
+  });
+
+  it('clamps oversized limits down to the max (2000)', () => {
+    const result = augmentNrqlClauses(BASE, { limit: 999999 }, NOW);
+    expect(typeof result).toBe('string');
+    expect(result as string).toContain('LIMIT 2000');
+  });
+
   it('uses default LIMIT 100 when limit is absent', () => {
     const result = augmentNrqlClauses(BASE, {}, NOW);
     expect(typeof result).toBe('string');
