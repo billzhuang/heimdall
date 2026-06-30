@@ -132,6 +132,16 @@ interface PagerDutyV3Payload {
  */
 export type PagerDutyServiceMap = Record<string, string>;
 
+/** Normalised incident fields extracted from a PagerDuty V2 or V3 webhook. */
+interface PdIncidentRef {
+  title?: string;
+  id?: string;
+  status?: string;
+  urgency?: string;
+  serviceName?: string;
+  runbookUrl?: string;
+}
+
 function resolveServiceTarget(
   serviceName: string | undefined,
   serviceMap: PagerDutyServiceMap,
@@ -150,15 +160,8 @@ function pdUrgencyToSeverity(urgency?: string): string | undefined {
   return urgency;
 }
 
-function buildPdAlert(
-  title: string | undefined,
-  id: string | undefined,
-  status: string | undefined,
-  urgency: string | undefined,
-  serviceName: string | undefined,
-  runbookUrl: string | undefined,
-  serviceMap: PagerDutyServiceMap,
-): ParsedAlert {
+function buildPdAlert(incident: PdIncidentRef, serviceMap: PagerDutyServiceMap): ParsedAlert {
+  const { title, id, status, urgency, serviceName, runbookUrl } = incident;
   const mapped = resolveServiceTarget(serviceName, serviceMap);
   // If resolveServiceTarget found a namespace the serviceMap had a meaningful entry;
   // suppress the serviceName fallback so the mapping intent is preserved.
@@ -196,8 +199,8 @@ export function parsePagerDutyV2Payload(
       ?.find((l) => l?.text?.toLowerCase()?.includes('runbook'))
       ?.href;
     return [buildPdAlert(
-      incident.title, incident.id, incident.status, incident.urgency,
-      incident.service?.name, runbookUrl, serviceMap,
+      { title: incident.title, id: incident.id, status: incident.status, urgency: incident.urgency, serviceName: incident.service?.name, runbookUrl },
+      serviceMap,
     )];
   });
 }
@@ -225,8 +228,8 @@ export function parsePagerDutyV3Payload(
     // V3 service references expose the display name as `summary`; fall back to `name` for compat.
     const serviceName = incident.service?.summary ?? incident.service?.name;
     return [buildPdAlert(
-      incident.title, incident.id, incident.status, incident.urgency,
-      serviceName, undefined, serviceMap,
+      { title: incident.title, id: incident.id, status: incident.status, urgency: incident.urgency, serviceName },
+      serviceMap,
     )];
   });
 }
