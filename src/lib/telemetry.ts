@@ -224,16 +224,16 @@ function msToNanoStr(ms: number): string {
  * only needs to be registered once.
  */
 interface MetricDescriptor {
-  field: keyof TelemetrySnapshot;
-  kind: 'sum' | 'gauge';
-  otlpName: string;
-  otlpDescription: string;
-  otlpUnit: string;
-  promName: string;
-  promHelp: string;
+  readonly field: keyof TelemetrySnapshot;
+  readonly kind: 'sum' | 'gauge';
+  readonly otlpName: string;
+  readonly otlpDescription: string;
+  readonly otlpUnit: string;
+  readonly promName: string;
+  readonly promHelp: string;
 }
 
-const METRIC_DESCRIPTORS: MetricDescriptor[] = [
+const METRIC_DESCRIPTORS: readonly MetricDescriptor[] = [
   { field: 'toolCallCount',     kind: 'sum',   otlpName: 'heimdall.tool.calls',              otlpDescription: 'Total tool calls',              otlpUnit: '{calls}',  promName: 'heimdall_tool_calls_total',                promHelp: 'Total tool calls executed' },
   { field: 'cacheHits',         kind: 'sum',   otlpName: 'heimdall.kubectl.cache_hits',       otlpDescription: 'kubectl cache hits',             otlpUnit: '{hits}',   promName: 'heimdall_kubectl_cache_hits_total',         promHelp: 'Total kubectl cache hits' },
   { field: 'cacheMisses',       kind: 'sum',   otlpName: 'heimdall.kubectl.cache_misses',     otlpDescription: 'kubectl cache misses',           otlpUnit: '{misses}', promName: 'heimdall_kubectl_cache_misses_total',       promHelp: 'Total kubectl cache misses' },
@@ -249,7 +249,7 @@ function buildOtlpMetric(
   value: number,
   startNs: string,
   nowNs: string,
-): object {
+): Record<string, unknown> {
   if (descriptor.kind === 'sum') {
     return {
       name: descriptor.otlpName,
