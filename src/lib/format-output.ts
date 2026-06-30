@@ -62,11 +62,17 @@ const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
  * (empty string when no next header exists).
  */
 function sliceToNextRcaSection(raw: string, fromIdx: number): { body: string; rcaRaw: string } {
-  const stop = RCA_SECTION_HEADER_RE.exec(raw.slice(fromIdx));
-  const bodyEnd = stop !== null ? fromIdx + stop.index : raw.length;
+  const sliced = raw.slice(fromIdx);
+  const stop = RCA_SECTION_HEADER_RE.exec(sliced);
+  if (stop !== null) {
+    return {
+      body: sliced.slice(0, stop.index).trim(),
+      rcaRaw: sliced.slice(stop.index),
+    };
+  }
   return {
-    body: raw.slice(fromIdx, bodyEnd).trim(),
-    rcaRaw: stop !== null ? raw.slice(fromIdx + stop.index) : '',
+    body: sliced.trim(),
+    rcaRaw: '',
   };
 }
 
