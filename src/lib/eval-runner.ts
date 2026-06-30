@@ -47,7 +47,44 @@ export async function loadScenario(filePath: string): Promise<EvalScenario> {
   if (parsed['mocks'] !== undefined && (typeof parsed['mocks'] !== 'object' || parsed['mocks'] === null || Array.isArray(parsed['mocks']))) {
     throw new Error(`Invalid scenario file: ${filePath} — "mocks" must be an object if provided`);
   }
+  if (parsed['expectedKeywords'] !== undefined && !Array.isArray(parsed['expectedKeywords'])) {
+    throw new Error(`Invalid scenario file: ${filePath} — "expectedKeywords" must be an array if provided`);
+  }
+  if (parsed['forbiddenKeywords'] !== undefined && !Array.isArray(parsed['forbiddenKeywords'])) {
+    throw new Error(`Invalid scenario file: ${filePath} — "forbiddenKeywords" must be an array if provided`);
+  }
   return parsed as unknown as EvalScenario;
+}
+
+/**
+ * Assert a parsed finding against scenario expectations.
+ * Returns one failure string per violated assertion; returns [] when all pass.
+ * Pure — no I/O, directly testable without spawning a process.
+ */
+export function checkFinding(
+  finding: OneShotFinding | undefined,
+  scenario: EvalScenario,
+): string[] {
+  if (!finding) return [];
+  const failures: string[] = [];
+
+  if (scenario.expectedSeverity && finding.severity !== scenario.expectedSeverity) {
+    failures.push(`Severity: expected "${scenario.expectedSeverity}", got "${finding.severity}"`);
+  }
+
+  const fullText = `${finding.summary ?? ''} ${finding.answer ?? ''}`.toLowerCase();
+  for (const kw of scenario.expectedKeywords ?? []) {
+    if (!fullText.includes(kw.toLowerCase())) {
+      failures.push(`Missing expected keyword: "${kw}"`);
+    }
+  }
+  for (const kw of scenario.forbiddenKeywords ?? []) {
+    if (fullText.includes(kw.toLowerCase())) {
+      failures.push(`Found forbidden keyword: "${kw}"`);
+    }
+  }
+
+  return failures;
 }
 
 export async function runScenario(
@@ -108,22 +145,7 @@ export async function runScenario(
       failures.push(`Failed to parse JSON output: ${rawOutput.slice(0, 200)}`);
     }
 
-    if (finding) {
-      if (scenario.expectedSeverity && finding.severity !== scenario.expectedSeverity) {
-        failures.push(`Severity: expected "${scenario.expectedSeverity}", got "${finding.severity}"`);
-      }
-      const fullText = `${finding.summary ?? ''} ${finding.answer ?? ''}`.toLowerCase();
-      for (const kw of scenario.expectedKeywords ?? []) {
-        if (!fullText.includes(kw.toLowerCase())) {
-          failures.push(`Missing expected keyword: "${kw}"`);
-        }
-      }
-      for (const kw of scenario.forbiddenKeywords ?? []) {
-        if (fullText.includes(kw.toLowerCase())) {
-          failures.push(`Found forbidden keyword: "${kw}"`);
-        }
-      }
-    }
+    failures.push(...checkFinding(finding, scenario));
   } catch (err) {
     failures.push(`Agent error: ${getMessage(err)}`);
   } finally {
