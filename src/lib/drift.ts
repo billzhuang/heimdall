@@ -63,7 +63,7 @@ export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: st
  */
 export async function loadCheckpoint(filePath: string): Promise<ClusterCheckpoint | null> {
   const entries = await readJsonlFile<ClusterCheckpoint>(filePath);
-  const valid = entries.filter((e) => typeof e.timestamp === 'string');
+  const valid = entries.filter((e) => typeof e?.timestamp === 'string');
   return valid.length > 0 ? valid[valid.length - 1] : null;
 }
 
