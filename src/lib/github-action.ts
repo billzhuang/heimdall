@@ -65,9 +65,9 @@ function pushTextSection(lines: string[], title: string, content: string | undef
   lines.push('');
 }
 
-/** Append a named bullet-list section (header + `- item` lines + blank line). No-op when items is empty. */
-function pushBulletSection(lines: string[], title: string, items: string[]): void {
-  if (items.length === 0) return;
+/** Append a named bullet-list section (header + `- item` lines + blank line). No-op when items is empty, null, or undefined. */
+function pushBulletSection(lines: string[], title: string, items: string[] | null | undefined): void {
+  if (items == null || items.length === 0) return;
   lines.push(`### ${title}`);
   for (const item of items) lines.push(`- ${item}`);
   lines.push('');
@@ -100,8 +100,8 @@ export function renderJobSummary(finding: OneShotFinding, prompt?: string): stri
 
   pushTextSection(lines, 'Summary', finding.summary);
   pushTextSection(lines, 'Answer', finding.answer);
-  pushBulletSection(lines, 'Causal Chain', finding.causalChain ?? []);
-  pushBulletSection(lines, 'Remediation Steps', finding.remediationSteps ?? []);
+  pushBulletSection(lines, 'Causal Chain', finding.causalChain);
+  pushBulletSection(lines, 'Remediation Steps', finding.remediationSteps);
 
   if (finding.suggestedCommands && finding.suggestedCommands.length > 0) {
     lines.push('### Suggested Commands');
