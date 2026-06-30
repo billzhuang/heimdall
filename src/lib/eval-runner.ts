@@ -47,6 +47,12 @@ export async function loadScenario(filePath: string): Promise<EvalScenario> {
   if (parsed['mocks'] !== undefined && (typeof parsed['mocks'] !== 'object' || parsed['mocks'] === null || Array.isArray(parsed['mocks']))) {
     throw new Error(`Invalid scenario file: ${filePath} — "mocks" must be an object if provided`);
   }
+  if (parsed['expectedKeywords'] !== undefined && !Array.isArray(parsed['expectedKeywords'])) {
+    throw new Error(`Invalid scenario file: ${filePath} — "expectedKeywords" must be an array if provided`);
+  }
+  if (parsed['forbiddenKeywords'] !== undefined && !Array.isArray(parsed['forbiddenKeywords'])) {
+    throw new Error(`Invalid scenario file: ${filePath} — "forbiddenKeywords" must be an array if provided`);
+  }
   return parsed as unknown as EvalScenario;
 }
 
