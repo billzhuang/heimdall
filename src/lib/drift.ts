@@ -9,8 +9,7 @@
  *
  * All functions that touch the filesystem are async; all diff / parse logic is pure.
  */
-import { readFile } from 'node:fs/promises';
-import { appendJsonlLine } from './jsonl.ts';
+import { appendJsonlLine, readJsonlFile } from './jsonl.ts';
 
 export interface WorkloadRef {
   kind: 'Deployment' | 'StatefulSet' | 'DaemonSet';
@@ -63,25 +62,9 @@ export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: st
  * Returns null when the file does not exist or contains no parseable entries.
  */
 export async function loadCheckpoint(filePath: string): Promise<ClusterCheckpoint | null> {
-  let raw: string;
-  try {
-    raw = await readFile(filePath, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw err;
-  }
-  let latest: ClusterCheckpoint | null = null;
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const entry = JSON.parse(trimmed) as ClusterCheckpoint;
-      if (typeof entry.timestamp === 'string') latest = entry;
-    } catch {
-      // skip malformed lines
-    }
-  }
-  return latest;
+  const entries = await readJsonlFile<ClusterCheckpoint>(filePath);
+  const valid = entries.filter((e) => typeof e?.timestamp === 'string');
+  return valid.length > 0 ? valid[valid.length - 1] : null;
 }
 
 function workloadKey(w: WorkloadRef): string {
@@ -105,6 +88,18 @@ function appendDiffFindings(
 ): void {
   for (const key of diff.added) findings.push(makeAdded(key));
   for (const key of diff.removed) findings.push(makeRemoved(key));
+}
+
+function makeWorkloadFinding(type: 'new_workload' | 'deleted_workload', w: WorkloadRef): DriftFinding {
+  const action =
+    type === 'new_workload'
+      ? 'appeared since the last triage run.'
+      : 'was present at the last triage run but is now gone.';
+  return {
+    type,
+    resource: `${w.kind}/${w.name} in ${w.namespace}`,
+    message: `${w.kind} "${w.name}" in namespace "${w.namespace}" ${action}`,
+  };
 }
 
 /**
@@ -133,8 +128,8 @@ export function detectDrift(
   appendDiffFindings(
     findings,
     diffStringSet(new Set(prevWl.keys()), new Set(currWl.keys())),
-    (key) => { const w = currWl.get(key)!; return { type: 'new_workload', resource: `${w.kind}/${w.name} in ${w.namespace}`, message: `${w.kind} "${w.name}" in namespace "${w.namespace}" appeared since the last triage run.` }; },
-    (key) => { const w = prevWl.get(key)!; return { type: 'deleted_workload', resource: `${w.kind}/${w.name} in ${w.namespace}`, message: `${w.kind} "${w.name}" in namespace "${w.namespace}" was present at the last triage run but is now gone.` }; },
+    (key) => makeWorkloadFinding('new_workload', currWl.get(key)!),
+    (key) => makeWorkloadFinding('deleted_workload', prevWl.get(key)!),
   );
 
   // Node topology changes
