@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { runNewRelicQuery, resolveNrqlTime, augmentNrqlClauses } from '../newrelic.ts';
+import { runNewRelicQuery, resolveNrqlTime, augmentNrqlClauses, effectiveNrqlLimit, nrqlUntilClause } from '../newrelic.ts';
 import type { NewRelicConfig } from '../newrelic.ts';
 import { mockFetch } from './test-helpers.ts';
 
@@ -597,6 +597,58 @@ describe('augmentNrqlClauses', () => {
     const result = augmentNrqlClauses(nrql, { from: '-1h' }, NOW);
     expect(typeof result).toBe('string');
     expect((result as string).match(/\bsince\b/gi) ?? []).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// effectiveNrqlLimit — pure unit tests
+// ---------------------------------------------------------------------------
+
+describe('effectiveNrqlLimit', () => {
+  it('returns the value unchanged when within [1, 2000]', () => {
+    expect(effectiveNrqlLimit(50)).toBe(50);
+    expect(effectiveNrqlLimit(1)).toBe(1);
+    expect(effectiveNrqlLimit(2000)).toBe(2000);
+  });
+
+  it('returns DEFAULT_LIMIT (100) for null', () => {
+    expect(effectiveNrqlLimit(null)).toBe(100);
+  });
+
+  it('returns DEFAULT_LIMIT (100) for undefined', () => {
+    expect(effectiveNrqlLimit(undefined)).toBe(100);
+  });
+
+  it('clamps values above MAX_LIMIT (2000) down to 2000', () => {
+    expect(effectiveNrqlLimit(999_999)).toBe(2000);
+  });
+
+  it('clamps non-positive values up to 1', () => {
+    expect(effectiveNrqlLimit(0)).toBe(1);
+    expect(effectiveNrqlLimit(-5)).toBe(1);
+  });
+
+  it('truncates fractional values before clamping', () => {
+    expect(effectiveNrqlLimit(42.9)).toBe(42);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// nrqlUntilClause — pure unit tests
+// ---------------------------------------------------------------------------
+
+describe('nrqlUntilClause', () => {
+  it('returns empty string when until is null', () => {
+    expect(nrqlUntilClause(null)).toBe('');
+  });
+
+  it('returns a UNTIL clause string for a non-null value', () => {
+    expect(nrqlUntilClause('2024-06-01T12:00:00.000Z')).toBe(" UNTIL '2024-06-01T12:00:00.000Z'");
+  });
+
+  it('leads with a space so it can be concatenated directly into NRQL', () => {
+    const clause = nrqlUntilClause('2024-06-01T12:00:00Z');
+    expect(clause.startsWith(' ')).toBe(true);
   });
 });
 
