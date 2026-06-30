@@ -14,7 +14,7 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp } from '../../serve-mode.ts';
+import { createServeApp, parseValidPort } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -334,5 +334,34 @@ describe('createServeApp — API key authentication', () => {
       );
       expect(res.status).toBe(200);
     });
+  });
+});
+
+describe('parseValidPort', () => {
+  it('parses a valid port number', () => {
+    expect(parseValidPort('3000')).toBe(3000);
+  });
+
+  it('accepts the boundary values 1 and 65535', () => {
+    expect(parseValidPort('1')).toBe(1);
+    expect(parseValidPort('65535')).toBe(65535);
+  });
+
+  it('returns null for non-numeric input', () => {
+    expect(parseValidPort('abc')).toBeNull();
+  });
+
+  it('returns null for zero or negative numbers', () => {
+    expect(parseValidPort('0')).toBeNull();
+    expect(parseValidPort('-1')).toBeNull();
+  });
+
+  it('returns null for numbers above 65535', () => {
+    expect(parseValidPort('65536')).toBeNull();
+    expect(parseValidPort('99999')).toBeNull();
+  });
+
+  it('parses the leading integer of a partially-numeric string', () => {
+    expect(parseValidPort('3000abc')).toBe(3000);
   });
 });
