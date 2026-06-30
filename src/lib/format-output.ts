@@ -57,21 +57,20 @@ const REMEDIATION_STEPS_RE = makeSectionRe('Remediation Steps?', '\\n');
 const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
 
 /**
- * Slice `raw` from `fromIdx` to the next RCA section header (or end of string).
- * Returns the trimmed body and the remainder of `raw` starting at that header
+ * Scan `text` for the next RCA section header (or end of string).
+ * Returns the trimmed body up to that header and the remainder starting at it
  * (empty string when no next header exists).
  */
-function sliceToNextRcaSection(raw: string, fromIdx: number): { body: string; rcaRaw: string } {
-  const sliced = raw.slice(fromIdx);
-  const stop = RCA_SECTION_HEADER_RE.exec(sliced);
+function sliceToNextRcaSection(text: string): { body: string; rcaRaw: string } {
+  const stop = RCA_SECTION_HEADER_RE.exec(text);
   if (stop !== null) {
     return {
-      body: sliced.slice(0, stop.index).trim(),
-      rcaRaw: sliced.slice(stop.index),
+      body: text.slice(0, stop.index).trim(),
+      rcaRaw: text.slice(stop.index),
     };
   }
   return {
-    body: sliced.trim(),
+    body: text.trim(),
     rcaRaw: '',
   };
 }
@@ -84,7 +83,7 @@ function sliceToNextRcaSection(raw: string, fromIdx: number): { body: string; rc
 function extractRcaSection(raw: string, headerRe: RegExp): string | null {
   const m = headerRe.exec(raw);
   if (!m) return null;
-  const { body } = sliceToNextRcaSection(raw, m.index + m[0].length);
+  const { body } = sliceToNextRcaSection(raw.slice(m.index + m[0].length));
   return body || null;
 }
 
@@ -163,11 +162,11 @@ export function parseOneShotOutput(raw: string, model?: string): OneShotFinding 
   }
 
   if (answerMatch !== null) {
-    const sliced = sliceToNextRcaSection(raw, answerMatch.index + answerMatch[0].length);
+    const sliced = sliceToNextRcaSection(raw.slice(answerMatch.index + answerMatch[0].length));
     answer = sliced.body;
     rcaRaw = sliced.rcaRaw;
   } else {
-    rcaRaw = sliceToNextRcaSection(raw, 0).rcaRaw;
+    rcaRaw = sliceToNextRcaSection(raw).rcaRaw;
   }
 
   const suggestedCommands = extractKubectlCommands(answer);
