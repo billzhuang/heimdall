@@ -13,17 +13,28 @@ export function generateEntryId(): { id: string; timestamp: string } {
 
 /**
  * Run `op()` and, on ENOENT, create the parent directory and retry once.
- * Non-ENOENT errors are re-thrown immediately.
+ * Any failure (a non-ENOENT error, or a retry that still fails) is handed to
+ * `onError`, which defaults to re-throwing it.
  */
-async function withMkdirRetry(filePath: string, op: () => Promise<void>): Promise<void> {
+export async function withMkdirRetry(
+  filePath: string,
+  op: () => Promise<void>,
+  onError: (err: unknown) => Promise<void> | void = (err) => {
+    throw err;
+  },
+): Promise<void> {
   try {
     await op();
   } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+      await onError(err);
+      return;
+    }
+    try {
       await mkdir(dirname(filePath), { recursive: true });
       await op();
-    } else {
-      throw err;
+    } catch (retryErr) {
+      await onError(retryErr);
     }
   }
 }

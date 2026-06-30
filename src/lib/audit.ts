@@ -1,5 +1,5 @@
-import { appendFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { appendFile } from 'node:fs/promises';
+import { withMkdirRetry } from './jsonl.ts';
 
 export interface AuditConfig {
   enabled: boolean;
@@ -26,20 +26,10 @@ export async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | 
       process.stderr.write(line);
       return;
     }
-    try {
-      await appendFile(audit.file, line, 'utf8');
-    } catch (err) {
-      if ((err as { code?: string }).code !== 'ENOENT') {
-        process.stderr.write(line);
-        return;
-      }
-      try {
-        await mkdir(dirname(audit.file), { recursive: true });
-        await appendFile(audit.file, line, 'utf8');
-      } catch {
-        process.stderr.write(line);
-      }
-    }
+    const file = audit.file;
+    await withMkdirRetry(file, () => appendFile(file, line, 'utf8'), () => {
+      process.stderr.write(line);
+    });
   } catch {
     // Audit failures must never disrupt the main execution path.
   }
