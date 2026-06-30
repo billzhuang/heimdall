@@ -55,6 +55,16 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 /** Resolve a Heimdall-style time expression to ISO8601 for NRQL SINCE/UNTIL clauses. */
 export const resolveNrqlTime = resolveTimeISO;
 
+/** Clamp a raw limit to [1, MAX_LIMIT], falling back to DEFAULT_LIMIT. */
+export function effectiveNrqlLimit(limit: number | null | undefined): number {
+  return clampLimit(limit, DEFAULT_LIMIT, MAX_LIMIT);
+}
+
+/** Format an optional UNTIL timestamp as a NRQL clause fragment, or empty string when absent. */
+export function nrqlUntilClause(until: string | null): string {
+  return until ? ` UNTIL '${until}'` : '';
+}
+
 
 type NrqlTimeRange = { since: string; until: string | null } | { error: string };
 
@@ -125,7 +135,7 @@ export function augmentNrqlClauses(
     if (!/\bUNTIL\b/i.test(result)) result += ` UNTIL '${until}'`;
   }
   if (!/\bLIMIT\b/i.test(result)) {
-    result += ` LIMIT ${clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT)}`;
+    result += ` LIMIT ${effectiveNrqlLimit(params.limit)}`;
   }
 
   return result;
@@ -170,10 +180,9 @@ async function queryApm(
 
   const qApm = params.query?.trim() ?? '';
   const whereClause = qApm ? `WHERE ${qApm} ` : '';
-  const untilClause = until ? ` UNTIL '${until}'` : '';
-  const lim = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
+  const lim = effectiveNrqlLimit(params.limit);
 
-  const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${untilClause} FACET appName LIMIT ${lim}`;
+  const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${nrqlUntilClause(until)} FACET appName LIMIT ${lim}`;
 
   const gql = `{
   actor {
@@ -202,12 +211,11 @@ async function queryAlerts(
   // Wrap in parentheses so OR in the filter doesn't escape the event='open' predicate.
   const qAlerts = params.query?.trim() ?? '';
   const extraWhere = qAlerts ? ` AND (${qAlerts})` : '';
-  const untilClause = until ? ` UNTIL '${until}'` : '';
-  const lim = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
+  const lim = effectiveNrqlLimit(params.limit);
 
   // NrAiIncident captures New Relic AI (applied intelligence) incidents.
   // Filtering event = 'open' surfaces currently active violations.
-  const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${untilClause} LIMIT ${lim}`;
+  const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${nrqlUntilClause(until)} LIMIT ${lim}`;
 
   const gql = `{
   actor {
