@@ -29,49 +29,67 @@ export interface LearningEntry {
   suggestion: string;
 }
 
+type FailureHandler = (failure: string, scenario: string) => string | null;
+
+/** Maps failure message prefixes to suggestion builders. Handlers return null to emit nothing. */
+const FAILURE_HANDLERS: Array<[string, FailureHandler]> = [
+  [
+    'Severity:',
+    (failure, scenario) => {
+      const m = failure.match(/expected "(.+)", got "(.+)"/);
+      if (!m) return null;
+      return (
+        `Severity miscalibrated: expected "${m[1]}", got "${m[2]}" for "${scenario}". ` +
+        `Strengthen ${m[1]}-tier signal words in RESPONSE_FORMAT or the relevant subagent instruction.`
+      );
+    },
+  ],
+  [
+    'Missing expected keyword:',
+    (failure, scenario) => {
+      const kw = failure.match(/"(.+)"/)?.[1];
+      if (!kw) return null;
+      return (
+        `Required term "${kw}" absent in answer for "${scenario}". ` +
+        `Add "${kw}" to the Focus section of the relevant SUBAGENT_INSTRUCTIONS entry so the agent is guided to mention it.`
+      );
+    },
+  ],
+  [
+    'Found forbidden keyword:',
+    (failure, scenario) => {
+      const kw = failure.match(/"(.+)"/)?.[1];
+      if (!kw) return null;
+      return (
+        `Forbidden term "${kw}" appeared in answer for "${scenario}". ` +
+        `Add an explicit constraint to the relevant SUBAGENT_INSTRUCTIONS entry to avoid this term.`
+      );
+    },
+  ],
+  [
+    'Agent error:',
+    (failure, scenario) =>
+      `Agent execution failed for "${scenario}": ${failure.slice('Agent error: '.length).slice(0, 120)}. ` +
+      `Check prompt clarity, tool availability, or ANTHROPIC_API_KEY.`,
+  ],
+];
+
+function handleFailure(failure: string, scenario: string): string | null {
+  for (const [prefix, handler] of FAILURE_HANDLERS) {
+    if (failure.startsWith(prefix)) return handler(failure, scenario);
+  }
+  return `Unexpected failure in "${scenario}": ${failure}`;
+}
+
 /**
  * Derive a human-readable instruction-improvement suggestion from assertion
  * failures. Each failure type maps to a targeted suggestion.
  */
 export function generateSuggestion(scenario: string, prompt: string, failures: string[]): string {
   if (failures.length === 0) return 'No actionable suggestion generated.';
-
-  const parts: string[] = [];
-  for (const failure of failures) {
-    if (failure.startsWith('Severity:')) {
-      const m = failure.match(/expected "(.+)", got "(.+)"/);
-      if (m) {
-        parts.push(
-          `Severity miscalibrated: expected "${m[1]}", got "${m[2]}" for "${scenario}". ` +
-            `Strengthen ${m[1]}-tier signal words in RESPONSE_FORMAT or the relevant subagent instruction.`,
-        );
-      }
-    } else if (failure.startsWith('Missing expected keyword:')) {
-      const kw = failure.match(/"(.+)"/)?.[1];
-      if (kw) {
-        parts.push(
-          `Required term "${kw}" absent in answer for "${scenario}". ` +
-            `Add "${kw}" to the Focus section of the relevant SUBAGENT_INSTRUCTIONS entry so the agent is guided to mention it.`,
-        );
-      }
-    } else if (failure.startsWith('Found forbidden keyword:')) {
-      const kw = failure.match(/"(.+)"/)?.[1];
-      if (kw) {
-        parts.push(
-          `Forbidden term "${kw}" appeared in answer for "${scenario}". ` +
-            `Add an explicit constraint to the relevant SUBAGENT_INSTRUCTIONS entry to avoid this term.`,
-        );
-      }
-    } else if (failure.startsWith('Agent error:')) {
-      parts.push(
-        `Agent execution failed for "${scenario}": ${failure.slice('Agent error: '.length).slice(0, 120)}. ` +
-          `Check prompt clarity, tool availability, or ANTHROPIC_API_KEY.`,
-      );
-    } else {
-      parts.push(`Unexpected failure in "${scenario}": ${failure}`);
-    }
-  }
-
+  const parts = failures
+    .map((failure) => handleFailure(failure, scenario))
+    .filter((part): part is string => part !== null);
   return parts.join(' | ');
 }
 
