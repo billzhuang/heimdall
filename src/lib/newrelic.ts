@@ -132,7 +132,7 @@ export function augmentNrqlClauses(
   if (params.to) {
     const until = resolveNrqlTime(params.to, nowMs);
     if (until === null) return { error: `Error: could not parse "to" time: "${params.to}".` };
-    if (!/\bUNTIL\b/i.test(result)) result += ` UNTIL '${until}'`;
+    if (!/\bUNTIL\b/i.test(result)) result += nrqlUntilClause(until);
   }
   if (!/\bLIMIT\b/i.test(result)) {
     result += ` LIMIT ${effectiveNrqlLimit(params.limit)}`;
