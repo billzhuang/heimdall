@@ -42,6 +42,14 @@ function ensureDir(dir: string): void {
   mkdirSync(dir, { recursive: true });
 }
 
+/** Translate ENOENT into a "Session not found" error; rethrow everything else. */
+function rethrowOrNotFound(err: unknown, id: string): never {
+  if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+    throw new Error(`Session not found: ${id}`);
+  }
+  throw err;
+}
+
 function sessionPath(dir: string, id: string): string {
   // Sanitise id so a crafted id can't escape the directory.
   const safe = createHash('sha256').update(id).digest('hex');
@@ -95,10 +103,7 @@ export function loadSession(id: string): SessionRecord {
   try {
     raw = readFileSync(file, 'utf-8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw err;
+    rethrowOrNotFound(err, id);
   }
   return parseSessionRecord(raw, id);
 }
@@ -116,10 +121,7 @@ export function deleteSession(id: string): void {
   try {
     unlinkSync(file);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      throw new Error(`Session not found: ${id}`);
-    }
-    throw err;
+    rethrowOrNotFound(err, id);
   }
 }
 
