@@ -11,9 +11,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('node:child_process', () => ({
-  execFile: vi.fn(),
-}));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFile: vi.fn() };
+});
 
 import { execFile } from 'node:child_process';
 import { makeCliLlm } from '../cli-llm.ts';
