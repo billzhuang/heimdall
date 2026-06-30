@@ -11,22 +11,30 @@ export function generateEntryId(): { id: string; timestamp: string } {
   };
 }
 
+/**
+ * Run `op()` and, on ENOENT, create the parent directory and retry once.
+ * Non-ENOENT errors are re-thrown immediately.
+ */
+async function withMkdirRetry(filePath: string, op: () => Promise<void>): Promise<void> {
+  try {
+    await op();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      await mkdir(dirname(filePath), { recursive: true });
+      await op();
+    } else {
+      throw err;
+    }
+  }
+}
+
 /** Append a single item as a JSONL line to a file (creates the file and parent dirs if absent). */
 export async function appendJsonlLine<T>(item: T, filePath: string): Promise<void> {
   const serialized = JSON.stringify(item);
   if (serialized === undefined) {
     throw new TypeError(`appendJsonlLine: item is not JSON-serializable (got ${typeof item})`);
   }
-  try {
-    await appendFile(filePath, serialized + '\n', 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      await mkdir(dirname(filePath), { recursive: true });
-      await appendFile(filePath, serialized + '\n', 'utf8');
-    } else {
-      throw err;
-    }
-  }
+  await withMkdirRetry(filePath, () => appendFile(filePath, serialized + '\n', 'utf8'));
 }
 
 /**
@@ -35,16 +43,7 @@ export async function appendJsonlLine<T>(item: T, filePath: string): Promise<voi
  */
 export async function writeJsonlFile<T>(items: T[], filePath: string): Promise<void> {
   const content = items.map((item) => JSON.stringify(item)).join('\n') + (items.length > 0 ? '\n' : '');
-  try {
-    await writeFile(filePath, content, 'utf8');
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, content, 'utf8');
-    } else {
-      throw err;
-    }
-  }
+  await withMkdirRetry(filePath, () => writeFile(filePath, content, 'utf8'));
 }
 
 /** Read all entries from a JSONL file. Returns [] when the file does not exist. */
