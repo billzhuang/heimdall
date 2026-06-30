@@ -24,7 +24,7 @@ async function appendAuditLine(file: string, line: string): Promise<boolean> {
     await appendFile(file, line, 'utf8');
     return true;
   } catch (err) {
-    if ((err as { code?: string }).code !== 'ENOENT') return false;
+    if ((err as { code?: string })?.code !== 'ENOENT') return false;
     try {
       await mkdir(dirname(file), { recursive: true });
       await appendFile(file, line, 'utf8');
