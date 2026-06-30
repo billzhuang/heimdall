@@ -113,6 +113,28 @@ function baseUrl(config: DatadogConfig): string {
   return `https://api.${site}`;
 }
 
+/**
+ * Issue a request against a Datadog endpoint and resolve to either the raw
+ * response text or a formatted error message. Centralizes the
+ * fetch + buildHeaders + !response.ok handling shared by all query types.
+ */
+async function fetchDatadog(
+  url: URL,
+  config: DatadogConfig,
+  signal: AbortSignal,
+  queryType: string,
+  init?: { method?: string; body?: string },
+): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const response = await fetch(url.toString(), {
+    method: init?.method ?? 'GET',
+    headers: buildHeaders(config),
+    body: init?.body,
+    signal,
+  });
+  if (!response.ok) return { ok: false, error: await datadogErrorMessage(response, queryType) };
+  return { ok: true, text: await response.text() };
+}
+
 async function queryMetrics(
   params: DatadogQueryParams,
   config: DatadogConfig,
@@ -130,14 +152,8 @@ async function queryMetrics(
   url.searchParams.set('from', String(fromSec));
   url.searchParams.set('to', String(toSec));
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: buildHeaders(config),
-    signal,
-  });
-
-  if (!response.ok) return datadogErrorMessage(response, 'metrics');
-  return await response.text();
+  const result = await fetchDatadog(url, config, signal, 'metrics');
+  return result.ok ? result.text : result.error;
 }
 
 async function queryLogs(
@@ -164,15 +180,8 @@ async function queryLogs(
   });
 
   const url = new URL(`${baseUrl(config)}/api/v2/logs/events/search`);
-  const response = await fetch(url.toString(), {
-    method: 'POST',
-    headers: buildHeaders(config),
-    body,
-    signal,
-  });
-
-  if (!response.ok) return datadogErrorMessage(response, 'logs');
-  return await response.text();
+  const result = await fetchDatadog(url, config, signal, 'logs', { method: 'POST', body });
+  return result.ok ? result.text : result.error;
 }
 
 async function queryEvents(
@@ -194,14 +203,8 @@ async function queryEvents(
   if (params.query?.trim()) url.searchParams.set('filter[query]', params.query.trim());
   if (params.tags?.trim()) url.searchParams.set('filter[tags]', params.tags.trim());
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: buildHeaders(config),
-    signal,
-  });
-
-  if (!response.ok) return datadogErrorMessage(response, 'events');
-  return await response.text();
+  const result = await fetchDatadog(url, config, signal, 'events');
+  return result.ok ? result.text : result.error;
 }
 
 async function queryMonitors(
@@ -220,15 +223,9 @@ async function queryMonitors(
   if (params.query?.trim()) url.searchParams.set('name', params.query.trim());
   if (params.tags?.trim()) url.searchParams.set('monitor_tags', params.tags.trim());
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: buildHeaders(config),
-    signal,
-  });
-
-  if (!response.ok) return datadogErrorMessage(response, 'monitors');
-
-  const text = await response.text();
+  const result = await fetchDatadog(url, config, signal, 'monitors');
+  if (!result.ok) return result.error;
+  const text = result.text;
 
   // Client-side status filter: when monitorStatus is specified, keep only monitors
   // whose overall_state matches one of the requested states (case-insensitive).
