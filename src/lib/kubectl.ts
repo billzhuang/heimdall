@@ -27,6 +27,7 @@ import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
+import { getExecErrorDetail } from './error-utils.ts';
 export type { AuditConfig } from './audit.ts';
 
 const execFileAsync = promisify(execFile);
@@ -34,6 +35,7 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_CACHE_TTL_SECONDS = 30;
 const CACHE_DIR_NAME = 'heimdall-kubectl-cache';
 const EXEC_TIMEOUT_MS = 30_000;
+const EXEC_TIMEOUT_BUFFER_MS = 5_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 100_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with a selector, field-selector, or jsonpath');
@@ -192,17 +194,6 @@ function applyOutputRedaction(
   return applyRedaction(redactSecrets ? redactSecretValues(text, argv) : text, rules);
 }
 
-/** Extract a human-readable detail string from an unknown execFile error. */
-function extractExecError(err: unknown): string {
-  if (typeof err === 'object' && err !== null) {
-    const obj = err as Record<string, unknown>;
-    if (typeof obj.stderr === 'string' && obj.stderr) return obj.stderr;
-    if (typeof obj.stdout === 'string' && obj.stdout) return obj.stdout;
-    if (typeof obj.message === 'string' && obj.message) return obj.message;
-  }
-  return String(err);
-}
-
 /**
  * Validate and run a read-only kubectl command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
@@ -325,7 +316,6 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   // doesn't kill the process before kubectl can exit cleanly. Add a 5 s buffer
   // for the process to flush output and exit; fall back to EXEC_TIMEOUT_MS for
   // all other subcommands (or when no --timeout is present).
-  const EXEC_TIMEOUT_BUFFER_MS = 5_000;
   const execTimeoutMs = (() => {
     if (validation.subcommand === 'wait') {
       const waitMs = getWaitTimeoutMs(argv);
@@ -358,7 +348,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
-    const rawDetail = extractExecError(error).trim();
+    const rawDetail = getExecErrorDetail(error);
     const detail = applyOutputRedaction(rawDetail, argv, redactSecrets, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(`kubectl exited with an error:\n${detail}`);
