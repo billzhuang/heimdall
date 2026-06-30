@@ -1,5 +1,15 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { randomBytes } from 'node:crypto';
+
+/** Generate a unique JSONL log entry id (`<unix-ms>-<12 hex chars>`) and ISO-8601 timestamp. */
+export function generateEntryId(): { id: string; timestamp: string } {
+  const now = new Date();
+  return {
+    id: `${now.getTime()}-${randomBytes(6).toString('hex')}`,
+    timestamp: now.toISOString(),
+  };
+}
 
 /** Append a single item as a JSONL line to a file (creates the file and parent dirs if absent). */
 export async function appendJsonlLine<T>(item: T, filePath: string): Promise<void> {
