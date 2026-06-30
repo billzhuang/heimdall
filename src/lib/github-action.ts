@@ -74,10 +74,10 @@ function pushBulletSection(lines: string[], title: string, items: string[] | nul
 }
 
 /** Append a named fenced-code section (header + ``` block + blank line). No-op when items is empty, null, or undefined. */
-function pushCodeSection(lines: string[], title: string, items: string[] | null | undefined): void {
+function pushCodeSection(lines: string[], title: string, items: string[] | null | undefined, lang: 'bash' | 'sh' = 'bash'): void {
   if (items == null || items.length === 0) return;
   lines.push(`### ${title}`);
-  lines.push('```');
+  lines.push(`\`\`\`${lang}`);
   for (const item of items) lines.push(item);
   lines.push('```');
   lines.push('');
