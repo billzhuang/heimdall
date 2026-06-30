@@ -8,8 +8,7 @@
  * Disable logging per-invocation with --no-learn, or globally via
  * `learning.enabled: false` in heimdall.config.yaml.
  */
-import { appendJsonlLine, readJsonlFile } from './jsonl.ts';
-import { randomBytes } from 'node:crypto';
+import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
 
 export interface TaskHistoryEntry {
   /** Unique entry ID (timestamp + random suffix). */
@@ -33,15 +32,8 @@ export function buildTaskHistoryEntry(
   severity: string,
   summary: string,
 ): TaskHistoryEntry {
-  const now = new Date();
-  return {
-    id: `${now.getTime()}-${randomBytes(6).toString('hex')}`,
-    timestamp: now.toISOString(),
-    prompt,
-    model,
-    severity,
-    summary,
-  };
+  const { id, timestamp } = generateEntryId();
+  return { id, timestamp, prompt, model, severity, summary };
 }
 
 /** Append a single task history entry to a JSONL file (creates if absent). */

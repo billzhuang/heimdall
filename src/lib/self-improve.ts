@@ -8,8 +8,7 @@
  * Inspired by Karpathy's self-research loop and loop-engineer patterns:
  * run → evaluate → learn → improve → repeat.
  */
-import { appendJsonlLine, readJsonlFile } from './jsonl.ts';
-import { randomBytes } from 'node:crypto';
+import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
 import { resolve } from 'node:path';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
@@ -98,15 +97,8 @@ export function buildLearningEntry(
   prompt: string,
   failures: string[],
 ): LearningEntry {
-  const now = new Date();
-  return {
-    id: `${now.getTime()}-${randomBytes(6).toString('hex')}`,
-    timestamp: now.toISOString(),
-    scenario,
-    prompt,
-    failures,
-    suggestion: generateSuggestion(scenario, prompt, failures),
-  };
+  const { id, timestamp } = generateEntryId();
+  return { id, timestamp, scenario, prompt, failures, suggestion: generateSuggestion(scenario, prompt, failures) };
 }
 
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */

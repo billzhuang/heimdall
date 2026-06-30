@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { appendJsonlLine, readJsonlFile, writeJsonlFile } from '../jsonl.ts';
+import { appendJsonlLine, generateEntryId, readJsonlFile, writeJsonlFile } from '../jsonl.ts';
 import * as fs from 'node:fs/promises';
 
 vi.mock('node:fs/promises');
@@ -167,5 +167,28 @@ describe('writeJsonlFile', () => {
     await expect(writeJsonlFile([{ id: 1 }], '/protected.jsonl')).rejects.toMatchObject({
       code: 'EACCES',
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// generateEntryId
+// ---------------------------------------------------------------------------
+
+describe('generateEntryId', () => {
+  it('returns an id matching "<unix-ms>-<12-hex-chars>" and an ISO-8601 timestamp', () => {
+    const before = Date.now();
+    const { id, timestamp } = generateEntryId();
+    const after = Date.now();
+
+    expect(id).toMatch(/^\d+-[0-9a-f]{12}$/);
+    const ms = parseInt(id.split('-')[0], 10);
+    expect(ms).toBeGreaterThanOrEqual(before);
+    expect(ms).toBeLessThanOrEqual(after);
+    expect(timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  it('returns unique ids on successive calls', () => {
+    const ids = Array.from({ length: 5 }, () => generateEntryId().id);
+    expect(new Set(ids).size).toBe(5);
   });
 });
