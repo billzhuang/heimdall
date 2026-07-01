@@ -46,8 +46,12 @@ describe('resolveModelOrUndefined', () => {
     );
   });
 
-  it('falls back to DEFAULT_MODEL when cliFlag is undefined', () => {
-    expect(resolveModelOrUndefined()).toBe(resolveModel());
+  it('returns undefined when cliFlag is undefined', () => {
+    expect(resolveModelOrUndefined()).toBeUndefined();
+  });
+
+  it('returns undefined when cliFlag is an empty string', () => {
+    expect(resolveModelOrUndefined('')).toBeUndefined();
   });
 
   it('returns undefined instead of throwing for an invalid model string', () => {

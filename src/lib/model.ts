@@ -21,11 +21,14 @@ export function resolveModel(cliFlag?: string): string {
 }
 
 /**
- * Like resolveModel, but treats an invalid override as unset rather than
- * throwing. Used by handlers that read a model override from the environment
- * (e.g. HEIMDALL_MODEL) and must fall back gracefully instead of crashing.
+ * Like resolveModel, but returns undefined for an absent or invalid override
+ * instead of falling back to DEFAULT_MODEL or throwing. Used by handlers that
+ * read a model override from the environment (e.g. HEIMDALL_MODEL) and want a
+ * clean value to `??` against their own default, rather than resolveModel's
+ * baked-in fallback.
  */
 export function resolveModelOrUndefined(cliFlag?: string): string | undefined {
+  if (!cliFlag) return undefined;
   try {
     return resolveModel(cliFlag);
   } catch {
