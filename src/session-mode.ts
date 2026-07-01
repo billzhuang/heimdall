@@ -44,6 +44,25 @@ function die(msg: string, code = 1): never {
   process.exit(code);
 }
 
+/**
+ * Resolve a session id from either the first positional argument or an
+ * explicit `--session`/`-s`/`--session=<id>` flag (flag wins if both are given).
+ */
+export function parseSessionIdArg(args: string[]): string | undefined {
+  let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--session' || a === '-s') {
+      sessionId = args[++i];
+    } else if (a.startsWith('--session=')) {
+      sessionId = a.slice('--session='.length);
+    }
+  }
+
+  return sessionId;
+}
+
 function showHelp(): void {
   process.stdout.write(`Usage:
   heimdall session start [--name <label>] [--server <url>]
@@ -186,16 +205,7 @@ function cmdList(): void {
 }
 
 function cmdInfo(args: string[]): void {
-  let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--session' || a === '-s') {
-      sessionId = args[++i];
-    } else if (a.startsWith('--session=')) {
-      sessionId = a.slice('--session='.length);
-    }
-  }
+  const sessionId = parseSessionIdArg(args);
 
   if (!sessionId) die('session id is required — heimdall session info <id>');
 
@@ -209,16 +219,7 @@ function cmdInfo(args: string[]): void {
 }
 
 function cmdEnd(args: string[]): void {
-  let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--session' || a === '-s') {
-      sessionId = args[++i];
-    } else if (a.startsWith('--session=')) {
-      sessionId = a.slice('--session='.length);
-    }
-  }
+  const sessionId = parseSessionIdArg(args);
 
   if (!sessionId) die('session id is required — heimdall session end <id>');
 
