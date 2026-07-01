@@ -32,27 +32,46 @@ export interface EvalResult {
   output?: OneShotFinding;
 }
 
+function invalidScenario(filePath: string, detail: string): never {
+  throw new Error(`Invalid scenario file: ${filePath} ${detail}`);
+}
+
+function requireField(
+  parsed: Record<string, unknown>,
+  field: 'prompt' | 'description',
+  filePath: string,
+  requireNonEmpty: boolean,
+): void {
+  const value = parsed[field];
+  const invalid = typeof value !== 'string' || (requireNonEmpty && !value);
+  if (invalid) {
+    invalidScenario(filePath, `— missing required field "${field}"`);
+  }
+}
+
+function requireOptionalArrayField(
+  parsed: Record<string, unknown>,
+  field: 'expectedKeywords' | 'forbiddenKeywords',
+  filePath: string,
+): void {
+  if (parsed[field] !== undefined && !Array.isArray(parsed[field])) {
+    invalidScenario(filePath, `— "${field}" must be an array if provided`);
+  }
+}
+
 export async function loadScenario(filePath: string): Promise<EvalScenario> {
   const raw = await readFile(filePath, 'utf8');
   const parsed = loadYaml(raw) as Record<string, unknown>;
   if (!parsed || typeof parsed !== 'object') {
-    throw new Error(`Invalid scenario file: ${filePath} is not a valid YAML object`);
+    invalidScenario(filePath, 'is not a valid YAML object');
   }
-  if (typeof parsed['prompt'] !== 'string' || !parsed['prompt']) {
-    throw new Error(`Invalid scenario file: ${filePath} — missing required field "prompt"`);
-  }
-  if (typeof parsed['description'] !== 'string') {
-    throw new Error(`Invalid scenario file: ${filePath} — missing required field "description"`);
-  }
+  requireField(parsed, 'prompt', filePath, true);
+  requireField(parsed, 'description', filePath, false);
   if (parsed['mocks'] !== undefined && (typeof parsed['mocks'] !== 'object' || parsed['mocks'] === null || Array.isArray(parsed['mocks']))) {
-    throw new Error(`Invalid scenario file: ${filePath} — "mocks" must be an object if provided`);
+    invalidScenario(filePath, '— "mocks" must be an object if provided');
   }
-  if (parsed['expectedKeywords'] !== undefined && !Array.isArray(parsed['expectedKeywords'])) {
-    throw new Error(`Invalid scenario file: ${filePath} — "expectedKeywords" must be an array if provided`);
-  }
-  if (parsed['forbiddenKeywords'] !== undefined && !Array.isArray(parsed['forbiddenKeywords'])) {
-    throw new Error(`Invalid scenario file: ${filePath} — "forbiddenKeywords" must be an array if provided`);
-  }
+  requireOptionalArrayField(parsed, 'expectedKeywords', filePath);
+  requireOptionalArrayField(parsed, 'forbiddenKeywords', filePath);
   return parsed as unknown as EvalScenario;
 }
 
