@@ -43,6 +43,7 @@ import {
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
 // Backoff: 1 s → 2 s → 4 s … capped at 30 s, ±30 % jitter.
@@ -54,7 +55,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Invoke the Heimdall agent with a single prompt and return its response. */
 async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
-  const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
+  const binPath = resolveBinPath(__dirname);
 
   return new Promise((resolve) => {
     let settled = false;

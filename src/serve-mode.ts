@@ -28,13 +28,14 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { bearerAuth } from 'hono/bearer-auth';
 import { spawn } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { resolveModel } from './lib/model.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { getMessage } from './lib/error-utils.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -51,7 +52,7 @@ export function parsePortValue(raw: string): number | null {
  * Returns the raw JSON string emitted by format-json.ts.
  */
 export async function runAgentDiagnose(prompt: string, model: string): Promise<string> {
-  const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
+  const binPath = resolveBinPath(__dirname);
   return new Promise((resolveP, rejectP) => {
     let stdout = '';
     let settled = false;

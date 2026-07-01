@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { writeFile, unlink, readdir, readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { load as loadYaml } from 'js-yaml';
 import type { OneShotFinding } from './format-output.ts';
 import { getMessage } from './error-utils.ts';
@@ -200,9 +200,4 @@ export async function runAllScenarios(
     callbacks.onResult?.(result);
   }
   return results;
-}
-
-/** Resolve the absolute path to the heimdall binary relative to a src dir. */
-export function resolveBinPath(srcDir: string): string {
-  return resolve(srcDir, '..', 'bin', 'heimdall');
 }

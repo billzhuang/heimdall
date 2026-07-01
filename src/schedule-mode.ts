@@ -25,12 +25,14 @@
  *   See src/workflows/triage.ts.
  */
 import { spawn } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import { nextFireTime, formatDelay, validateCronExpression } from './lib/schedule.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
+import { interpretChildExit } from './lib/child-exit.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -39,7 +41,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Invoke the Heimdall agent with a prompt, streaming output to stdout. */
 async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
-  const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
+  const binPath = resolveBinPath(__dirname);
 
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -93,12 +95,8 @@ async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
         settle(new Error('Aborted'));
       } else if (timedOut) {
         settle(new Error('triage timed out after 5 minutes'));
-      } else if (code !== null && code !== 0) {
-        settle(new Error(`heimdall exited with code ${code}`));
-      } else if (code === null && signalName !== null) {
-        settle(new Error(`heimdall killed by signal ${signalName}`));
       } else {
-        settle();
+        settle(interpretChildExit(code, signalName) ?? undefined);
       }
     });
 
