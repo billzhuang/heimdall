@@ -76,15 +76,22 @@ function getCacheTtlSeconds(): number {
   return Number.isFinite(ttl) && ttl > 0 ? ttl : DEFAULT_CACHE_TTL_SECONDS;
 }
 
+/**
+ * Resolve the per-user cache directory suffix: OS uid when available (POSIX),
+ * else the USER/USERNAME env var (Windows), else 'default'.
+ * Exported so tests can cover every branch without depending on the host platform.
+ */
+export function resolveCacheUser(getuid: (() => number) | undefined, env: NodeJS.ProcessEnv): string {
+  const uid = typeof getuid === 'function' ? String(getuid()) : undefined;
+  return uid ?? env.USER ?? env.USERNAME ?? 'default';
+}
+
 /** Per-user cache directory under the configured base (or the OS temp dir). */
 function getCacheDir(): string {
   const baseDir = process.env.HEIMDALL_KUBECTL_CACHE_DIR || tmpdir();
   // Isolate per-user so a shared base dir (e.g. /tmp) cannot cause cross-user
   // EACCES write failures or cache poisoning on multi-user hosts.
-  /* v8 ignore next */
-  const uid = typeof process.getuid === 'function' ? String(process.getuid()) : undefined;
-  /* v8 ignore next */
-  const user = uid ?? process.env.USER ?? process.env.USERNAME ?? 'default';
+  const user = resolveCacheUser(process.getuid, process.env);
   return joinPath(baseDir, `${CACHE_DIR_NAME}-${user}`);
 }
 
