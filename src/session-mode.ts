@@ -47,6 +47,10 @@ function die(msg: string, code = 1): never {
 /**
  * Parse a session ID from `info`/`end` args: either the first positional
  * argument or an explicit `--session`/`-s` flag (flag wins if both given).
+ *
+ * A dangling `--session`/`-s` (no trailing value) is rejected outright — for
+ * the destructive `end` subcommand, silently falling back to a positional id
+ * would let a typo'd flag act on the wrong session.
  */
 export function parseSessionIdArg(args: string[]): string | undefined {
   let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
@@ -54,9 +58,7 @@ export function parseSessionIdArg(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--session' || a === '-s') {
-      if (i + 1 < args.length) {
-        sessionId = args[++i];
-      }
+      sessionId = i + 1 < args.length ? args[++i] : undefined;
     } else if (a.startsWith('--session=')) {
       sessionId = a.slice('--session='.length);
     }

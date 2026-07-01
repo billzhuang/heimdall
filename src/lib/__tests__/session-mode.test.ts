@@ -40,8 +40,8 @@ describe('parseSessionIdArg', () => {
     expect(parseSessionIdArg(['--session', ''])).toBeUndefined();
   });
 
-  it('falls back to a positional id when --session/-s is dangling (no trailing value)', () => {
-    expect(parseSessionIdArg(['abc-123', '-s'])).toBe('abc-123');
-    expect(parseSessionIdArg(['abc-123', '--session'])).toBe('abc-123');
+  it('rejects a dangling --session/-s (no trailing value) rather than falling back to a positional id', () => {
+    expect(parseSessionIdArg(['abc-123', '-s'])).toBeUndefined();
+    expect(parseSessionIdArg(['abc-123', '--session'])).toBeUndefined();
   });
 });
