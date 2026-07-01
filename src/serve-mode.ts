@@ -48,6 +48,19 @@ export function parsePortValue(raw: string): number | null {
 }
 
 /**
+ * Parse a port value sourced from `label` (a CLI flag or env var name).
+ * Returns the port, or the exact "Error: ..." message the CLI prints on failure —
+ * shared by the `--port`, `--port=`, and `HEIMDALL_PORT` sources so the three
+ * don't drift out of sync.
+ */
+export function parsePortArg(raw: string, label: string): { port: number } | { errorMessage: string } {
+  const port = parsePortValue(raw);
+  return port === null
+    ? { errorMessage: `Error: ${label} must be an integer between 1 and 65535, got "${raw}"\n` }
+    : { port };
+}
+
+/**
  * Spawn `heimdall -p <prompt> --json` and capture the structured JSON output.
  * Returns the raw JSON string emitted by format-json.ts.
  */
@@ -333,6 +346,16 @@ export function createServeApp(
   return app;
 }
 
+/** Resolve a port arg via `parsePortArg`, printing the error and exiting(1) on failure. */
+function resolvePortArgOrExit(raw: string, label: string): number {
+  const result = parsePortArg(raw, label);
+  if ('errorMessage' in result) {
+    process.stderr.write(result.errorMessage);
+    process.exit(1);
+  }
+  return result.port;
+}
+
 // --- CLI entrypoint — parse args and start server when run directly ----------
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
   const cliArgs = process.argv.slice(2);
@@ -345,20 +368,10 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
     if (arg === '--port') {
       const raw = cliArgs[++i];
       if (!raw) { process.stderr.write('Error: --port requires a value\n'); process.exit(1); }
-      const parsed = parsePortValue(raw);
-      if (parsed === null) {
-        process.stderr.write(`Error: --port must be an integer between 1 and 65535, got "${raw}"\n`);
-        process.exit(1);
-      }
-      portArg = parsed;
+      portArg = resolvePortArgOrExit(raw, '--port');
     } else if (arg.startsWith('--port=')) {
       const raw = arg.slice('--port='.length);
-      const parsed = parsePortValue(raw);
-      if (parsed === null) {
-        process.stderr.write(`Error: --port must be an integer between 1 and 65535, got "${raw}"\n`);
-        process.exit(1);
-      }
-      portArg = parsed;
+      portArg = resolvePortArgOrExit(raw, '--port');
     } else if (arg === '--host') {
       hostArg = cliArgs[++i];
     } else if (arg.startsWith('--host=')) {
@@ -398,15 +411,7 @@ Examples:
 
   const config = loadConfig();
   const rawEnvPort = process.env['HEIMDALL_PORT'];
-  let envPort: number | undefined;
-  if (rawEnvPort) {
-    const parsed = parsePortValue(rawEnvPort);
-    if (parsed === null) {
-      process.stderr.write(`Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "${rawEnvPort}"\n`);
-      process.exit(1);
-    }
-    envPort = parsed;
-  }
+  const envPort = rawEnvPort ? resolvePortArgOrExit(rawEnvPort, 'HEIMDALL_PORT') : undefined;
   const port = portArg ?? envPort ?? config.server?.port ?? 3000;
   const host =
     hostArg ??
