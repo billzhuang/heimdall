@@ -157,6 +157,33 @@ export function redactObject(obj: unknown): unknown {
 }
 
 /**
+ * Parse `output`, redact any Secret values found, and re-serialise it.
+ * Returns `output` unchanged when parsing fails or no Secret is present.
+ */
+function redactParsed<T>(
+  output: string,
+  parse: (output: string) => T,
+  hasSecret: (parsed: T) => boolean,
+  serialize: (redacted: T) => string,
+): string {
+  try {
+    const parsed = parse(output);
+    if (!hasSecret(parsed)) return output;
+    return serialize(parsed);
+  } catch {
+    return output;
+  }
+}
+
+/** Serialise redacted YAML documents, joining multi-doc streams with `---`. */
+function dumpYamlDocs(docs: unknown[]): string {
+  if (docs.length === 1) {
+    return yaml.dump(docs[0], { lineWidth: -1, noRefs: true });
+  }
+  return docs.map((d) => yaml.dump(d, { lineWidth: -1, noRefs: true })).join('---\n');
+}
+
+/**
  * Redact Kubernetes Secret `.data` and `.stringData` values from kubectl output.
  *
  * - JSON output: parsed, Secrets redacted, re-serialised as JSON.
@@ -171,28 +198,21 @@ export function redactSecretValues(output: string, argv: string[]): string {
   const format = detectFormat(argv);
 
   if (format === 'json') {
-    try {
-      const parsed: unknown = JSON.parse(output);
-      if (!containsSecret(parsed)) return output;
-      const redacted = redactObject(parsed);
-      return JSON.stringify(redacted, null, 2);
-    } catch {
-      return output;
-    }
+    return redactParsed(
+      output,
+      (o) => JSON.parse(o) as unknown,
+      containsSecret,
+      (parsed) => JSON.stringify(redactObject(parsed), null, 2),
+    );
   }
 
   if (format === 'yaml') {
-    try {
-      const docs = yaml.loadAll(output) as unknown[];
-      if (!docs.some(containsSecret)) return output;
-      const redacted = docs.map(redactObject);
-      if (redacted.length === 1) {
-        return yaml.dump(redacted[0], { lineWidth: -1, noRefs: true });
-      }
-      return redacted.map((d) => yaml.dump(d, { lineWidth: -1, noRefs: true })).join('---\n');
-    } catch {
-      return output;
-    }
+    return redactParsed(
+      output,
+      (o) => yaml.loadAll(o) as unknown[],
+      (docs) => docs.some(containsSecret),
+      (docs) => dumpYamlDocs(docs.map(redactObject)),
+    );
   }
 
   // Non-JSON/YAML format on a get-secret command: values cannot be reliably redacted.
