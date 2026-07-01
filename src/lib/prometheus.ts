@@ -7,7 +7,7 @@
  */
 import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
+import { runJsonQuery } from './http.ts';
 
 export interface PrometheusConfig {
   url: string;
@@ -45,29 +45,15 @@ export async function runPrometheusQuery(
   }
 
   const endpoint = queryType === 'instant' ? '/api/v1/query' : '/api/v1/query_range';
-  const searchParams = new URLSearchParams({ query: params.query });
 
-  if (queryType === 'instant') {
-    if (params.time) searchParams.set('time', params.time);
-  } else {
-    searchParams.set('start', params.start!);
-    searchParams.set('end', params.end!);
-    searchParams.set('step', params.step!);
-  }
-
-  try {
-    // Build the request URL inside the try block so a malformed config.url
-    // throws a TypeError that is caught and returned as a clean error string.
-    const baseUrl = new URL(config.url);
-    baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + endpoint;
-    searchParams.forEach((value, key) => baseUrl.searchParams.set(key, value));
-
-    return await fetchWithTimeout(
-      baseUrl.toString(),
-      config.timeoutMs,
-      makeResponseHandler('Prometheus', config.regexRedactionRules ?? [], truncate),
-    );
-  } catch (err) {
-    return formatQueryError(err, 'Prometheus', config.timeoutMs, config.regexRedactionRules ?? []);
-  }
+  return runJsonQuery(config, endpoint, 'Prometheus', truncate, (searchParams) => {
+    searchParams.set('query', params.query);
+    if (queryType === 'instant') {
+      if (params.time) searchParams.set('time', params.time);
+    } else {
+      searchParams.set('start', params.start!);
+      searchParams.set('end', params.end!);
+      searchParams.set('step', params.step!);
+    }
+  });
 }
