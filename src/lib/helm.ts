@@ -35,6 +35,16 @@ export interface RunHelmOptions {
   allNamespaces?: boolean;
 }
 
+/** Returns an error string if `value` starts with a hyphen (option injection), else null. */
+function leadingHyphenError(value: string | undefined, label: string): string | null {
+  return value?.startsWith('-') ? `Error: ${label} cannot start with a hyphen.` : null;
+}
+
+/** Appends `-n <namespace>` to argv when namespace is set. */
+function pushNamespaceFlag(argv: string[], namespace: string | undefined): void {
+  if (namespace) argv.push('-n', namespace);
+}
+
 /**
  * Run a read-only Helm command. Returns the output (or a descriptive error)
  * as a string suitable for returning to the model.
@@ -48,12 +58,8 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
   // Reject names starting with '-': execFile prevents shell injection, but helm
   // would still parse such values as flags (option injection / argument injection).
   // Valid Helm release names and Kubernetes namespaces never start with a hyphen.
-  if (release && release.startsWith('-')) {
-    return 'Error: release name cannot start with a hyphen.';
-  }
-  if (namespace && namespace.startsWith('-')) {
-    return 'Error: namespace cannot start with a hyphen.';
-  }
+  const hyphenError = leadingHyphenError(release, 'release name') ?? leadingHyphenError(namespace, 'namespace');
+  if (hyphenError) return hyphenError;
 
   let argv: string[];
 
@@ -61,13 +67,13 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
     argv = ['list'];
     if (allNamespaces) {
       argv.push('--all-namespaces');
-    } else if (namespace) {
-      argv.push('-n', namespace);
+    } else {
+      pushNamespaceFlag(argv, namespace);
     }
   } else if (action === 'status') {
     if (!release) return 'Error: release name is required for the status action.';
     argv = ['status', release];
-    if (namespace) argv.push('-n', namespace);
+    pushNamespaceFlag(argv, namespace);
   } else if (action === 'get') {
     if (!release) return 'Error: release name is required for the get action.';
     if (!getType) return 'Error: getType is required for the get action (values, manifest, or notes).';
@@ -75,7 +81,7 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
       return `Error: invalid getType '${getType}'. Must be one of: ${ALLOWED_HELM_GET_TYPES.join(', ')}.`;
     }
     argv = ['get', getType, release];
-    if (namespace) argv.push('-n', namespace);
+    pushNamespaceFlag(argv, namespace);
   } else {
     // Exhaustive guard — TypeScript ensures HelmAction is one of the above.
     return `Error: unknown helm action '${action as string}'. Allowed: ${ALLOWED_HELM_ACTIONS.join(', ')}.`;
