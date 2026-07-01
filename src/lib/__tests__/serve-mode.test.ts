@@ -14,7 +14,7 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp, parsePortValue } from '../../serve-mode.ts';
+import { createServeApp, parsePortValue, parsePortArgOrExit } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -51,6 +51,42 @@ describe('parsePortValue', () => {
 
   it('parses a leading-integer prefix like parseInt does', () => {
     expect(parsePortValue('80.5')).toBe(80);
+  });
+});
+
+describe('parsePortArgOrExit', () => {
+  it('returns the parsed port for a valid value', () => {
+    expect(parsePortArgOrExit('8080', '--port')).toBe(8080);
+  });
+
+  it('exits(1) and reports the source name for an invalid --port value', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code ?? 0})`);
+    }) as never);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    expect(() => parsePortArgOrExit('abc', '--port')).toThrow('process.exit(1)');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --port must be an integer between 1 and 65535, got "abc"\n',
+    );
+
+    exitSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  it('exits(1) and reports the source name for an invalid HEIMDALL_PORT value', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code ?? 0})`);
+    }) as never);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    expect(() => parsePortArgOrExit('99999', 'HEIMDALL_PORT')).toThrow('process.exit(1)');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "99999"\n',
+    );
+
+    exitSpy.mockRestore();
+    stderrSpy.mockRestore();
   });
 });
 
