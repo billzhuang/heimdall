@@ -83,6 +83,21 @@ const { allTools, enabledKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexR
 export const enabledTools: ToolDefinition[] = Array.from(enabledKeys).map((key) => allTools[key]);
 
 /**
+ * Detects a valibot schema (identified by its `kind === 'schema'` marker) as
+ * opposed to a raw JSON Schema object or other unrecognised input.
+ */
+function isValibotSchema(
+  input: unknown,
+): input is v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>> {
+  return (
+    typeof input === 'object' &&
+    input !== null &&
+    'kind' in input &&
+    (input as { kind: unknown }).kind === 'schema'
+  );
+}
+
+/**
  * Convert a Flue ToolDefinition's parameters to an MCP-compatible JSON Schema
  * input schema object.
  *
@@ -97,17 +112,9 @@ export function parametersToInputSchema(input: unknown): {
   required?: string[];
   [key: string]: unknown;
 } {
-  const isValibotSchema =
-    typeof input === 'object' &&
-    input !== null &&
-    'kind' in input &&
-    (input as { kind: unknown }).kind === 'schema';
-
-  if (isValibotSchema) {
+  if (isValibotSchema(input)) {
     try {
-      const jsonSchema = toJsonSchema(
-        input as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
-      ) as Record<string, unknown>;
+      const jsonSchema = toJsonSchema(input) as Record<string, unknown>;
       return {
         type: 'object',
         ...(jsonSchema.properties !== undefined && {
@@ -172,17 +179,9 @@ export function createMcpServer(): Server {
       // Validate args against the tool's valibot schema when possible.
       // Raw JSON Schema tools (no `kind`) skip validation and pass args directly.
       let validatedArgs: Record<string, unknown>;
-      const isValibotInput =
-        typeof tool.input === 'object' &&
-        tool.input !== null &&
-        'kind' in tool.input &&
-        (tool.input as { kind: unknown }).kind === 'schema';
 
-      if (isValibotInput) {
-        const parseResult = v.safeParse(
-          tool.input as v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>,
-          args ?? {},
-        );
+      if (isValibotSchema(tool.input)) {
+        const parseResult = v.safeParse(tool.input, args ?? {});
         if (!parseResult.success) {
           const messages = parseResult.issues.map((i) => i.message).join('; ');
           return {
