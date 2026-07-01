@@ -13,8 +13,13 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createAgentCoreApp } from '../../agentcore-handler.ts';
+import {
+  createAgentCoreApp,
+  parseAgentCoreRequestBody,
+  buildAgentCoreResponse,
+} from '../../agentcore-handler.ts';
 import { resolveModel } from '../model.ts';
+import type { OneShotFinding } from '../format-output.ts';
 
 const neverCalled = async (_prompt: string, _model: string): Promise<string> => {
   throw new Error('agent should not be called');
@@ -240,5 +245,115 @@ describe('createAgentCoreApp — POST /invocations', () => {
       }),
     );
     expect(agentFn).toHaveBeenCalledWith('Check cluster health', resolveModel(undefined));
+  });
+});
+
+describe('parseAgentCoreRequestBody', () => {
+  it('rejects non-object bodies', () => {
+    expect(parseAgentCoreRequestBody(null)).toEqual({
+      ok: false,
+      error: 'Invalid JSON body: expected an object',
+    });
+    expect(parseAgentCoreRequestBody('a string')).toEqual({
+      ok: false,
+      error: 'Invalid JSON body: expected an object',
+    });
+    expect(parseAgentCoreRequestBody(['not', 'an', 'object'])).toEqual({
+      ok: false,
+      error: 'Invalid JSON body: expected an object',
+    });
+  });
+
+  it('rejects a missing or blank inputText', () => {
+    expect(parseAgentCoreRequestBody({ sessionId: 'abc' })).toEqual({
+      ok: false,
+      error: '"inputText" is required and must be a non-empty string',
+    });
+    expect(parseAgentCoreRequestBody({ inputText: '   ' })).toEqual({
+      ok: false,
+      error: '"inputText" is required and must be a non-empty string',
+    });
+    expect(parseAgentCoreRequestBody({ inputText: 42 })).toEqual({
+      ok: false,
+      error: '"inputText" is required and must be a non-empty string',
+    });
+  });
+
+  it('trims inputText and normalizes optional fields', () => {
+    expect(parseAgentCoreRequestBody({ inputText: '  why is pod x crashing?  ' })).toEqual({
+      ok: true,
+      body: {
+        inputText: 'why is pod x crashing?',
+        sessionId: undefined,
+        sessionAttributes: undefined,
+      },
+    });
+  });
+
+  it('passes through sessionId and sessionAttributes when valid', () => {
+    expect(
+      parseAgentCoreRequestBody({
+        inputText: 'check cluster health',
+        sessionId: 'sess-1',
+        sessionAttributes: { tenant: 'acme' },
+      }),
+    ).toEqual({
+      ok: true,
+      body: {
+        inputText: 'check cluster health',
+        sessionId: 'sess-1',
+        sessionAttributes: { tenant: 'acme' },
+      },
+    });
+  });
+
+  it('drops sessionId and sessionAttributes when malformed', () => {
+    expect(
+      parseAgentCoreRequestBody({
+        inputText: 'check cluster health',
+        sessionId: 123,
+        sessionAttributes: ['not', 'a', 'record'],
+      }),
+    ).toEqual({
+      ok: true,
+      body: {
+        inputText: 'check cluster health',
+        sessionId: undefined,
+        sessionAttributes: undefined,
+      },
+    });
+  });
+});
+
+describe('buildAgentCoreResponse', () => {
+  it('embeds the finding and derives severity/validity score attributes', () => {
+    const resp = buildAgentCoreResponse(
+      MOCK_FINDING as OneShotFinding,
+      JSON.stringify(MOCK_FINDING),
+      { inputText: 'why?', sessionId: 'sess-1', sessionAttributes: { tenant: 'acme' } },
+    );
+    expect(resp).toEqual({
+      outputText: MOCK_FINDING.answer,
+      sessionId: 'sess-1',
+      sessionAttributes: {
+        tenant: 'acme',
+        heimdall_finding: JSON.stringify(MOCK_FINDING),
+        heimdall_severity: 'critical',
+        heimdall_validity_score: '0.9',
+      },
+    });
+  });
+
+  it('falls back to the raw trimmed output and default severity when the finding lacks them', () => {
+    const finding = {
+      ...MOCK_FINDING,
+      answer: undefined,
+      severity: undefined,
+      validityScore: undefined,
+    } as unknown as OneShotFinding;
+    const resp = buildAgentCoreResponse(finding, 'raw fallback text', { inputText: 'why?' });
+    expect(resp.outputText).toBe('raw fallback text');
+    expect(resp.sessionAttributes?.['heimdall_severity']).toBe('info');
+    expect(resp.sessionAttributes?.['heimdall_validity_score']).toBe('');
   });
 });
