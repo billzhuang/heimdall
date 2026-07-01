@@ -65,13 +65,15 @@ describe('parsePortArgOrExit', () => {
     }) as never);
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    expect(() => parsePortArgOrExit('abc', '--port')).toThrow('process.exit(1)');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: --port must be an integer between 1 and 65535, got "abc"\n',
-    );
-
-    exitSpy.mockRestore();
-    stderrSpy.mockRestore();
+    try {
+      expect(() => parsePortArgOrExit('abc', '--port')).toThrow('process.exit(1)');
+      expect(stderrSpy).toHaveBeenCalledWith(
+        'Error: --port must be an integer between 1 and 65535, got "abc"\n',
+      );
+    } finally {
+      exitSpy.mockRestore();
+      stderrSpy.mockRestore();
+    }
   });
 
   it('exits(1) and reports the source name for an invalid HEIMDALL_PORT value', () => {
@@ -80,13 +82,15 @@ describe('parsePortArgOrExit', () => {
     }) as never);
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
-    expect(() => parsePortArgOrExit('99999', 'HEIMDALL_PORT')).toThrow('process.exit(1)');
-    expect(stderrSpy).toHaveBeenCalledWith(
-      'Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "99999"\n',
-    );
-
-    exitSpy.mockRestore();
-    stderrSpy.mockRestore();
+    try {
+      expect(() => parsePortArgOrExit('99999', 'HEIMDALL_PORT')).toThrow('process.exit(1)');
+      expect(stderrSpy).toHaveBeenCalledWith(
+        'Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "99999"\n',
+      );
+    } finally {
+      exitSpy.mockRestore();
+      stderrSpy.mockRestore();
+    }
   });
 });
 
