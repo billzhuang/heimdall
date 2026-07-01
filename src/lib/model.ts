@@ -3,7 +3,7 @@
  * credentials from the environment (e.g. `ANTHROPIC_API_KEY`). Override the
  * default with the `HEIMDALL_MODEL` environment variable.
  */
-export const DEFAULT_MODEL = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-sonnet-4-6';
+export const DEFAULT_MODEL = process.env.HEIMDALL_MODEL?.trim() || 'anthropic/claude-sonnet-4-6';
 
 /**
  * Resolve the model to use, applying precedence: CLI flag > HEIMDALL_MODEL env var > DEFAULT_MODEL.
@@ -18,4 +18,20 @@ export function resolveModel(cliFlag?: string): string {
     );
   }
   return model;
+}
+
+/**
+ * Like resolveModel, but returns undefined for an absent or invalid override
+ * instead of falling back to DEFAULT_MODEL or throwing. Used by handlers that
+ * read a model override from the environment (e.g. HEIMDALL_MODEL) and want a
+ * clean value to `??` against their own default, rather than resolveModel's
+ * baked-in fallback.
+ */
+export function resolveModelOrUndefined(cliFlag?: string): string | undefined {
+  if (!cliFlag) return undefined;
+  try {
+    return resolveModel(cliFlag);
+  } catch {
+    return undefined;
+  }
 }

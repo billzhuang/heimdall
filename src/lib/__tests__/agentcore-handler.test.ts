@@ -14,6 +14,7 @@ vi.mock('../config.ts', () => ({
 }));
 
 import { createAgentCoreApp } from '../../agentcore-handler.ts';
+import { resolveModel } from '../model.ts';
 
 const neverCalled = async (_prompt: string, _model: string): Promise<string> => {
   throw new Error('agent should not be called');
@@ -225,5 +226,19 @@ describe('createAgentCoreApp — POST /invocations', () => {
       'Check cluster health',
       'anthropic/claude-haiku-4-5-20251001',
     );
+  });
+
+  it('falls back to the default model when defaultModel is an invalid format', async () => {
+    const agentFn = vi.fn().mockResolvedValueOnce(JSON.stringify(MOCK_FINDING));
+    const app = createAgentCoreApp(agentFn, 'invalid-no-slash');
+
+    await app.fetch(
+      new Request('http://localhost/invocations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputText: 'Check cluster health' }),
+      }),
+    );
+    expect(agentFn).toHaveBeenCalledWith('Check cluster health', resolveModel(undefined));
   });
 });

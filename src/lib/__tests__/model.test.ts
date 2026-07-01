@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { resolveModel } from '../model.ts';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { resolveModel, resolveModelOrUndefined } from '../model.ts';
 
 describe('resolveModel', () => {
   it('returns the CLI flag unchanged for a valid provider/model string', () => {
@@ -36,5 +36,50 @@ describe('resolveModel', () => {
   it('includes the invalid model string in the error message', () => {
     expect(() => resolveModel('badmodel')).toThrow(/badmodel/);
     expect(() => resolveModel('/')).toThrow(/"\/"/);
+  });
+});
+
+describe('resolveModelOrUndefined', () => {
+  it('returns the resolved model for a valid provider/model string', () => {
+    expect(resolveModelOrUndefined('anthropic/claude-sonnet-4-6')).toBe(
+      'anthropic/claude-sonnet-4-6',
+    );
+  });
+
+  it('returns undefined when cliFlag is undefined', () => {
+    expect(resolveModelOrUndefined()).toBeUndefined();
+  });
+
+  it('returns undefined when cliFlag is an empty string', () => {
+    expect(resolveModelOrUndefined('')).toBeUndefined();
+  });
+
+  it('returns undefined instead of throwing for an invalid model string', () => {
+    expect(resolveModelOrUndefined('badmodel')).toBeUndefined();
+    expect(resolveModelOrUndefined('/')).toBeUndefined();
+  });
+});
+
+describe('DEFAULT_MODEL', () => {
+  const originalEnv = process.env['HEIMDALL_MODEL'];
+
+  afterEach(() => {
+    if (originalEnv === undefined) delete process.env['HEIMDALL_MODEL'];
+    else process.env['HEIMDALL_MODEL'] = originalEnv;
+    vi.resetModules();
+  });
+
+  it('falls back to the built-in default when HEIMDALL_MODEL is an empty string', async () => {
+    process.env['HEIMDALL_MODEL'] = '';
+    vi.resetModules();
+    const { DEFAULT_MODEL } = await import('../model.ts');
+    expect(DEFAULT_MODEL).toBe('anthropic/claude-sonnet-4-6');
+  });
+
+  it('falls back to the built-in default when HEIMDALL_MODEL is whitespace-only', async () => {
+    process.env['HEIMDALL_MODEL'] = '   ';
+    vi.resetModules();
+    const { DEFAULT_MODEL } = await import('../model.ts');
+    expect(DEFAULT_MODEL).toBe('anthropic/claude-sonnet-4-6');
   });
 });
