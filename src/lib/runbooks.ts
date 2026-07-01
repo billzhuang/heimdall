@@ -8,6 +8,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { escapeRegExpLiteral } from './regexp-utils.ts';
 
 export interface RunbookConfig {
   path: string;
@@ -25,7 +26,7 @@ export function tagsMatch(tags: string[] | null | undefined, query: string): boo
   if (!tags || tags.length === 0) return true;
   const q = query.toLowerCase();
   return tags.some((tag) => {
-    const escaped = tag.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = escapeRegExpLiteral(tag.toLowerCase());
     return new RegExp(`(?<![a-z0-9_])${escaped}(?![a-z0-9_])`).test(q);
   });
 }

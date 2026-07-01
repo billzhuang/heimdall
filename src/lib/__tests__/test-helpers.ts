@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { BLOCKED_PREFIX } from '../harness.ts';
+import { escapeRegExpLiteral } from '../regexp-utils.ts';
 
 export function mockFetch(body: string, status = 200): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn().mockResolvedValue({
@@ -16,4 +17,4 @@ export function makeAbortError(): Error {
   return Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
 }
 
-export const BLOCKED_RE = new RegExp(`^${BLOCKED_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+export const BLOCKED_RE = new RegExp(`^${escapeRegExpLiteral(BLOCKED_PREFIX)}`, 'i');

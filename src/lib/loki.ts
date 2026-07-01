@@ -10,6 +10,7 @@ import { makeTruncate } from './output-truncation.ts';
 import { resolveTimePassthrough } from './time-resolution.ts';
 import { runJsonQuery } from './http.ts';
 import { clampLimit } from './tool-config.ts';
+import { escapeRegExpLiteral } from './regexp-utils.ts';
 
 export interface LokiConfig {
   url: string;
@@ -40,11 +41,6 @@ export function validateNamespaceLockdown(query: string, lockedNamespace: string
   const exact = new RegExp(`namespace\\s*=\\s*"${escaped}"`);
   const regexExact = new RegExp(`namespace\\s*=~\\s*"${escaped}"`);
   return exact.test(query) || regexExact.test(query);
-}
-
-/** Escape a string for use as a literal inside a RegExp constructor. */
-function escapeRegExpLiteral(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export interface LokiQueryParams {
