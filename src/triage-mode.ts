@@ -34,6 +34,8 @@ import {
 } from './lib/drift.ts';
 import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { resolveBinPath } from './lib/eval-runner.ts';
+import { interpretChildExit } from './lib/child-exit.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -45,7 +47,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * callers can parse findings for baseline writing.
  */
 async function runAgent(prompt: string, model?: string): Promise<string> {
-  const binPath = resolve(__dirname, '..', 'bin', 'heimdall');
+  const binPath = resolveBinPath(__dirname);
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -78,13 +80,9 @@ async function runAgent(prompt: string, model?: string): Promise<string> {
 
     child.on('close', (code: number | null, signal: string | null) => {
       clearTimeout(timer);
-      if (code !== null && code !== 0) {
-        settle(new Error(`heimdall exited with code ${code}`));
-      } else if (code === null && signal !== null) {
-        settle(new Error(`heimdall killed by signal ${signal}`));
-      } else {
-        settle(undefined, output);
-      }
+      const err = interpretChildExit(code, signal);
+      if (err) settle(err);
+      else settle(undefined, output);
     });
 
     child.on('error', (err: Error) => {
