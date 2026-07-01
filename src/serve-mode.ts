@@ -40,6 +40,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const DIAGNOSE_TIMEOUT_MS = 300_000; // 5 minutes
 
+/** Parse a port string; returns the port number if it is an integer in [1, 65535], else null. */
+export function parsePortValue(raw: string): number | null {
+  const port = parseInt(raw, 10);
+  return isNaN(port) || port < 1 || port > 65535 ? null : port;
+}
+
 /**
  * Spawn `heimdall -p <prompt> --json` and capture the structured JSON output.
  * Returns the raw JSON string emitted by format-json.ts.
@@ -338,18 +344,20 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
     if (arg === '--port') {
       const raw = cliArgs[++i];
       if (!raw) { process.stderr.write('Error: --port requires a value\n'); process.exit(1); }
-      portArg = parseInt(raw, 10);
-      if (isNaN(portArg) || portArg < 1 || portArg > 65535) {
+      const parsed = parsePortValue(raw);
+      if (parsed === null) {
         process.stderr.write(`Error: --port must be an integer between 1 and 65535, got "${raw}"\n`);
         process.exit(1);
       }
+      portArg = parsed;
     } else if (arg.startsWith('--port=')) {
       const raw = arg.slice('--port='.length);
-      portArg = parseInt(raw, 10);
-      if (isNaN(portArg) || portArg < 1 || portArg > 65535) {
+      const parsed = parsePortValue(raw);
+      if (parsed === null) {
         process.stderr.write(`Error: --port must be an integer between 1 and 65535, got "${raw}"\n`);
         process.exit(1);
       }
+      portArg = parsed;
     } else if (arg === '--host') {
       hostArg = cliArgs[++i];
     } else if (arg.startsWith('--host=')) {
@@ -388,14 +396,15 @@ Examples:
   }
 
   const config = loadConfig();
-  const envPort = process.env['HEIMDALL_PORT']
-    ? parseInt(process.env['HEIMDALL_PORT'], 10)
-    : undefined;
-  if (envPort !== undefined && (isNaN(envPort) || envPort < 1 || envPort > 65535)) {
-    process.stderr.write(
-      `Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "${process.env['HEIMDALL_PORT']}"\n`,
-    );
-    process.exit(1);
+  const rawEnvPort = process.env['HEIMDALL_PORT'];
+  let envPort: number | undefined;
+  if (rawEnvPort) {
+    const parsed = parsePortValue(rawEnvPort);
+    if (parsed === null) {
+      process.stderr.write(`Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "${rawEnvPort}"\n`);
+      process.exit(1);
+    }
+    envPort = parsed;
   }
   const port = portArg ?? envPort ?? config.server?.port ?? 3000;
   const host =

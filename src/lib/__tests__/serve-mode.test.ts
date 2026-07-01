@@ -14,7 +14,7 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp } from '../../serve-mode.ts';
+import { createServeApp, parsePortValue } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -30,6 +30,29 @@ function makeAppWithAuth(
 const neverCalled = async (_prompt: string, _model: string): Promise<string> => {
   throw new Error('agent should not be called');
 };
+
+describe('parsePortValue', () => {
+  it('accepts valid port numbers', () => {
+    expect(parsePortValue('3000')).toBe(3000);
+    expect(parsePortValue('1')).toBe(1);
+    expect(parsePortValue('65535')).toBe(65535);
+  });
+
+  it('rejects out-of-range values', () => {
+    expect(parsePortValue('0')).toBeNull();
+    expect(parsePortValue('65536')).toBeNull();
+    expect(parsePortValue('-1')).toBeNull();
+  });
+
+  it('rejects non-numeric input', () => {
+    expect(parsePortValue('abc')).toBeNull();
+    expect(parsePortValue('')).toBeNull();
+  });
+
+  it('parses a leading-integer prefix like parseInt does', () => {
+    expect(parsePortValue('80.5')).toBe(80);
+  });
+});
 
 describe('createServeApp', () => {
   describe('GET /api/health', () => {
