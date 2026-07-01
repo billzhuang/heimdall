@@ -10,34 +10,35 @@ import { resolve } from 'node:path';
 import * as yaml from 'js-yaml';
 import * as v from 'valibot';
 
+const ToolsObjectSchema = v.object({
+  kubectl: v.nullish(v.boolean(), true),
+  listContexts: v.nullish(v.boolean(), true),
+  listNamespaces: v.nullish(v.boolean(), true),
+  helmRelease: v.nullish(v.boolean(), true),
+  prometheusQuery: v.nullish(v.boolean(), false),
+  // Disabled by default: requires AWS CLI credentials in the environment.
+  awsCli: v.nullish(v.boolean(), false),
+  // Disabled by default: requires trivy binary on PATH.
+  trivyScan: v.nullish(v.boolean(), false),
+  // Disabled by default: requires a running Kubecost instance.
+  kubecostQuery: v.nullish(v.boolean(), false),
+  // Disabled by default: requires a running Grafana Loki instance.
+  lokiQuery: v.nullish(v.boolean(), false),
+  // Disabled by default: requires a running Jaeger or Grafana Tempo instance.
+  jaegerQuery: v.nullish(v.boolean(), false),
+  // Disabled by default: requires Datadog API key and app key.
+  datadogQuery: v.nullish(v.boolean(), false),
+  // Disabled by default: requires New Relic API key and account ID.
+  newRelicQuery: v.nullish(v.boolean(), false),
+  // Disabled by default: requires CDK CLI on PATH and AWS credentials.
+  cdkQuery: v.nullish(v.boolean(), false),
+});
+
 // v.nullish handles both `undefined` (missing key) and `null` (empty YAML block,
 // e.g. `tools:` with no value), which js-yaml parses as null, not undefined.
-const ToolsSchema = v.nullish(
-  v.object({
-    kubectl: v.nullish(v.boolean(), true),
-    listContexts: v.nullish(v.boolean(), true),
-    listNamespaces: v.nullish(v.boolean(), true),
-    helmRelease: v.nullish(v.boolean(), true),
-    prometheusQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires AWS CLI credentials in the environment.
-    awsCli: v.nullish(v.boolean(), false),
-    // Disabled by default: requires trivy binary on PATH.
-    trivyScan: v.nullish(v.boolean(), false),
-    // Disabled by default: requires a running Kubecost instance.
-    kubecostQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires a running Grafana Loki instance.
-    lokiQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires a running Jaeger or Grafana Tempo instance.
-    jaegerQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires Datadog API key and app key.
-    datadogQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires New Relic API key and account ID.
-    newRelicQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires CDK CLI on PATH and AWS credentials.
-    cdkQuery: v.nullish(v.boolean(), false),
-  }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false, cdkQuery: false },
-);
+// The fallback derives from each field's own default above (via getDefaults)
+// instead of duplicating the same true/false literals in a second object.
+const ToolsSchema = v.nullish(ToolsObjectSchema, () => v.getDefaults(ToolsObjectSchema));
 
 function makeUrlTimeoutSchema(defaultTimeoutMs = 10_000) {
   return v.nullish(v.object({
