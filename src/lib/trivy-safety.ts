@@ -55,6 +55,27 @@ export interface TrivyCommandValidationResult {
 }
 
 /**
+ * Find the scan type: the first positional token after "trivy", skipping
+ * global flags (--flag / --flag=value). Only flags in TRIVY_OPTIONS_WITH_VALUE
+ * consume the next token — all others are boolean and must NOT skip, or
+ * boolean flags like --debug would cause the scan type to be skipped
+ * (e.g. `trivy --debug image nginx` → scanType=null).
+ */
+function findScanType(parts: string[]): string | null {
+  for (let i = 1; i < parts.length; i++) {
+    const token = parts[i];
+    if (token.startsWith('-')) {
+      if (!token.includes('=') && TRIVY_OPTIONS_WITH_VALUE.has(token.toLowerCase())) {
+        i++; // skip value token
+      }
+      continue;
+    }
+    return token.toLowerCase();
+  }
+  return null;
+}
+
+/**
  * Validate a trivy command string (including the leading "trivy" token).
  *
  * The function receives the same command string that will be logged in the
@@ -85,22 +106,7 @@ export function validateTrivyCommand(command: string): TrivyCommandValidationRes
     };
   }
 
-  // Skip global flags (--flag / --flag=value) to find the first positional token.
-  // Only flags in TRIVY_OPTIONS_WITH_VALUE consume the next token — all others
-  // are boolean and must NOT skip, or boolean flags like --debug would cause the
-  // scan type to be skipped (e.g. `trivy --debug image nginx` → scanType=null).
-  let scanType: string | null = null;
-  for (let i = 1; i < parts.length; i++) {
-    const token = parts[i];
-    if (token.startsWith('-')) {
-      if (!token.includes('=') && TRIVY_OPTIONS_WITH_VALUE.has(token.toLowerCase())) {
-        i++; // skip value token
-      }
-      continue;
-    }
-    scanType = token.toLowerCase();
-    break;
-  }
+  const scanType = findScanType(parts);
 
   if (!scanType) {
     // Bare `trivy` — prints help, harmless.
