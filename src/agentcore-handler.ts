@@ -34,7 +34,7 @@ import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { fileURLToPath } from 'node:url';
 import { runAgentDiagnose } from './serve-mode.ts';
-import { resolveModel } from './lib/model.ts';
+import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { getMessage } from './lib/error-utils.ts';
@@ -98,12 +98,7 @@ export function createAgentCoreApp(
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
 
-    let model: string;
-    try {
-      model = resolveModel(defaultModel);
-    } catch {
-      model = resolveModel(undefined);
-    }
+    const model = resolveModelOrUndefined(defaultModel) ?? resolveModel(undefined);
 
     try {
       const raw = await agentFn(body.inputText, model);
@@ -136,13 +131,7 @@ export function createAgentCoreApp(
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
   const config = loadConfig();
 
-  const modelEnv = process.env['HEIMDALL_MODEL'];
-  let defaultModel: string | undefined;
-  try {
-    defaultModel = resolveModel(modelEnv);
-  } catch {
-    defaultModel = undefined;
-  }
+  const defaultModel = resolveModelOrUndefined(process.env['HEIMDALL_MODEL']);
 
   const envPort = process.env['AGENTCORE_PORT']
     ? parseInt(process.env['AGENTCORE_PORT'], 10)

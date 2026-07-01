@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveModel } from '../model.ts';
+import { resolveModel, resolveModelOrUndefined } from '../model.ts';
 
 describe('resolveModel', () => {
   it('returns the CLI flag unchanged for a valid provider/model string', () => {
@@ -36,5 +36,22 @@ describe('resolveModel', () => {
   it('includes the invalid model string in the error message', () => {
     expect(() => resolveModel('badmodel')).toThrow(/badmodel/);
     expect(() => resolveModel('/')).toThrow(/"\/"/);
+  });
+});
+
+describe('resolveModelOrUndefined', () => {
+  it('returns the resolved model for a valid provider/model string', () => {
+    expect(resolveModelOrUndefined('anthropic/claude-sonnet-4-6')).toBe(
+      'anthropic/claude-sonnet-4-6',
+    );
+  });
+
+  it('falls back to DEFAULT_MODEL when cliFlag is undefined', () => {
+    expect(resolveModelOrUndefined()).toBe(resolveModel());
+  });
+
+  it('returns undefined instead of throwing for an invalid model string', () => {
+    expect(resolveModelOrUndefined('badmodel')).toBeUndefined();
+    expect(resolveModelOrUndefined('/')).toBeUndefined();
   });
 });
