@@ -146,6 +146,12 @@ describe('readJsonlFileSync', () => {
     expect(result).toEqual([{ id: 3 }]);
   });
 
+  it('returns [] when tail is explicitly 0', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\n{"id":2}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl', { tail: 0 });
+    expect(result).toEqual([]);
+  });
+
   it('is a no-op cap when tail exceeds the number of lines', () => {
     mockReadFileSync.mockReturnValueOnce('{"id":1}\n{"id":2}\n' as never);
     const result = readJsonlFileSync<{ id: number }>('/data.jsonl', { tail: 100 });

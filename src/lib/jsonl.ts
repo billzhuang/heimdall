@@ -91,7 +91,7 @@ export function readJsonlFileSync<T>(
     return [];
   }
   const lines = raw.split('\n').filter((l) => l.trim());
-  const selected = opts?.tail ? lines.slice(-opts.tail) : lines;
+  const selected = opts?.tail === undefined ? lines : opts.tail === 0 ? [] : lines.slice(-opts.tail);
   return selected.flatMap((line) => {
     try {
       const parsed: unknown = JSON.parse(line);
