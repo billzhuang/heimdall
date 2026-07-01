@@ -60,7 +60,7 @@ export function parseSessionIdArg(args: string[]): string | undefined {
     }
   }
 
-  return sessionId;
+  return sessionId || undefined;
 }
 
 function showHelp(): void {

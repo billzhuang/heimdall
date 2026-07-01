@@ -33,4 +33,10 @@ describe('parseSessionIdArg', () => {
   it('prefers an explicit -s flag over a positional argument', () => {
     expect(parseSessionIdArg(['positional-id', '-s', 'flag-id'])).toBe('flag-id');
   });
+
+  it('returns undefined for empty or falsy session IDs', () => {
+    expect(parseSessionIdArg([''])).toBeUndefined();
+    expect(parseSessionIdArg(['--session='])).toBeUndefined();
+    expect(parseSessionIdArg(['--session', ''])).toBeUndefined();
+  });
 });
