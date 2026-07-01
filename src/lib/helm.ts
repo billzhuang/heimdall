@@ -37,7 +37,7 @@ export interface RunHelmOptions {
 
 /** Returns an error string if `value` starts with a hyphen (option injection), else null. */
 function leadingHyphenError(value: string | undefined, label: string): string | null {
-  return value && value.startsWith('-') ? `Error: ${label} cannot start with a hyphen.` : null;
+  return value?.startsWith('-') ? `Error: ${label} cannot start with a hyphen.` : null;
 }
 
 /** Appends `-n <namespace>` to argv when namespace is set. */
