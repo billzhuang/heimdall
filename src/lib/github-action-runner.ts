@@ -143,13 +143,23 @@ type CaptureFn = typeof capture;
 
 // ── Shared output helpers ───────────────────────────────────────────────────
 
-const EMPTY_FINDING_KEYS = ['summary', 'answer', 'suggested-commands', 'remediation-steps'] as const;
+interface FindingShapedOutputs {
+  summary?: string;
+  answer?: string;
+  suggestedCommands?: string;
+  remediationSteps?: string;
+}
 
-/** Write the empty finding-shaped outputs used by modes with no structured finding. */
-function setEmptyFindingOutputs(config: ActionConfig): void {
-  for (const key of EMPTY_FINDING_KEYS) {
-    setOutput(key, '', config.githubOutput);
-  }
+/**
+ * Write the summary/answer/suggested-commands/remediation-steps outputs shared
+ * by modes with no full structured finding (triage, schedule-once). Fields not
+ * provided default to an empty string.
+ */
+function setFindingShapedOutputs(config: ActionConfig, values: FindingShapedOutputs = {}): void {
+  setOutput('summary', values.summary ?? '', config.githubOutput);
+  setOutput('answer', values.answer ?? '', config.githubOutput);
+  setOutput('suggested-commands', values.suggestedCommands ?? '', config.githubOutput);
+  setOutput('remediation-steps', values.remediationSteps ?? '', config.githubOutput);
 }
 
 /** Write the summary-markdown output, post the step summary, then apply fail-on gating. */
@@ -220,7 +230,7 @@ export async function runTriageMode(config: ActionConfig, captureImpl: CaptureFn
 
   const severity = detectTriageSeverity(stdout);
   setOutput('severity', severity, config.githubOutput);
-  setEmptyFindingOutputs(config);
+  setFindingShapedOutputs(config);
 
   const summaryMd = renderTriageJobSummary(stdout);
   finishOutputs(config, summaryMd, severity);
@@ -241,10 +251,7 @@ export async function runScheduleOnceMode(config: ActionConfig, captureImpl: Cap
 
   const summaryMd = '## Heimdall Schedule\n\nScheduled triage completed.';
   setOutput('severity', 'ok', config.githubOutput);
-  setOutput('summary', 'Scheduled triage completed.', config.githubOutput);
-  setOutput('answer', '', config.githubOutput);
-  setOutput('suggested-commands', '', config.githubOutput);
-  setOutput('remediation-steps', '', config.githubOutput);
+  setFindingShapedOutputs(config, { summary: 'Scheduled triage completed.' });
   finishOutputs(config, summaryMd, 'ok');
 }
 
