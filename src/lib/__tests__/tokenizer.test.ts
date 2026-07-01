@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tokenizeShellArgs } from '../tokenizer.ts';
+import { tokenizeShellArgs, joinShellArgs } from '../tokenizer.ts';
 
 describe('tokenizeShellArgs', () => {
   it('splits simple space-separated args', () => {
@@ -107,5 +107,36 @@ describe('tokenizeShellArgs — omitted binaryName', () => {
   it('does not strip the first token even when it matches a known binary name', () => {
     // Without binaryName, 'kubectl' is kept — no implicit stripping.
     expect(tokenizeShellArgs('kubectl get pods')).toEqual(['kubectl', 'get', 'pods']);
+  });
+});
+
+describe('joinShellArgs', () => {
+  it('joins a binary name with simple args unquoted', () => {
+    expect(joinShellArgs('kubectl', ['get', 'pods'])).toBe('kubectl get pods');
+  });
+
+  it('quotes an argument containing whitespace', () => {
+    expect(joinShellArgs('kubectl', ['-l', 'app=my app'])).toBe(`kubectl -l 'app=my app'`);
+  });
+
+  it('quotes an argument containing a single quote and escapes it', () => {
+    expect(joinShellArgs('aws', ["it's"])).toBe(`aws 'it'\\''s'`);
+  });
+
+  it('quotes an argument containing a double quote', () => {
+    expect(joinShellArgs('kubectl', ['key="value"'])).toBe(`kubectl 'key="value"'`);
+  });
+
+  it('quotes an argument containing a backslash', () => {
+    expect(joinShellArgs('aws', ['a\\b'])).toBe(`aws 'a\\b'`);
+  });
+
+  it('returns just the binary name for empty argv', () => {
+    expect(joinShellArgs('trivy', [])).toBe('trivy');
+  });
+
+  it('round-trips with tokenizeShellArgs for plain args', () => {
+    const argv = tokenizeShellArgs('get pods -n prod', 'kubectl');
+    expect(joinShellArgs('kubectl', argv)).toBe('kubectl get pods -n prod');
   });
 });

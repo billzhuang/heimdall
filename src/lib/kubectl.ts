@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join as joinPath } from 'node:path';
 import { promisify } from 'node:util';
 import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
-import { tokenizeShellArgs } from './tokenizer.ts';
+import { tokenizeShellArgs, joinShellArgs } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { recordCacheHit, recordCacheMiss } from './telemetry.ts';
@@ -216,7 +216,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     return 'Error: no kubectl subcommand provided.';
   }
 
-  const cmd = `kubectl ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
+  const cmd = joinShellArgs('kubectl', argv);
   const validation = validateCommand(cmd);
   if (!validation.allowed) {
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);

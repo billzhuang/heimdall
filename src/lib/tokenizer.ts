@@ -58,3 +58,15 @@ export function tokenizeShellArgs(input: string, binaryName?: string): string[] 
   }
   return tokens;
 }
+
+/**
+ * Rebuild a shell-safe display string from a binary name and its argv, quoting
+ * any argument that contains whitespace or a quote/backslash character. This is
+ * the inverse of `tokenizeShellArgs` and is used to build the `cmd` string
+ * passed to the safety validator and audit log, so validation and logging
+ * always agree on the exact argv that will execute.
+ */
+export function joinShellArgs(binaryName: string, argv: string[]): string {
+  const quoted = argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a));
+  return [binaryName, ...quoted].join(' ');
+}

@@ -10,7 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateAwsCommand } from './aws-safety.ts';
-import { tokenizeShellArgs } from './tokenizer.ts';
+import { tokenizeShellArgs, joinShellArgs } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
@@ -80,7 +80,7 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
   const argv = tokenizeAwsArgs(trimmed);
   if (argv.length === 0) return 'Error: no AWS CLI subcommand provided.';
 
-  const cmd = `aws ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
+  const cmd = joinShellArgs('aws', argv);
   const validation = validateAwsCommand(cmd);
 
   if (!validation) {
