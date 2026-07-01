@@ -135,6 +135,15 @@ describe('joinShellArgs', () => {
     expect(joinShellArgs('trivy', [])).toBe('trivy');
   });
 
+  it('quotes an empty string argument so it is not lost or merged', () => {
+    expect(joinShellArgs('kubectl', ['get', 'pods', ''])).toBe("kubectl get pods ''");
+  });
+
+  it('round-trips an empty-string token through tokenizeShellArgs', () => {
+    const rebuilt = joinShellArgs('kubectl', ['-l', '']);
+    expect(tokenizeShellArgs(rebuilt, 'kubectl')).toEqual(['-l', '']);
+  });
+
   it('round-trips with tokenizeShellArgs for plain args', () => {
     const argv = tokenizeShellArgs('get pods -n prod', 'kubectl');
     expect(joinShellArgs('kubectl', argv)).toBe('kubectl get pods -n prod');

@@ -67,6 +67,6 @@ export function tokenizeShellArgs(input: string, binaryName?: string): string[] 
  * always agree on the exact argv that will execute.
  */
 export function joinShellArgs(binaryName: string, argv: string[]): string {
-  const quoted = argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a));
+  const quoted = argv.map((a) => (a === '' || /[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a));
   return [binaryName, ...quoted].join(' ');
 }
