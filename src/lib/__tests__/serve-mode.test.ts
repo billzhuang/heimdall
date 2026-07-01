@@ -14,7 +14,7 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp, parsePortValue } from '../../serve-mode.ts';
+import { createServeApp, parsePortValue, parsePortArg } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -51,6 +51,24 @@ describe('parsePortValue', () => {
 
   it('parses a leading-integer prefix like parseInt does', () => {
     expect(parsePortValue('80.5')).toBe(80);
+  });
+});
+
+describe('parsePortArg', () => {
+  it('returns the port for a valid value', () => {
+    expect(parsePortArg('8080', '--port')).toEqual({ port: 8080 });
+  });
+
+  it('returns a labeled error message for --port', () => {
+    expect(parsePortArg('99999', '--port')).toEqual({
+      errorMessage: 'Error: --port must be an integer between 1 and 65535, got "99999"\n',
+    });
+  });
+
+  it('returns a labeled error message for HEIMDALL_PORT', () => {
+    expect(parsePortArg('abc', 'HEIMDALL_PORT')).toEqual({
+      errorMessage: 'Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "abc"\n',
+    });
   });
 });
 
