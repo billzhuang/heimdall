@@ -6,7 +6,7 @@ import * as v from 'valibot';
 import { runKubecostQuery, type KubecostConfig } from '../lib/kubecost.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
-import { resolveTimeoutMs } from '../lib/tool-config.ts';
+import { buildLockdownNote, resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_KUBECOST_URL = 'http://kubecost-cost-analyzer.kubecost:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -27,9 +27,10 @@ export function makeKubecostQuery(
     lockedNamespace: lockedNamespace ?? undefined,
   };
 
-  const lockdownNote = lockedNamespace
-    ? ` NAMESPACE LOCKDOWN ACTIVE: allocation queries are restricted to namespace '${lockedNamespace}'.`
-    : '';
+  const lockdownNote = buildLockdownNote(
+    lockedNamespace,
+    (ns) => `allocation queries are restricted to namespace '${ns}'.`,
+  );
 
   return defineTool({
     name: 'kubecost_query',

@@ -6,11 +6,13 @@ import * as v from 'valibot';
 import { runHelm } from '../lib/helm.ts';
 import { BLOCKED_PREFIX } from '../lib/harness.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
+import { buildLockdownNote } from '../lib/tool-config.ts';
 
 export function makeHelmRelease(lockedNamespace?: string | null) {
-  const lockdownNote = lockedNamespace
-    ? ` NAMESPACE LOCKDOWN ACTIVE: only namespace '${lockedNamespace}' is accessible; allNamespaces and other namespaces are blocked.`
-    : '';
+  const lockdownNote = buildLockdownNote(
+    lockedNamespace,
+    (ns) => `only namespace '${ns}' is accessible; allNamespaces and other namespaces are blocked.`,
+  );
   return defineTool({
     name: 'helm_release',
     description:

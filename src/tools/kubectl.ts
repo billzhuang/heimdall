@@ -6,11 +6,13 @@ import * as v from 'valibot';
 import { runKubectl, type AuditConfig } from '../lib/kubectl.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
+import { buildLockdownNote } from '../lib/tool-config.ts';
 
 export function makeKubectl(audit?: AuditConfig | null, redactSecrets?: boolean, regexRedactionRules?: CompiledRedactionRule[], lockedNamespace?: string | null) {
-  const lockdownNote = lockedNamespace
-    ? ` NAMESPACE LOCKDOWN ACTIVE: all queries are restricted to namespace '${lockedNamespace}'; '-A'/--all-namespaces and other namespaces are blocked.`
-    : '';
+  const lockdownNote = buildLockdownNote(
+    lockedNamespace,
+    (ns) => `all queries are restricted to namespace '${ns}'; '-A'/--all-namespaces and other namespaces are blocked.`,
+  );
   return defineTool({
     name: 'kubectl',
     description:

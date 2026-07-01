@@ -31,3 +31,16 @@ export function clampLimit(
     ? Math.min(Math.max(Math.trunc(rawLimit), 1), maxLimit)
     : defaultLimit;
 }
+
+/**
+ * Build the " NAMESPACE LOCKDOWN ACTIVE: ..." suffix appended to a tool's
+ * description when namespace lockdown is configured. Returns '' when
+ * `lockedNamespace` is not set. `message` is only invoked when locked, so it
+ * can build its wording from the narrowed (non-nullish) namespace value.
+ */
+export function buildLockdownNote(
+  lockedNamespace: string | null | undefined,
+  message: (namespace: string) => string,
+): string {
+  return lockedNamespace ? ` NAMESPACE LOCKDOWN ACTIVE: ${message(lockedNamespace)}` : '';
+}
