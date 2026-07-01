@@ -1,4 +1,5 @@
 import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
@@ -69,4 +70,34 @@ export async function readJsonlFile<T>(
     }
   }
   return entries;
+}
+
+/**
+ * Synchronous counterpart to `readJsonlFile`, for use at module-load time
+ * (e.g. building agent startup context) where an async read isn't practical.
+ * Returns [] on ENOENT or any other read error; non-ENOENT errors are reported
+ * via `onError` rather than thrown. Malformed or non-object lines are dropped
+ * silently. When `tail` is set, only the last N non-empty lines are parsed.
+ */
+export function readJsonlFileSync<T>(
+  filePath: string,
+  opts?: { tail?: number; onError?: (err: unknown) => void },
+): T[] {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') opts?.onError?.(err);
+    return [];
+  }
+  const lines = raw.split('\n').filter((l) => l.trim());
+  const selected = opts?.tail ? lines.slice(-opts.tail) : lines;
+  return selected.flatMap((line) => {
+    try {
+      const parsed: unknown = JSON.parse(line);
+      return parsed !== null && typeof parsed === 'object' ? [parsed as T] : [];
+    } catch {
+      return [];
+    }
+  });
 }
