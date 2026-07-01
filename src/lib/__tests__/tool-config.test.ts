@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveTimeoutMs, clampLimit } from '../tool-config.ts';
+import { resolveTimeoutMs, clampLimit, buildLockdownNote } from '../tool-config.ts';
 
 describe('resolveTimeoutMs', () => {
   it('returns the provided value when it is a positive finite number', () => {
@@ -75,5 +75,39 @@ describe('clampLimit', () => {
   it('returns defaultLimit for Infinity', () => {
     expect(clampLimit(Infinity, 20, 100)).toBe(20);
     expect(clampLimit(-Infinity, 20, 100)).toBe(20);
+  });
+});
+
+describe('buildLockdownNote', () => {
+  it('returns the prefixed message when a namespace is locked', () => {
+    expect(buildLockdownNote('prod', (ns) => `only '${ns}' is accessible.`)).toBe(
+      " NAMESPACE LOCKDOWN ACTIVE: only 'prod' is accessible.",
+    );
+  });
+
+  it('passes the narrowed namespace value to the message builder', () => {
+    const message = (ns: string) => ns;
+    expect(buildLockdownNote('kube-system', message)).toBe(' NAMESPACE LOCKDOWN ACTIVE: kube-system');
+  });
+
+  it('returns an empty string and does not invoke message when lockedNamespace is null', () => {
+    const message = () => {
+      throw new Error('should not be called');
+    };
+    expect(buildLockdownNote(null, message)).toBe('');
+  });
+
+  it('returns an empty string and does not invoke message when lockedNamespace is undefined', () => {
+    const message = () => {
+      throw new Error('should not be called');
+    };
+    expect(buildLockdownNote(undefined, message)).toBe('');
+  });
+
+  it('returns an empty string when lockedNamespace is an empty string', () => {
+    const message = () => {
+      throw new Error('should not be called');
+    };
+    expect(buildLockdownNote('', message)).toBe('');
   });
 });

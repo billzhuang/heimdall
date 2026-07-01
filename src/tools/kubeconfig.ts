@@ -13,6 +13,7 @@ import {
 } from '../lib/kubeconfig.ts';
 import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
 import { BLOCKED_PREFIX } from '../lib/harness.ts';
+import { buildLockdownNote } from '../lib/tool-config.ts';
 
 export const listContexts = defineTool({
   name: 'list_contexts',
@@ -41,9 +42,7 @@ export const listContexts = defineTool({
 });
 
 export function makeListNamespaces(lockedNamespace?: string | null) {
-  const lockdownNote = lockedNamespace
-    ? ` NAMESPACE LOCKDOWN ACTIVE: only namespace '${lockedNamespace}' is accessible.`
-    : '';
+  const lockdownNote = buildLockdownNote(lockedNamespace, (ns) => `only namespace '${ns}' is accessible.`);
   return defineTool({
     name: 'list_namespaces',
     description:
