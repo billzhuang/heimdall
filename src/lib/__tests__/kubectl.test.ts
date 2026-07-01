@@ -23,6 +23,7 @@ import {
   NO_OUTPUT_MESSAGE,
   parseDurationMs,
   getWaitTimeoutMs,
+  resolveCacheUser,
   runKubectl,
   tokenizeArgs,
 } from '../kubectl.ts';
@@ -179,6 +180,28 @@ describe('getWaitTimeoutMs', () => {
 
   it('extracts a compound --timeout=1h30m value', () => {
     expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web', '--timeout=1h30m'])).toBe(5_400_000);
+  });
+});
+
+describe('resolveCacheUser', () => {
+  it('uses the OS uid when getuid is available', () => {
+    expect(resolveCacheUser(() => 501, {})).toBe('501');
+  });
+
+  it('prefers the uid over USER/USERNAME when both are present', () => {
+    expect(resolveCacheUser(() => 501, { USER: 'alice', USERNAME: 'bob' })).toBe('501');
+  });
+
+  it('falls back to USER when getuid is unavailable (e.g. Windows)', () => {
+    expect(resolveCacheUser(undefined, { USER: 'alice' })).toBe('alice');
+  });
+
+  it('falls back to USERNAME when getuid and USER are both unavailable', () => {
+    expect(resolveCacheUser(undefined, { USERNAME: 'bob' })).toBe('bob');
+  });
+
+  it("falls back to 'default' when getuid, USER, and USERNAME are all unavailable", () => {
+    expect(resolveCacheUser(undefined, {})).toBe('default');
   });
 });
 
