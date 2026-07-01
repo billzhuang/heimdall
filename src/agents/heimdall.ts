@@ -28,7 +28,7 @@ import { datadogPlugin } from '../tools/datadog.ts';
 import { newRelicPlugin } from '../tools/newrelic.ts';
 import { cdkPlugin } from '../tools/cdk.ts';
 import { buildToolRegistry, type ToolPlugin } from '../lib/plugin.ts';
-import { readFileSync } from 'node:fs';
+import { readJsonlFileSync } from '../lib/jsonl.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
 import { loadConfig } from '../lib/config.ts';
@@ -50,25 +50,9 @@ const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);
 
 /** Load task history synchronously for RAG context injection at agent startup. */
 function loadTaskHistorySync(logPath: string): TaskHistoryEntry[] {
-  try {
-    const raw = readFileSync(logPath, 'utf8');
-    const lines = raw.split('\n').filter((l) => l.trim());
-    // Cap at the last 100 entries to bound startup latency and memory for large histories.
-    // MMR diversity selection works well within this window for typical SRE corpora.
-    return lines.slice(-100).flatMap((l) => {
-      try {
-        const parsed: unknown = JSON.parse(l);
-        if (parsed !== null && typeof parsed === 'object') {
-          return [parsed as TaskHistoryEntry];
-        }
-        return [];
-      } catch {
-        return [];
-      }
-    });
-  } catch {
-    return [];
-  }
+  // Cap at the last 100 entries to bound startup latency and memory for large histories.
+  // MMR diversity selection works well within this window for typical SRE corpora.
+  return readJsonlFileSync<TaskHistoryEntry>(logPath, { tail: 100 });
 }
 
 const TASK_HISTORY_NAME = 'task-history.jsonl';
@@ -87,23 +71,9 @@ const ragContext = (() => {
 
 /** Load baseline entries synchronously (same pattern as task history). */
 function loadBaselinesSync(filePath: string): BaselineEntry[] {
-  try {
-    const raw = readFileSync(filePath, 'utf8');
-    return raw.split('\n').filter((l) => l.trim()).flatMap((l) => {
-      try {
-        const parsed: unknown = JSON.parse(l);
-        if (parsed !== null && typeof parsed === 'object') return [parsed as BaselineEntry];
-        return [];
-      } catch {
-        return [];
-      }
-    });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-      process.stderr.write(`[heimdall] Warning: could not read baseline file: ${getMessage(err)}\n`);
-    }
-    return [];
-  }
+  return readJsonlFileSync<BaselineEntry>(filePath, {
+    onError: (err) => process.stderr.write(`[heimdall] Warning: could not read baseline file: ${getMessage(err)}\n`),
+  });
 }
 
 const baselineContext = (() => {

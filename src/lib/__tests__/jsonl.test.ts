@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { appendJsonlLine, generateEntryId, readJsonlFile, writeJsonlFile } from '../jsonl.ts';
+import { appendJsonlLine, generateEntryId, readJsonlFile, readJsonlFileSync, writeJsonlFile } from '../jsonl.ts';
 import * as fs from 'node:fs/promises';
+import * as fsSync from 'node:fs';
 
 vi.mock('node:fs/promises');
+vi.mock('node:fs');
 
 const mockReadFile = vi.mocked(fs.readFile);
 const mockAppendFile = vi.mocked(fs.appendFile);
 const mockWriteFile = vi.mocked(fs.writeFile);
 const mockMkdir = vi.mocked(fs.mkdir);
+const mockReadFileSync = vi.mocked(fsSync.readFileSync);
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -58,6 +61,101 @@ describe('readJsonlFile', () => {
     mockReadFile.mockResolvedValueOnce('\n\n\n' as never);
     const result = await readJsonlFile('/data.jsonl');
     expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readJsonlFileSync
+// ---------------------------------------------------------------------------
+
+describe('readJsonlFileSync', () => {
+  it('returns [] when the file does not exist', () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    mockReadFileSync.mockImplementationOnce(() => {
+      throw err;
+    });
+    expect(readJsonlFileSync('/no/such/file.jsonl')).toEqual([]);
+  });
+
+  it('returns [] and swallows non-ENOENT errors when no onError is provided', () => {
+    const err = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+    mockReadFileSync.mockImplementationOnce(() => {
+      throw err;
+    });
+    expect(readJsonlFileSync('/protected.jsonl')).toEqual([]);
+  });
+
+  it('reports non-ENOENT errors via onError and returns []', () => {
+    const err = Object.assign(new Error('EACCES'), { code: 'EACCES' });
+    mockReadFileSync.mockImplementationOnce(() => {
+      throw err;
+    });
+    const onError = vi.fn();
+    expect(readJsonlFileSync('/protected.jsonl', { onError })).toEqual([]);
+    expect(onError).toHaveBeenCalledWith(err);
+  });
+
+  it('does not call onError for ENOENT', () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    mockReadFileSync.mockImplementationOnce(() => {
+      throw err;
+    });
+    const onError = vi.fn();
+    expect(readJsonlFileSync('/no/such/file.jsonl', { onError })).toEqual([]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it('parses valid JSONL and returns typed entries', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\n{"id":2}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl');
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('skips empty lines', () => {
+    mockReadFileSync.mockReturnValueOnce('\n{"id":1}\n\n{"id":2}\n\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl');
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('drops malformed lines silently', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\nnot-json\n{"id":2}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl');
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('drops non-object parsed values (e.g. bare numbers/strings)', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\n42\n"hi"\nnull\n{"id":2}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl');
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+  });
+
+  it('returns [] for a file with only empty lines', () => {
+    mockReadFileSync.mockReturnValueOnce('\n\n\n' as never);
+    expect(readJsonlFileSync('/data.jsonl')).toEqual([]);
+  });
+
+  it('keeps only the last N non-empty lines when tail is set', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\n{"id":2}\n{"id":3}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl', { tail: 2 });
+    expect(result).toEqual([{ id: 2 }, { id: 3 }]);
+  });
+
+  it('applies tail before parsing, so malformed lines within the window still drop', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\nnot-json\n{"id":3}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl', { tail: 2 });
+    expect(result).toEqual([{ id: 3 }]);
+  });
+
+  it('returns [] when tail is explicitly 0', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\n{"id":2}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl', { tail: 0 });
+    expect(result).toEqual([]);
+  });
+
+  it('is a no-op cap when tail exceeds the number of lines', () => {
+    mockReadFileSync.mockReturnValueOnce('{"id":1}\n{"id":2}\n' as never);
+    const result = readJsonlFileSync<{ id: number }>('/data.jsonl', { tail: 100 });
+    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
   });
 });
 
