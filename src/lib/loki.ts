@@ -8,7 +8,7 @@
 import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimePassthrough } from './time-resolution.ts';
-import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
+import { runJsonQuery } from './http.ts';
 import { clampLimit } from './tool-config.ts';
 
 export interface LokiConfig {
@@ -89,22 +89,11 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
 
   const effectiveLimit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
-  try {
-    const baseUrl = new URL(config.url);
-    baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + '/loki/api/v1/query_range';
-
-    baseUrl.searchParams.set('query', params.query);
-    baseUrl.searchParams.set('start', startResolved);
-    baseUrl.searchParams.set('end', endResolved);
-    baseUrl.searchParams.set('limit', String(effectiveLimit));
-    baseUrl.searchParams.set('direction', params.direction ?? DEFAULT_DIRECTION);
-
-    return await fetchWithTimeout(
-      baseUrl.toString(),
-      config.timeoutMs,
-      makeResponseHandler('Loki', config.regexRedactionRules ?? [], truncate),
-    );
-  } catch (err) {
-    return formatQueryError(err, 'Loki', config.timeoutMs, config.regexRedactionRules ?? []);
-  }
+  return runJsonQuery(config, '/loki/api/v1/query_range', 'Loki', truncate, (searchParams) => {
+    searchParams.set('query', params.query);
+    searchParams.set('start', startResolved);
+    searchParams.set('end', endResolved);
+    searchParams.set('limit', String(effectiveLimit));
+    searchParams.set('direction', params.direction ?? DEFAULT_DIRECTION);
+  });
 }

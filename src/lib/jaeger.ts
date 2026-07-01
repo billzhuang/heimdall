@@ -11,7 +11,7 @@
 import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeUs } from './time-resolution.ts';
-import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
+import { runJsonQuery } from './http.ts';
 import { clampLimit } from './tool-config.ts';
 
 export interface JaegerConfig {
@@ -57,32 +57,21 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
 
   const nowMs = Date.now();
 
-  try {
-    const baseUrl = new URL(config.url);
-    baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + '/api/traces';
+  return runJsonQuery(config, '/api/traces', 'Jaeger', truncate, (searchParams) => {
+    searchParams.set('service', params.service.trim());
+    searchParams.set('limit', String(effectiveLimit));
 
-    baseUrl.searchParams.set('service', params.service.trim());
-    baseUrl.searchParams.set('limit', String(effectiveLimit));
-
-    if (params.operation) baseUrl.searchParams.set('operation', params.operation);
-    if (params.minDuration) baseUrl.searchParams.set('minDuration', params.minDuration);
-    if (params.tags) baseUrl.searchParams.set('tags', params.tags);
+    if (params.operation) searchParams.set('operation', params.operation);
+    if (params.minDuration) searchParams.set('minDuration', params.minDuration);
+    if (params.tags) searchParams.set('tags', params.tags);
 
     if (params.start) {
       const startUs = resolveJaegerTimeUs(params.start, nowMs);
-      if (startUs !== null) baseUrl.searchParams.set('start', String(startUs));
+      if (startUs !== null) searchParams.set('start', String(startUs));
     }
     if (params.end) {
       const endUs = resolveJaegerTimeUs(params.end, nowMs);
-      if (endUs !== null) baseUrl.searchParams.set('end', String(endUs));
+      if (endUs !== null) searchParams.set('end', String(endUs));
     }
-
-    return await fetchWithTimeout(
-      baseUrl.toString(),
-      config.timeoutMs,
-      makeResponseHandler('Jaeger', config.regexRedactionRules ?? [], truncate),
-    );
-  } catch (err) {
-    return formatQueryError(err, 'Jaeger', config.timeoutMs, config.regexRedactionRules ?? []);
-  }
+  });
 }

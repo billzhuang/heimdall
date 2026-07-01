@@ -8,7 +8,7 @@
  */
 import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { fetchWithTimeout, makeResponseHandler, formatQueryError } from './http.ts';
+import { runJsonQuery } from './http.ts';
 
 export interface KubecostConfig {
   url: string;
@@ -79,24 +79,13 @@ export async function runKubecostQuery(
     }
   }
 
-  try {
-    const baseUrl = new URL(config.url);
-    baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + ENDPOINT_PATH[endpoint];
-
-    baseUrl.searchParams.set('window', params.window);
-    baseUrl.searchParams.set('aggregate', params.aggregate);
-    baseUrl.searchParams.set('accumulate', String(params.accumulate ?? true));
+  return runJsonQuery(config, ENDPOINT_PATH[endpoint], 'Kubecost', truncate, (searchParams) => {
+    searchParams.set('window', params.window);
+    searchParams.set('aggregate', params.aggregate);
+    searchParams.set('accumulate', String(params.accumulate ?? true));
 
     if (effectiveNamespace) {
-      baseUrl.searchParams.set('filterNamespaces', effectiveNamespace);
+      searchParams.set('filterNamespaces', effectiveNamespace);
     }
-
-    return await fetchWithTimeout(
-      baseUrl.toString(),
-      config.timeoutMs,
-      makeResponseHandler('Kubecost', config.regexRedactionRules ?? [], truncate),
-    );
-  } catch (err) {
-    return formatQueryError(err, 'Kubecost', config.timeoutMs, config.regexRedactionRules ?? []);
-  }
+  });
 }

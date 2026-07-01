@@ -86,3 +86,40 @@ export function formatQueryError(
   const message = getMessage(err);
   return `${service} query failed: ${applyRedaction(message, redactionRules)}`;
 }
+
+/** Minimal shape shared by the query-tool configs that call `runJsonQuery`. */
+export interface JsonQueryConfig {
+  url: string;
+  timeoutMs: number;
+  regexRedactionRules?: CompiledRedactionRule[];
+}
+
+/**
+ * Build a `<config.url><path>` request URL, let `setParams` fill in its query
+ * string, then run it through `fetchWithTimeout` + `makeResponseHandler`,
+ * catching any error into `formatQueryError`.
+ *
+ * Centralizes the build-URL / fetch-with-timeout / catch-and-format sequence
+ * shared by every read-only query tool (Prometheus, Loki, Kubecost, Jaeger, ...).
+ */
+export async function runJsonQuery(
+  config: JsonQueryConfig,
+  path: string,
+  serviceName: string,
+  truncate: (s: string) => string,
+  setParams: (searchParams: URLSearchParams) => void,
+): Promise<string> {
+  try {
+    const baseUrl = new URL(config.url);
+    baseUrl.pathname = baseUrl.pathname.replace(/\/$/, '') + path;
+    setParams(baseUrl.searchParams);
+
+    return await fetchWithTimeout(
+      baseUrl.toString(),
+      config.timeoutMs,
+      makeResponseHandler(serviceName, config.regexRedactionRules ?? [], truncate),
+    );
+  } catch (err) {
+    return formatQueryError(err, serviceName, config.timeoutMs, config.regexRedactionRules ?? []);
+  }
+}
