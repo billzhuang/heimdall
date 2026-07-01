@@ -54,7 +54,9 @@ export function parseSessionIdArg(args: string[]): string | undefined {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--session' || a === '-s') {
-      sessionId = args[++i];
+      if (i + 1 < args.length) {
+        sessionId = args[++i];
+      }
     } else if (a.startsWith('--session=')) {
       sessionId = a.slice('--session='.length);
     }
