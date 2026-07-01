@@ -65,34 +65,57 @@ const MAX_LIMIT = 1_000;
 const DEFAULT_LOOKBACK_MS = 3_600_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific query');
 
-type ISORange = { from: string; to: string } | { error: string };
-type SecondsRange = { fromSec: number; toSec: number } | { error: string };
+type ResolvedRange<T> = { from: T; to: T } | { error: string };
+
+/**
+ * Shared shape behind resolveISORange/resolveSecondsRange: resolve `from`/`to`
+ * with `resolveFn`, falling back to `defaultFrom`/`defaultTo` (the
+ * DEFAULT_LOOKBACK_MS window) when unset, and surface a parse error otherwise.
+ */
+function resolveRange<T>(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs: number,
+  resolveFn: (value: string, nowMs: number) => T | null,
+  defaultFrom: T,
+  defaultTo: T,
+): ResolvedRange<T> {
+  const resolvedFrom = from ? resolveFn(from, nowMs) : defaultFrom;
+  const resolvedTo = to ? resolveFn(to, nowMs) : defaultTo;
+  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
+  if (resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
+  return { from: resolvedFrom, to: resolvedTo };
+}
 
 function resolveISORange(
   from: string | null | undefined,
   to: string | null | undefined,
   nowMs: number,
-): ISORange {
-  const resolvedFrom = from ? resolveTimeISO(from, nowMs) : new Date(nowMs - DEFAULT_LOOKBACK_MS).toISOString();
-  const resolvedTo = to ? resolveTimeISO(to, nowMs) : new Date(nowMs).toISOString();
-  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
-  if (resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
-  return { from: resolvedFrom, to: resolvedTo };
+): ResolvedRange<string> {
+  return resolveRange(
+    from,
+    to,
+    nowMs,
+    resolveTimeISO,
+    new Date(nowMs - DEFAULT_LOOKBACK_MS).toISOString(),
+    new Date(nowMs).toISOString(),
+  );
 }
 
 function resolveSecondsRange(
   from: string | null | undefined,
   to: string | null | undefined,
   nowMs: number,
-): SecondsRange {
-  const resolvedFrom = from ? resolveTimeSeconds(from, nowMs) : Math.floor((nowMs - DEFAULT_LOOKBACK_MS) / 1_000);
-  const resolvedTo = to ? resolveTimeSeconds(to, nowMs) : Math.floor(nowMs / 1_000);
-  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
-  if (resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
-  return { fromSec: resolvedFrom, toSec: resolvedTo };
+): ResolvedRange<number> {
+  return resolveRange(
+    from,
+    to,
+    nowMs,
+    resolveTimeSeconds,
+    Math.floor((nowMs - DEFAULT_LOOKBACK_MS) / 1_000),
+    Math.floor(nowMs / 1_000),
+  );
 }
-
-
 
 async function datadogErrorMessage(response: Response, queryType: string): Promise<string> {
   const body = await response.text().catch(() => '');
@@ -145,7 +168,7 @@ async function queryMetrics(
   }
   const range = resolveSecondsRange(params.from, params.to, Date.now());
   if ('error' in range) return range.error;
-  const { fromSec, toSec } = range;
+  const { from: fromSec, to: toSec } = range;
 
   const url = new URL(`${baseUrl(config)}/api/v1/query`);
   url.searchParams.set('query', params.query.trim());
