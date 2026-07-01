@@ -163,6 +163,44 @@ export interface TriageFinding {
 }
 
 /**
+ * Scan forward up to 6 lines starting at `startIdx` for a Resource and a
+ * Message field, stopping early at the next Severity marker or once both
+ * fields are found. Shared by parseTriageFindings for each Severity line it
+ * encounters.
+ */
+export function scanFindingFields(
+  lines: string[],
+  startIdx: number,
+): { kind: string; name: string; namespace: string; summary: string } {
+  let kind = '';
+  let name = '';
+  let namespace = 'cluster';
+  let summary = '';
+
+  for (let j = startIdx; j < Math.min(startIdx + 6, lines.length); j++) {
+    if (/\*\*Severity\*\*:/i.test(lines[j])) break;
+    if (!kind) {
+      const resMatch = lines[j].match(/\*\*Resource\*\*:\s*([A-Za-z]+)\/([^\s,]+)(?:\s+in\s+(\S+))?/i);
+      if (resMatch) {
+        kind = resMatch[1];
+        name = resMatch[2];
+        if (resMatch[3]) namespace = resMatch[3];
+        continue;
+      }
+    }
+    if (!summary) {
+      const msgMatch = lines[j].match(/\*\*Message\*\*:\s*(.+)/i);
+      if (msgMatch) {
+        summary = msgMatch[1].trim();
+      }
+    }
+    if (kind && summary) break;
+  }
+
+  return { kind, name, namespace, summary };
+}
+
+/**
  * Parse critical and warning findings from agent triage output text.
  *
  * The triage prompt instructs the agent to format each finding as:
@@ -183,31 +221,7 @@ export function parseTriageFindings(text: string): TriageFinding[] {
     if (!sevMatch) continue;
 
     const severity = sevMatch[1].toLowerCase() as 'critical' | 'warning';
-    let kind = '';
-    let name = '';
-    let namespace = 'cluster';
-    let summary = '';
-
-    // Scan the next 6 lines for Resource and Message fields.
-    for (let j = i + 1; j < Math.min(i + 7, lines.length); j++) {
-      if (/\*\*Severity\*\*:/i.test(lines[j])) break;
-      if (!kind) {
-        const resMatch = lines[j].match(/\*\*Resource\*\*:\s*([A-Za-z]+)\/([^\s,]+)(?:\s+in\s+(\S+))?/i);
-        if (resMatch) {
-          kind = resMatch[1];
-          name = resMatch[2];
-          if (resMatch[3]) namespace = resMatch[3];
-          continue;
-        }
-      }
-      if (!summary) {
-        const msgMatch = lines[j].match(/\*\*Message\*\*:\s*(.+)/i);
-        if (msgMatch) {
-          summary = msgMatch[1].trim();
-        }
-      }
-      if (kind && summary) break;
-    }
+    const { kind, name, namespace, summary } = scanFindingFields(lines, i + 1);
 
     if (kind && name) {
       findings.push({ severity, kind, name, namespace, summary: summary || `${severity} finding on ${kind}/${name}` });

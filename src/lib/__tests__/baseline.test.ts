@@ -16,6 +16,7 @@ import {
   formatBaselineDate,
   formatBaselineEntry,
   parseTriageFindings,
+  scanFindingFields,
   inferDiagnosisSeverity,
   truncateSummary,
   resolveBaselineFilePath,
@@ -395,6 +396,40 @@ describe('buildBaselineContext', () => {
     } as BaselineEntry;
     const ctx = buildBaselineContext([entry]);
     expect(ctx).toContain('unknown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// scanFindingFields
+// ---------------------------------------------------------------------------
+describe('scanFindingFields', () => {
+  it('finds Resource and Message fields within the scan window', () => {
+    const lines = ['- **Resource**: Pod/api in prod', '- **Message**: crashing'];
+    expect(scanFindingFields(lines, 0)).toEqual({
+      kind: 'Pod',
+      name: 'api',
+      namespace: 'prod',
+      summary: 'crashing',
+    });
+  });
+
+  it('defaults namespace to "cluster" when Resource has no explicit namespace', () => {
+    const lines = ['- **Resource**: Node/worker-1', '- **Message**: MemoryPressure'];
+    expect(scanFindingFields(lines, 0)).toMatchObject({ kind: 'Node', name: 'worker-1', namespace: 'cluster' });
+  });
+
+  it('stops at the next Severity marker without finding fields', () => {
+    const lines = ['- **Severity**: warning', '- **Resource**: Pod/api in prod'];
+    expect(scanFindingFields(lines, 0)).toEqual({ kind: '', name: '', namespace: 'cluster', summary: '' });
+  });
+
+  it('only scans up to 6 lines from startIdx', () => {
+    const lines = ['l0', 'l1', 'l2', 'l3', 'l4', 'l5', '- **Resource**: Pod/late in prod'];
+    expect(scanFindingFields(lines, 0).kind).toBe('');
+  });
+
+  it('returns empty fields for an empty scan window', () => {
+    expect(scanFindingFields([], 0)).toEqual({ kind: '', name: '', namespace: 'cluster', summary: '' });
   });
 });
 
