@@ -164,7 +164,7 @@ function redactParsed<T>(
   output: string,
   parse: (output: string) => T,
   hasSecret: (parsed: T) => boolean,
-  serialize: (redacted: T) => string,
+  serialize: (parsed: T) => string,
 ): string {
   try {
     const parsed = parse(output);
