@@ -356,4 +356,13 @@ describe('buildAgentCoreResponse', () => {
     expect(resp.sessionAttributes?.['heimdall_severity']).toBe('info');
     expect(resp.sessionAttributes?.['heimdall_validity_score']).toBe('');
   });
+
+  it('handles a null or undefined finding gracefully instead of throwing', () => {
+    for (const finding of [null, undefined]) {
+      const resp = buildAgentCoreResponse(finding, 'raw fallback text', { inputText: 'why?' });
+      expect(resp.outputText).toBe('raw fallback text');
+      expect(resp.sessionAttributes?.['heimdall_severity']).toBe('info');
+      expect(resp.sessionAttributes?.['heimdall_validity_score']).toBe('');
+    }
+  });
 });

@@ -83,20 +83,28 @@ export function parseAgentCoreRequestBody(parsed: unknown): ParsedAgentCoreReque
   };
 }
 
-/** Build the AgentCore invocation response from a completed diagnosis. Pure — no I/O. */
+/**
+ * Build the AgentCore invocation response from a completed diagnosis. Pure — no I/O.
+ *
+ * `finding` comes from `JSON.parse`-ing untrusted agent subprocess output, so it may
+ * be `null` (e.g. the agent emits the literal `"null"`) even though the call site
+ * casts it to `OneShotFinding` — guard against that instead of trusting the cast.
+ */
 export function buildAgentCoreResponse(
-  finding: OneShotFinding,
+  finding: OneShotFinding | null | undefined,
   trimmed: string,
   body: AgentCoreRequest,
 ): AgentCoreResponse {
+  const safeFinding: Partial<OneShotFinding> =
+    finding != null && typeof finding === 'object' ? finding : {};
   return {
-    outputText: finding.answer ?? trimmed,
+    outputText: safeFinding.answer ?? trimmed,
     sessionId: body.sessionId,
     sessionAttributes: {
       ...(body.sessionAttributes ?? {}),
       heimdall_finding: JSON.stringify(finding),
-      heimdall_severity: finding.severity ?? 'info',
-      heimdall_validity_score: String(finding.validityScore ?? ''),
+      heimdall_severity: safeFinding.severity ?? 'info',
+      heimdall_validity_score: String(safeFinding.validityScore ?? ''),
     },
   };
 }
