@@ -296,10 +296,10 @@ export async function postWebhook(webhookUrl: string, payload: unknown): Promise
       body: JSON.stringify(payload),
       signal,
     });
+    // Consume body to free the connection, even on a non-2xx response.
+    await res.text();
     if (!res.ok) {
       throw new Error(`webhook responded with HTTP ${res.status}`);
     }
-    // Consume body to free the connection.
-    await res.text();
   });
 }

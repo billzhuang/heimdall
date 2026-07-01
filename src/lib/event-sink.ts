@@ -6,8 +6,7 @@
  * so the watch loop continues uninterrupted.
  */
 import { appendJsonlLine } from './jsonl.ts';
-import { withTimeout } from './http.ts';
-import type { WatchFinding } from './watch.ts';
+import { postWebhook, type WatchFinding } from './watch.ts';
 
 export interface EventSinkConfig {
   /** Append each event digest as a JSONL line to this file path. */
@@ -66,21 +65,8 @@ export class EventSink {
     }
 
     if (this.cfg.webhookUrl) {
-      const url = this.cfg.webhookUrl;
-      const body = JSON.stringify(record);
       try {
-        await withTimeout(10_000, async (signal) => {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body,
-            signal,
-          });
-          if (!res.ok) {
-            process.stderr.write(`[heimdall-watch] EventSink webhook HTTP ${res.status}\n`);
-          }
-          await res.text();
-        });
+        await postWebhook(this.cfg.webhookUrl, record);
       } catch (err) {
         process.stderr.write(`[heimdall-watch] EventSink webhook error: ${String(err)}\n`);
       }
