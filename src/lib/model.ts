@@ -3,7 +3,7 @@
  * credentials from the environment (e.g. `ANTHROPIC_API_KEY`). Override the
  * default with the `HEIMDALL_MODEL` environment variable.
  */
-export const DEFAULT_MODEL = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-sonnet-4-6';
+export const DEFAULT_MODEL = process.env.HEIMDALL_MODEL?.trim() || 'anthropic/claude-sonnet-4-6';
 
 /**
  * Resolve the model to use, applying precedence: CLI flag > HEIMDALL_MODEL env var > DEFAULT_MODEL.

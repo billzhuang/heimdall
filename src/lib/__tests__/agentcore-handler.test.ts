@@ -14,6 +14,7 @@ vi.mock('../config.ts', () => ({
 }));
 
 import { createAgentCoreApp } from '../../agentcore-handler.ts';
+import { resolveModel } from '../model.ts';
 
 const neverCalled = async (_prompt: string, _model: string): Promise<string> => {
   throw new Error('agent should not be called');
@@ -238,6 +239,6 @@ describe('createAgentCoreApp — POST /invocations', () => {
         body: JSON.stringify({ inputText: 'Check cluster health' }),
       }),
     );
-    expect(agentFn).toHaveBeenCalledWith('Check cluster health', expect.stringContaining('/'));
+    expect(agentFn).toHaveBeenCalledWith('Check cluster health', resolveModel(undefined));
   });
 });
