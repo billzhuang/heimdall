@@ -34,7 +34,7 @@ import {
 } from './lib/drift.ts';
 import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time

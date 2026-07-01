@@ -31,7 +31,7 @@ import { loadConfig } from './lib/config.ts';
 import { nextFireTime, formatDelay, validateCronExpression } from './lib/schedule.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes

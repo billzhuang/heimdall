@@ -20,7 +20,7 @@ import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
 import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;

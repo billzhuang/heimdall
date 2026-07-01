@@ -16,10 +16,10 @@ import { fileURLToPath } from 'node:url';
 import {
   loadScenarios,
   runScenario,
-  resolveBinPath,
   type EvalScenario,
   type EvalResult,
 } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 

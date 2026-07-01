@@ -21,10 +21,10 @@ import { fileURLToPath } from 'node:url';
 import {
   loadScenarios,
   runAllScenarios,
-  resolveBinPath,
   type EvalResult,
   type RunCallbacks,
 } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 import {
   buildLearningEntry,
   appendLearningEntry,

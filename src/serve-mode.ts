@@ -35,7 +35,7 @@ import type { OneShotFinding } from './lib/format-output.ts';
 import { resolveModel } from './lib/model.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { getMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

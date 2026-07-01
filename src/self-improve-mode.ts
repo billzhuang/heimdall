@@ -19,9 +19,9 @@ import { fileURLToPath } from 'node:url';
 import {
   loadScenarios,
   runScenario,
-  resolveBinPath,
   type EvalResult,
 } from './lib/eval-runner.ts';
+import { resolveBinPath } from './lib/bin-path.ts';
 import {
   buildLearningEntry,
   appendLearningEntry,

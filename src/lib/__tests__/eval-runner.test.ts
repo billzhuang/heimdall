@@ -1,14 +1,14 @@
 /**
  * Tests for eval-runner.ts.
  *
- * Pure fs functions (loadScenario, loadScenarios, resolveBinPath) use real temp
- * dirs. runScenario is tested via a vi.mock on node:child_process so no real
+ * Pure fs functions (loadScenario, loadScenarios) use real temp dirs.
+ * runScenario is tested via a vi.mock on node:child_process so no real
  * binary is spawned.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve, isAbsolute } from 'node:path';
+import { join } from 'node:path';
 import { EventEmitter } from 'node:events';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
@@ -18,7 +18,6 @@ import {
   checkFinding,
   loadScenario,
   loadScenarios,
-  resolveBinPath,
   runAllScenarios,
   runScenario,
   type EvalResult,
@@ -342,23 +341,6 @@ describe('loadScenarios', () => {
     await writeScenario('crash.yaml', 'crash-test');
     const results = await loadScenarios(tmpDir);
     expect(results[0].path).toContain('crash.yaml');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveBinPath
-// ---------------------------------------------------------------------------
-
-describe('resolveBinPath', () => {
-  it('resolves to <project-root>/bin/heimdall relative to a src/ subdirectory', () => {
-    const srcDir = '/some/project/src/lib';
-    const binPath = resolveBinPath(srcDir);
-    expect(binPath).toBe(resolve('/some/project/src/lib', '..', 'bin', 'heimdall'));
-  });
-
-  it('produces an absolute path', () => {
-    const binPath = resolveBinPath('/absolute/src/path');
-    expect(isAbsolute(binPath)).toBe(true);
   });
 });
 
