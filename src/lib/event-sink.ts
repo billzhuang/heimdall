@@ -57,25 +57,26 @@ export class EventSink {
     const record = findingToRecord(finding);
 
     if (this.cfg.filePath) {
-      try {
-        await appendJsonlLine(record, this.cfg.filePath);
-      } catch (err) {
-        process.stderr.write(`[heimdall-watch] EventSink file error: ${String(err)}\n`);
-      }
+      await this.trySink('file', () => appendJsonlLine(record, this.cfg.filePath!));
     }
 
     if (this.cfg.webhookUrl) {
-      try {
-        await postWebhook(this.cfg.webhookUrl, record);
-      } catch (err) {
-        process.stderr.write(`[heimdall-watch] EventSink webhook error: ${String(err)}\n`);
-      }
+      await this.trySink('webhook', () => postWebhook(this.cfg.webhookUrl!, record));
     }
 
     if (this.cfg.s3Bucket) {
       process.stderr.write(
         `[heimdall-watch] EventSink: s3Bucket sink is not yet implemented (bucket: ${this.cfg.s3Bucket})\n`,
       );
+    }
+  }
+
+  /** Run a sink action, logging (never throwing) `label` errors to stderr. */
+  private async trySink(label: string, action: () => Promise<void>): Promise<void> {
+    try {
+      await action();
+    } catch (err) {
+      process.stderr.write(`[heimdall-watch] EventSink ${label} error: ${String(err)}\n`);
     }
   }
 }
