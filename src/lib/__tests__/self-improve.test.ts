@@ -10,6 +10,7 @@ import {
   readLearningLog,
   appendLearningEntry,
   resolveLogPath,
+  resolveRagOptions,
 } from '../self-improve.ts';
 import type { TaskHistoryEntry } from '../task-history.ts';
 
@@ -239,6 +240,36 @@ describe('resolveLogPath', () => {
     const result = resolveLogPath(undefined, undefined, '/default/path');
     expect(result).toBe(resolve('relative/env-log.jsonl'));
     expect(result.startsWith('/')).toBe(true);
+  });
+});
+
+describe('resolveRagOptions', () => {
+  it('defaults to disabled with topK 10 when learning config is absent', () => {
+    expect(resolveRagOptions(undefined)).toEqual({ useRag: false, ragTopK: 10 });
+    expect(resolveRagOptions(null)).toEqual({ useRag: false, ragTopK: 10 });
+  });
+
+  it('defaults to disabled with topK 10 when rag section is absent', () => {
+    expect(resolveRagOptions({})).toEqual({ useRag: false, ragTopK: 10 });
+  });
+
+  it('is disabled when rag.enabled is not exactly true', () => {
+    expect(resolveRagOptions({ rag: { enabled: false } })).toEqual({ useRag: false, ragTopK: 10 });
+    expect(resolveRagOptions({ rag: {} })).toEqual({ useRag: false, ragTopK: 10 });
+  });
+
+  it('enables RAG and passes through topK when both are set', () => {
+    expect(resolveRagOptions({ rag: { enabled: true, topK: 25 } })).toEqual({
+      useRag: true,
+      ragTopK: 25,
+    });
+  });
+
+  it('falls back to topK 10 when rag.topK is nullish', () => {
+    expect(resolveRagOptions({ rag: { enabled: true, topK: null } })).toEqual({
+      useRag: true,
+      ragTopK: 10,
+    });
   });
 });
 

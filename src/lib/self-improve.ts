@@ -164,6 +164,27 @@ export function resolveLogPath(
   return defaultPath;
 }
 
+/** Learning config shape self-improve mode needs to resolve RAG usage. */
+export interface RagConfigInput {
+  rag?: { enabled?: boolean | null; topK?: number | null } | null;
+}
+
+/**
+ * Resolve whether to use RAG-based retrieval and the topK to request, from
+ * `heimdall.config.yaml`'s `learning.rag` section. Centralizes the flag/topK
+ * derivation so self-improve mode computes it once regardless of which code
+ * path (--from-log vs. a fresh eval run) needs it.
+ */
+export function resolveRagOptions(learningConfig: RagConfigInput | null | undefined): {
+  useRag: boolean;
+  ragTopK: number;
+} {
+  return {
+    useRag: learningConfig?.rag?.enabled === true,
+    ragTopK: learningConfig?.rag?.topK ?? 10,
+  };
+}
+
 /**
  * Build a meta-prompt that can be fed to any LLM to propose specific changes
  * to src/lib/instructions.ts based on recurring eval failures and real-task
