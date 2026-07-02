@@ -18,3 +18,17 @@ export function requireNonEmptyValue(value: string, msg: string): void {
     process.exit(1);
   }
 }
+
+/**
+ * Parse a comma-separated CLI list value: trims whitespace, drops empty
+ * tokens, and dedupes. Writes an error to stderr and exit(1) with `emptyMsg`
+ * when nothing survives the filtering.
+ */
+export function parseCommaSeparatedList(raw: string, emptyMsg: string): string[] {
+  const parsed = raw.split(',').map((v) => v.trim()).filter(Boolean);
+  if (parsed.length === 0) {
+    process.stderr.write(`Error: ${emptyMsg}\n`);
+    process.exit(1);
+  }
+  return Array.from(new Set(parsed));
+}

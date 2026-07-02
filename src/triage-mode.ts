@@ -36,7 +36,7 @@ import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
-import { requireNextArg, requireNonEmptyValue } from './lib/cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -230,21 +230,11 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
       opts.allNamespaces = true;
     } else if (arg === '--contexts') {
       requireNextArg(args, i, '--contexts requires a comma-separated list of context names');
-      const parsed = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
-      if (parsed.length === 0) {
-        process.stderr.write(`Error: --contexts value produced an empty list after parsing\n`);
-        process.exit(1);
-      }
-      opts.contexts = Array.from(new Set(parsed));
+      opts.contexts = parseCommaSeparatedList(args[++i], '--contexts value produced an empty list after parsing');
     } else if (arg.startsWith('--contexts=')) {
       const raw = arg.slice('--contexts='.length);
       requireNonEmptyValue(raw, '--contexts= requires a non-empty comma-separated list');
-      const parsed = raw.split(',').map((c) => c.trim()).filter(Boolean);
-      if (parsed.length === 0) {
-        process.stderr.write(`Error: --contexts= value produced an empty list after parsing\n`);
-        process.exit(1);
-      }
-      opts.contexts = Array.from(new Set(parsed));
+      opts.contexts = parseCommaSeparatedList(raw, '--contexts= value produced an empty list after parsing');
     } else if (arg === '--model') {
       requireNextArg(args, i, '--model requires a value');
       modelFlag = args[++i];
