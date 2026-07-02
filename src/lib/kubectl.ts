@@ -26,7 +26,7 @@ import { recordCacheHit, recordCacheMiss } from './telemetry.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { writeAudit, type AuditConfig } from './audit.ts';
+import { writeAudit, type AuditConfig, type AuditEntry } from './audit.ts';
 import { getExecErrorDetail } from './error-utils.ts';
 export type { AuditConfig } from './audit.ts';
 
@@ -201,6 +201,16 @@ function applyOutputRedaction(
   return applyRedaction(redactSecrets ? redactSecretValues(text, argv) : text, rules);
 }
 
+/** Write a kubectl audit entry, filling in the fields shared by every call site. */
+function auditKubectlCall(
+  cmd: string,
+  startTs: string,
+  audit: AuditConfig | null | undefined,
+  fields: Omit<AuditEntry, 'ts' | 'level' | 'cmd'>,
+): Promise<void> {
+  return writeAudit({ ts: startTs, level: 'audit', cmd, ...fields }, audit);
+}
+
 /**
  * Validate and run a read-only kubectl command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
@@ -226,7 +236,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   const cmd = `kubectl ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
   const validation = validateCommand(cmd);
   if (!validation.allowed) {
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
+    await auditKubectlCall(cmd, startTs, audit, { allowed: false, outcome: 'blocked' });
     return `${BLOCKED_PREFIX}${validation.reason}`;
   }
 
@@ -236,7 +246,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   if (typeof options.lockedNamespace === 'string') {
     const lockdown = applyNamespaceLockdown(argv, options.lockedNamespace);
     if (lockdown.blocked) {
-      await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
+      await auditKubectlCall(cmd, startTs, audit, { allowed: false, outcome: 'blocked' });
       return `${BLOCKED_PREFIX}${lockdown.reason}`;
     }
     argv = lockdown.argv;
@@ -254,7 +264,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       }
       const hit = matchMock(mocks, argv);
       const result = hit ?? `(eval: no mock fixture for: ${argv.join(' ')})`;
-      await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: 0, outcome: 'ok' }, audit);
+      await auditKubectlCall(cmd, startTs, audit, { context: options.context, allowed: true, cached: false, durationMs: 0, outcome: 'ok' });
       return result;
     } catch (err) {
       return `(eval mock error: ${String(err)})`;
@@ -312,7 +322,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       // redaction was enabled (or while it was temporarily disabled) may
       // contain raw secret values.
       const safeOutput = applyOutputRedaction(cached, argv, redactSecrets, regexRedactionRules);
-      await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: true, outcome: 'ok' }, audit);
+      await auditKubectlCall(cmd, startTs, audit, { context: options.context, allowed: true, cached: true, outcome: 'ok' });
       recordCacheHit();
       return truncate(safeOutput);
     }
@@ -352,12 +362,12 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
       }
     }
 
-    await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
+    await auditKubectlCall(cmd, startTs, audit, { context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'ok' });
     return truncate(output);
   } catch (error) {
     const rawDetail = getExecErrorDetail(error);
     const detail = applyOutputRedaction(rawDetail, argv, redactSecrets, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd, context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
+    await auditKubectlCall(cmd, startTs, audit, { context: options.context, allowed: true, cached: false, durationMs: Date.now() - startMs, outcome: 'error' });
     return truncate(`kubectl exited with an error:\n${detail}`);
   }
 }
