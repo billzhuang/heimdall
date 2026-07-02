@@ -55,13 +55,14 @@ export class EventSink {
 
   async write(finding: WatchFinding): Promise<void> {
     const record = findingToRecord(finding);
+    const { filePath, webhookUrl } = this.cfg;
 
-    if (this.cfg.filePath) {
-      await this.trySink('file', () => appendJsonlLine(record, this.cfg.filePath!));
+    if (filePath) {
+      await this.trySink('file', () => appendJsonlLine(record, filePath));
     }
 
-    if (this.cfg.webhookUrl) {
-      await this.trySink('webhook', () => postWebhook(this.cfg.webhookUrl!, record));
+    if (webhookUrl) {
+      await this.trySink('webhook', () => postWebhook(webhookUrl, record));
     }
 
     if (this.cfg.s3Bucket) {
