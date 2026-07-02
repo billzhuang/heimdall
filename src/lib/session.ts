@@ -56,6 +56,10 @@ function sessionPath(dir: string, id: string): string {
   return join(dir, `${safe}.json`);
 }
 
+function writeSessionRecord(dir: string, record: SessionRecord): void {
+  writeFileSync(sessionPath(dir, record.id), JSON.stringify(record, null, 2), 'utf-8');
+}
+
 function parseSessionRecord(raw: string, context: string): SessionRecord {
   let parsed: unknown;
   try {
@@ -92,7 +96,7 @@ export function createSession(opts: {
     createdAt: new Date().toISOString(),
     lastPromptAt: null,
   };
-  writeFileSync(sessionPath(dir, record.id), JSON.stringify(record, null, 2), 'utf-8');
+  writeSessionRecord(dir, record);
   return record;
 }
 
@@ -109,10 +113,9 @@ export function loadSession(id: string): SessionRecord {
 }
 
 export function updateSession(record: SessionRecord): void {
-  const dir = sessionDir();
   // The session directory must already exist if the record was loaded from it.
   // Write directly; no need for ensureDir on every update.
-  writeFileSync(sessionPath(dir, record.id), JSON.stringify(record, null, 2), 'utf-8');
+  writeSessionRecord(sessionDir(), record);
 }
 
 export function deleteSession(id: string): void {
