@@ -89,6 +89,24 @@ function resolveNrqlTimeRange(
   return { since, until };
 }
 
+/**
+ * Wrap an NRQL query in the `actor { account { nrql { ... } } }` GraphQL
+ * envelope shared by all three query types. Only the requested metadata
+ * sub-fields vary between them.
+ */
+function buildNerdGraphGql(nrql: string, accountId: string, metadataFields: string): string {
+  return `{
+  actor {
+    account(id: ${accountId}) {
+      nrql(query: ${JSON.stringify(nrql)}) {
+        results
+        metadata { ${metadataFields} }
+      }
+    }
+  }
+}`;
+}
+
 /** Execute a NerdGraph GraphQL query and return the raw JSON response text. */
 async function nerdgraph(
   gql: string,
@@ -154,16 +172,7 @@ async function queryMetrics(
   const augmented = augmentNrqlClauses(q, params, Date.now());
   if (typeof augmented === 'object') return augmented.error;
 
-  const gql = `{
-  actor {
-    account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(augmented)}) {
-        results
-        metadata { facets timeWindow { begin end since until } }
-      }
-    }
-  }
-}`;
+  const gql = buildNerdGraphGql(augmented, config.accountId, 'facets timeWindow { begin end since until }');
 
   return nerdgraph(gql, config.apiKey, signal);
 }
@@ -184,16 +193,7 @@ async function queryApm(
 
   const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${nrqlUntilClause(until)} FACET appName LIMIT ${lim}`;
 
-  const gql = `{
-  actor {
-    account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(nrql)}) {
-        results
-        metadata { facets timeWindow { begin end } }
-      }
-    }
-  }
-}`;
+  const gql = buildNerdGraphGql(nrql, config.accountId, 'facets timeWindow { begin end }');
 
   return nerdgraph(gql, config.apiKey, signal);
 }
@@ -217,16 +217,7 @@ async function queryAlerts(
   // Filtering event = 'open' surfaces currently active violations.
   const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${nrqlUntilClause(until)} LIMIT ${lim}`;
 
-  const gql = `{
-  actor {
-    account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(nrql)}) {
-        results
-        metadata { timeWindow { begin end } }
-      }
-    }
-  }
-}`;
+  const gql = buildNerdGraphGql(nrql, config.accountId, 'timeWindow { begin end }');
 
   return nerdgraph(gql, config.apiKey, signal);
 }
