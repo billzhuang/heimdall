@@ -141,6 +141,20 @@ export function checkFailOnSeverity(failOn: string, severity: ActionSeverity): v
 
 type CaptureFn = typeof capture;
 
+/**
+ * Run the Heimdall binary via `captureImpl` and exit the process (mirroring
+ * the child's exit code) if it fails. `label` identifies the mode in the
+ * stderr message (e.g. "Heimdall triage").
+ */
+async function captureOrExit(captureImpl: CaptureFn, args: string[], label: string): Promise<string> {
+  const { stdout, code } = await captureImpl(BIN_PATH, args);
+  if (code !== 0) {
+    process.stderr.write(`[heimdall-action] ${label} exited with code ${code}\n`);
+    process.exit(code);
+  }
+  return stdout;
+}
+
 // ── Shared output helpers ───────────────────────────────────────────────────
 
 interface FindingShapedOutputs {
@@ -185,11 +199,7 @@ export async function runPromptMode(config: ActionConfig, captureImpl: CaptureFn
     process.exit(1);
   }
 
-  const { stdout, code } = await captureImpl(BIN_PATH, ['-p', config.prompt, '--json', '--no-learn']);
-  if (code !== 0) {
-    process.stderr.write(`[heimdall-action] Heimdall exited with code ${code}\n`);
-    process.exit(code);
-  }
+  const stdout = await captureOrExit(captureImpl, ['-p', config.prompt, '--json', '--no-learn'], 'Heimdall');
 
   let finding: OneShotFinding;
   try {
@@ -222,11 +232,7 @@ export async function runTriageMode(config: ActionConfig, captureImpl: CaptureFn
     extraArgs.push('-n', config.namespace);
   }
 
-  const { stdout, code } = await captureImpl(BIN_PATH, ['triage', ...extraArgs]);
-  if (code !== 0) {
-    process.stderr.write(`[heimdall-action] Heimdall triage exited with code ${code}\n`);
-    process.exit(code);
-  }
+  const stdout = await captureOrExit(captureImpl, ['triage', ...extraArgs], 'Heimdall triage');
 
   const severity = detectTriageSeverity(stdout);
   setOutput('severity', severity, config.githubOutput);
@@ -243,11 +249,7 @@ export async function runTriageMode(config: ActionConfig, captureImpl: CaptureFn
  * `captureImpl` can be replaced with a mock in unit tests.
  */
 export async function runScheduleOnceMode(config: ActionConfig, captureImpl: CaptureFn = capture): Promise<void> {
-  const { code } = await captureImpl(BIN_PATH, ['schedule', '--once']);
-  if (code !== 0) {
-    process.stderr.write(`[heimdall-action] Heimdall schedule exited with code ${code}\n`);
-    process.exit(code);
-  }
+  await captureOrExit(captureImpl, ['schedule', '--once'], 'Heimdall schedule');
 
   const summaryMd = '## Heimdall Schedule\n\nScheduled triage completed.';
   setOutput('severity', 'ok', config.githubOutput);
