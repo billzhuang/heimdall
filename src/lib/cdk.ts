@@ -7,16 +7,12 @@
  * - Every command is validated against the read-only policy in cdk-safety.ts.
  * - Output is capped to protect the model's context window.
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { writeAudit, type AuditConfig, type AuditEntry } from './audit.ts';
+import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
-import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { getExecErrorDetail } from './error-utils.ts';
-
-const execFileAsync = promisify(execFile);
+import { execAndReport } from './cli-exec.ts';
+import type { CompiledRedactionRule } from './regex-redact.ts';
 
 const EXEC_TIMEOUT_MS = 60_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
@@ -49,24 +45,6 @@ export function tokenizeCdkArgs(input: string): string[] {
   return tokens;
 }
 
-/** Builds the shared fields of a CDK audit entry so call sites only vary outcome/duration. */
-function cdkAuditEntry(
-  cmdStr: string,
-  startTs: string,
-  allowed: boolean,
-  outcome: AuditEntry['outcome'],
-  durationMs?: number,
-): AuditEntry {
-  return {
-    ts: startTs,
-    level: 'audit',
-    cmd: cmdStr,
-    allowed,
-    outcome,
-    ...(durationMs !== undefined ? { durationMs } : {}),
-  };
-}
-
 /**
  * Validate and run a read-only CDK CLI command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
@@ -90,7 +68,7 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   }
 
   if (!validation.allowed) {
-    await writeAudit(cdkAuditEntry(cmdStr, startTs, false, 'blocked'), audit);
+    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: false, outcome: 'blocked' }, audit);
     return `${BLOCKED_PREFIX}${validation.reason}`;
   }
 
@@ -98,22 +76,16 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   const argv = tokenizeCdkArgs(trimmed);
   if (argv.length === 0) return 'Error: no CDK subcommand provided.';
 
-  try {
-    const { stdout, stderr } = await execFileAsync('cdk', argv, {
-      encoding: 'utf8',
-      timeout: EXEC_TIMEOUT_MS,
-      maxBuffer: MAX_BUFFER_BYTES,
-      ...(cwd ? { cwd } : {}),
-    });
-
-    const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
-    const output = applyRedaction(rawOutput, regexRedactionRules);
-    await writeAudit(cdkAuditEntry(cmdStr, startTs, true, 'ok', Date.now() - startMs), audit);
-    return truncate(output);
-  } catch (error) {
-    const rawDetail = getExecErrorDetail(error);
-    const detail = applyRedaction(rawDetail, regexRedactionRules);
-    await writeAudit(cdkAuditEntry(cmdStr, startTs, true, 'error', Date.now() - startMs), audit);
-    return truncate(`cdk exited with an error:\n${detail}`);
-  }
+  return execAndReport({
+    bin: 'cdk',
+    argv,
+    cmd: cmdStr,
+    startTs,
+    startMs,
+    execOptions: { timeout: EXEC_TIMEOUT_MS, maxBuffer: MAX_BUFFER_BYTES, ...(cwd ? { cwd } : {}) },
+    audit,
+    regexRedactionRules,
+    noOutputMessage: NO_OUTPUT_MESSAGE,
+    truncate,
+  });
 }

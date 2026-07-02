@@ -7,17 +7,13 @@
  * - Every command is validated against the read-only policy in aws-safety.ts.
  * - Output is capped to protect the model's context window.
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { validateAwsCommand } from './aws-safety.ts';
 import { tokenizeShellArgs } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
-import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { getExecErrorDetail } from './error-utils.ts';
-
-const execFileAsync = promisify(execFile);
+import { execAndReport } from './cli-exec.ts';
+import type { CompiledRedactionRule } from './regex-redact.ts';
 
 const EXEC_TIMEOUT_MS = 30_000;
 
@@ -92,21 +88,16 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
     return `${BLOCKED_PREFIX}${validation.reason}`;
   }
 
-  try {
-    const { stdout, stderr } = await execFileAsync('aws', argv, {
-      encoding: 'utf8',
-      timeout: EXEC_TIMEOUT_MS,
-      maxBuffer: MAX_BUFFER_BYTES,
-    });
-
-    const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
-    const output = applyRedaction(rawOutput, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
-    return truncate(output);
-  } catch (error) {
-    const rawDetail = getExecErrorDetail(error);
-    const detail = applyRedaction(rawDetail, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
-    return truncate(`aws exited with an error:\n${detail}`);
-  }
+  return execAndReport({
+    bin: 'aws',
+    argv,
+    cmd,
+    startTs,
+    startMs,
+    execOptions: { timeout: EXEC_TIMEOUT_MS, maxBuffer: MAX_BUFFER_BYTES },
+    audit,
+    regexRedactionRules,
+    noOutputMessage: NO_OUTPUT_MESSAGE,
+    truncate,
+  });
 }
