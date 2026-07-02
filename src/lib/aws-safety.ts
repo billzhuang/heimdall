@@ -11,6 +11,7 @@
  * Everything else is blocked, with an additional explicit block list for the
  * most commonly misused destructive operations to provide clearer error messages.
  */
+import { findNextNonOptionToken } from './tokenizer.ts';
 
 /**
  * AWS CLI subcommand prefixes (and exact names) that indicate state mutation or
@@ -87,31 +88,6 @@ export const AWS_OPTIONS_WITH_VALUE = new Set([
 ]);
 
 /**
- * Return the index of the first non-option token in `parts` at or after
- * `startIndex`, skipping option flags and consuming the value token that
- * follows any flag present in `AWS_OPTIONS_WITH_VALUE`.
- * Returns -1 when no such token exists.
- */
-function findNextNonOptionToken(parts: string[], startIndex: number): number {
-  let skipNext = false;
-  for (let i = startIndex; i < parts.length; i++) {
-    const part = parts[i];
-    if (skipNext) {
-      skipNext = false;
-      continue;
-    }
-    if (part.startsWith('-')) {
-      if (!part.includes('=') && AWS_OPTIONS_WITH_VALUE.has(part)) {
-        skipNext = true;
-      }
-      continue;
-    }
-    return i;
-  }
-  return -1;
-}
-
-/**
  * Parse an AWS CLI command string to extract the service and subcommand.
  * Handles global flags that take a value (e.g. `aws --region us-east-1 ec2 describe-instances`)
  * so that an attacker cannot smuggle a destructive subcommand past the parser.
@@ -132,11 +108,11 @@ export function parseAwsCommand(command: string): ParsedAwsCommand {
   if (parts[0].toLowerCase() !== 'aws') return result;
   result.isAws = true;
 
-  const serviceIndex = findNextNonOptionToken(parts, 1);
+  const serviceIndex = findNextNonOptionToken(parts, 1, AWS_OPTIONS_WITH_VALUE);
   if (serviceIndex === -1) return result;
   result.service = parts[serviceIndex].toLowerCase();
 
-  const subIndex = findNextNonOptionToken(parts, serviceIndex + 1);
+  const subIndex = findNextNonOptionToken(parts, serviceIndex + 1, AWS_OPTIONS_WITH_VALUE);
   if (subIndex !== -1) {
     result.subcommand = parts[subIndex].toLowerCase();
     result.args = parts.slice(subIndex + 1);
