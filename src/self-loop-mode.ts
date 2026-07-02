@@ -159,20 +159,25 @@ export function printSelfLoopSummary(
   iterationHistory: IterationResult[],
   currentScore: number,
   logPath: string,
+  options: { dryRun: boolean },
 ): void {
   process.stdout.write('='.repeat(60) + '\n');
   process.stdout.write('Self-Loop Summary\n');
   process.stdout.write('='.repeat(60) + '\n');
 
   if (iterationHistory.length === 0) {
-    process.stdout.write('No iterations were run (all scenarios already passing or LLM unavailable).\n');
+    if (options.dryRun) {
+      process.stdout.write('Dry run complete. No changes were applied.\n');
+    } else {
+      process.stdout.write('No iterations were run (all scenarios already passing or LLM unavailable).\n');
+    }
   } else {
     for (const r of iterationHistory) {
-      const delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
+      const deltaVal = Math.round((r.newScore - r.baselineScore) * 100);
       const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
       process.stdout.write(
         `  Iteration ${r.iteration}: ${(r.baselineScore * 100).toFixed(0)}% → ${(r.newScore * 100).toFixed(0)}%` +
-        ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
+        ` (${deltaVal >= 0 ? '+' : ''}${deltaVal}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
       );
     }
     process.stdout.write(`\nFinal score: ${(currentScore * 100).toFixed(0)}%\n`);
@@ -397,7 +402,7 @@ async function main(): Promise<void> {
     }
   }
 
-  printSelfLoopSummary(iterationHistory, currentScore, logPath);
+  printSelfLoopSummary(iterationHistory, currentScore, logPath, { dryRun });
 }
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) {

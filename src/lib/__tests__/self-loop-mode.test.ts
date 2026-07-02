@@ -138,9 +138,18 @@ describe('printSelfLoopSummary', () => {
 
   it('reports no iterations when history is empty', () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    printSelfLoopSummary([], 1, '/tmp/learning-log.jsonl');
+    printSelfLoopSummary([], 1, '/tmp/learning-log.jsonl', { dryRun: false });
     const output = stdoutSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('No iterations were run (all scenarios already passing or LLM unavailable).');
+    expect(output).not.toContain('Final score');
+  });
+
+  it('reports dry run complete when history is empty and dryRun is true', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    printSelfLoopSummary([], 1, '/tmp/learning-log.jsonl', { dryRun: true });
+    const output = stdoutSpy.mock.calls.map((c) => c[0]).join('');
+    expect(output).toContain('Dry run complete. No changes were applied.');
+    expect(output).not.toContain('No iterations were run');
     expect(output).not.toContain('Final score');
   });
 
@@ -149,7 +158,7 @@ describe('printSelfLoopSummary', () => {
     const history: IterationResult[] = [
       { iteration: 1, baselineScore: 0.5, newScore: 0.75, proposalCount: 2, appliedCount: 2, improved: true, reverted: false },
     ];
-    printSelfLoopSummary(history, 0.75, '/tmp/learning-log.jsonl');
+    printSelfLoopSummary(history, 0.75, '/tmp/learning-log.jsonl', { dryRun: false });
     const output = stdoutSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('Iteration 1: 50% → 75% (+25pp) | 2 patches | KEPT');
     expect(output).toContain('Final score: 75%');
@@ -162,7 +171,7 @@ describe('printSelfLoopSummary', () => {
     const history: IterationResult[] = [
       { iteration: 1, baselineScore: 0.5, newScore: 0.5, proposalCount: 1, appliedCount: 1, improved: false, reverted: true },
     ];
-    printSelfLoopSummary(history, 0.5, '/tmp/learning-log.jsonl');
+    printSelfLoopSummary(history, 0.5, '/tmp/learning-log.jsonl', { dryRun: false });
     const output = stdoutSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('Iteration 1: 50% → 50% (+0pp) | 1 patch | REVERTED');
     expect(output).not.toContain('instructions.ts was updated');
@@ -173,7 +182,7 @@ describe('printSelfLoopSummary', () => {
     const history: IterationResult[] = [
       { iteration: 1, baselineScore: 0.5, newScore: 0.5, proposalCount: 0, appliedCount: 0, improved: false, reverted: false },
     ];
-    printSelfLoopSummary(history, 0.5, '/tmp/learning-log.jsonl');
+    printSelfLoopSummary(history, 0.5, '/tmp/learning-log.jsonl', { dryRun: false });
     const output = stdoutSpy.mock.calls.map((c) => c[0]).join('');
     expect(output).toContain('Iteration 1: 50% → 50% (+0pp) | 0 patches | NO_CHANGE');
   });
