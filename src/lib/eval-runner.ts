@@ -106,6 +106,51 @@ export function checkFinding(
   return failures;
 }
 
+/**
+ * Spawn `binPath` with `args`, collect stdout, and reject on non-zero exit,
+ * spawn error, or timeout (killing the child in that last case).
+ * Extracted from runScenario so the process-management logic is isolated
+ * from scenario setup/parsing/cleanup.
+ */
+function spawnAndCollect(
+  binPath: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  timeoutMs: number,
+): Promise<string> {
+  return new Promise<string>((res, rej) => {
+    let settled = false;
+    const safeReject = (err: Error) => { if (!settled) { settled = true; rej(err); } };
+    const safeResolve = (val: string) => { if (!settled) { settled = true; res(val); } };
+
+    const chunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+
+    const child = spawn(binPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => errChunks.push(chunk));
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      safeReject(new Error(`scenario timed out after ${timeoutMs / 1000}s`));
+    }, timeoutMs);
+
+    child.on('close', (code: number | null) => {
+      clearTimeout(timer);
+      const out = Buffer.concat(chunks).toString('utf8').trim();
+      if (code !== 0) {
+        const errOut = Buffer.concat(errChunks).toString('utf8').trim();
+        safeReject(new Error(`agent exited with code ${code}: ${errOut || out}`));
+      } else {
+        safeResolve(out);
+      }
+    });
+
+    child.on('error', (err: Error) => { clearTimeout(timer); safeReject(err); });
+  });
+}
+
 export async function runScenario(
   binPath: string,
   scenario: EvalScenario,
@@ -118,40 +163,12 @@ export async function runScenario(
   let finding: OneShotFinding | undefined;
 
   try {
-    const rawOutput = await new Promise<string>((res, rej) => {
-      let settled = false;
-      const safeReject = (err: Error) => { if (!settled) { settled = true; rej(err); } };
-      const safeResolve = (val: string) => { if (!settled) { settled = true; res(val); } };
-
-      const chunks: Buffer[] = [];
-      const errChunks: Buffer[] = [];
-
-      const child = spawn(binPath, ['-p', scenario.prompt, '--json'], {
-        env: { ...process.env, HEIMDALL_KUBECTL_MOCK: tmpFile, HEIMDALL_EVAL_MODE: '1' },
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-
-      child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
-      child.stderr.on('data', (chunk: Buffer) => errChunks.push(chunk));
-
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        safeReject(new Error(`scenario timed out after ${timeoutMs / 1000}s`));
-      }, timeoutMs);
-
-      child.on('close', (code: number | null) => {
-        clearTimeout(timer);
-        const out = Buffer.concat(chunks).toString('utf8').trim();
-        if (code !== 0) {
-          const errOut = Buffer.concat(errChunks).toString('utf8').trim();
-          safeReject(new Error(`agent exited with code ${code}: ${errOut || out}`));
-        } else {
-          safeResolve(out);
-        }
-      });
-
-      child.on('error', (err: Error) => { clearTimeout(timer); safeReject(err); });
-    });
+    const rawOutput = await spawnAndCollect(
+      binPath,
+      ['-p', scenario.prompt, '--json'],
+      { ...process.env, HEIMDALL_KUBECTL_MOCK: tmpFile, HEIMDALL_EVAL_MODE: '1' },
+      timeoutMs,
+    );
 
     try {
       const parsed = JSON.parse(rawOutput);
