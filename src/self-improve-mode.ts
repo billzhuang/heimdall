@@ -224,7 +224,7 @@ Examples:
           'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
         );
         process.stdout.write('='.repeat(60) + '\n\n');
-        process.stdout.write(buildReflectionPrompt([], taskHistory) + '\n\n');
+        process.stdout.write(buildReflectionPrompt([], taskHistory, useRag, ragTopK) + '\n\n');
         process.stdout.write('='.repeat(60) + '\n');
       }
     }
