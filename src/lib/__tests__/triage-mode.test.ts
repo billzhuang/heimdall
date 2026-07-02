@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { requireNextArg, requireNonEmptyValue } from '../../triage-mode.ts';
+import { requireNextArg, requireNonEmptyValue, parseContextsList } from '../../triage-mode.ts';
 
 describe('requireNextArg', () => {
   afterEach(() => {
@@ -52,6 +52,40 @@ describe('requireNonEmptyValue', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
     requireNonEmptyValue('', '--model= requires a non-empty value');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('parseContextsList', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('trims whitespace and filters empty entries', () => {
+    expect(parseContextsList(' cluster-a , cluster-b ,, ', '--contexts')).toEqual(['cluster-a', 'cluster-b']);
+  });
+
+  it('dedupes repeated entries while preserving first-seen order', () => {
+    expect(parseContextsList('b,a,b,c,a', '--contexts')).toEqual(['b', 'a', 'c']);
+  });
+
+  it('parses a single context', () => {
+    expect(parseContextsList('prod', '--contexts=')).toEqual(['prod']);
+  });
+
+  it('writes a --contexts-specific error and exits when the list is empty after parsing', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseContextsList(' , , ', '--contexts');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --contexts value produced an empty list after parsing\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes a --contexts=-specific error and exits when the list is empty after parsing', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseContextsList('', '--contexts=');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --contexts= value produced an empty list after parsing\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

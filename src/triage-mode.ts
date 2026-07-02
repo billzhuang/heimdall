@@ -226,6 +226,19 @@ export function requireNonEmptyValue(value: string, msg: string): void {
   }
 }
 
+/**
+ * Parse a comma-separated `--contexts` value into a trimmed, deduped list.
+ * Writes an error and exit(1)s when parsing yields no non-empty entries.
+ */
+export function parseContextsList(raw: string, flagLabel: string): string[] {
+  const parsed = raw.split(',').map((c) => c.trim()).filter(Boolean);
+  if (parsed.length === 0) {
+    process.stderr.write(`Error: ${flagLabel} value produced an empty list after parsing\n`);
+    process.exit(1);
+  }
+  return Array.from(new Set(parsed));
+}
+
 // --- CLI arg parsing when run directly ---
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
   const args = process.argv.slice(2);
@@ -245,21 +258,11 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
       opts.allNamespaces = true;
     } else if (arg === '--contexts') {
       requireNextArg(args, i, '--contexts requires a comma-separated list of context names');
-      const parsed = args[++i].split(',').map((c) => c.trim()).filter(Boolean);
-      if (parsed.length === 0) {
-        process.stderr.write(`Error: --contexts value produced an empty list after parsing\n`);
-        process.exit(1);
-      }
-      opts.contexts = Array.from(new Set(parsed));
+      opts.contexts = parseContextsList(args[++i], '--contexts');
     } else if (arg.startsWith('--contexts=')) {
       const raw = arg.slice('--contexts='.length);
       requireNonEmptyValue(raw, '--contexts= requires a non-empty comma-separated list');
-      const parsed = raw.split(',').map((c) => c.trim()).filter(Boolean);
-      if (parsed.length === 0) {
-        process.stderr.write(`Error: --contexts= value produced an empty list after parsing\n`);
-        process.exit(1);
-      }
-      opts.contexts = Array.from(new Set(parsed));
+      opts.contexts = parseContextsList(raw, '--contexts=');
     } else if (arg === '--model') {
       requireNextArg(args, i, '--model requires a value');
       modelFlag = args[++i];
