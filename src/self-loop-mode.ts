@@ -60,26 +60,49 @@ const LEARNING_LOG_NAME = 'learning-log.jsonl';
 const TASK_HISTORY_NAME = 'task-history.jsonl';
 const DEFAULT_MAX_ITERATIONS = 3;
 
-async function callLlm(prompt: string, backend: string, timeoutMs: number): Promise<string> {
-  if (backend === 'codex-cli') {
-    return callCodexCli(prompt, { timeoutMs });
-  }
-  return callClaudeCli(prompt, { timeoutMs });
+/** Parsed `heimdall self-loop` CLI options. */
+export interface SelfLoopArgs {
+  maxIterations: number;
+  dryRun: boolean;
+  backend: string;
+  scenarioFilter?: string;
+  cliLogPath?: string;
+  reflectionTimeoutMs: number;
 }
 
-async function saveProposal(
-  proposalsDir: string,
-  iteration: number,
-  llmResponse: string,
-): Promise<void> {
-  await mkdir(proposalsDir, { recursive: true });
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const file = join(proposalsDir, `iteration-${iteration}-${ts}.txt`);
-  await writeFile(file, llmResponse, 'utf8');
-}
+const SELF_LOOP_HELP = `Usage: heimdall self-loop [options]
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+Run the automated self-improvement loop: eval → reflect → patch → re-eval → keep/revert.
+
+Options:
+  --max-iterations, -n <N>  Maximum improvement iterations (default: ${DEFAULT_MAX_ITERATIONS})
+  --dry-run                  Show proposals without applying them to instructions.ts
+  --backend, -b <name>       LLM backend for reflection: 'claude-cli' (default) or 'codex-cli'
+  --scenario, -s <name>      Run only scenarios whose filename contains <name>
+  --log-path, -l <path>      Write the learning log to <path>
+  --timeout <seconds>        LLM reflection timeout in seconds (default: 180)
+  -h, --help                 Show this help message
+
+The loop stops when:
+  - All scenarios pass (score = 1.0)
+  - An iteration produces no improvement
+  - --max-iterations is reached
+
+Proposals are saved to scenarios/self-loop-proposals/ for review.
+
+Examples:
+  heimdall self-loop                          # run up to 3 iterations
+  heimdall self-loop --max-iterations 5       # run up to 5 iterations
+  heimdall self-loop --dry-run                # show proposals only, do not apply
+  heimdall self-loop --backend codex-cli      # use OpenAI Codex CLI for reflection
+`;
+
+/**
+ * Parse `heimdall self-loop` CLI args. Writes to stdout/stderr and calls
+ * `process.exit` directly for `--help`, unknown options, and invalid values —
+ * matching {@link requirePositiveInt}'s exit-on-invalid convention below.
+ */
+export function parseSelfLoopArgs(args: string[]): SelfLoopArgs {
   let maxIterations = DEFAULT_MAX_ITERATIONS;
   let dryRun = false;
   let backend = 'claude-cli';
@@ -115,32 +138,7 @@ async function main(): Promise<void> {
       requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
       reflectionTimeoutMs = secs * 1000;
     } else if (args[i] === '-h' || args[i] === '--help') {
-      process.stdout.write(`Usage: heimdall self-loop [options]
-
-Run the automated self-improvement loop: eval → reflect → patch → re-eval → keep/revert.
-
-Options:
-  --max-iterations, -n <N>  Maximum improvement iterations (default: ${DEFAULT_MAX_ITERATIONS})
-  --dry-run                  Show proposals without applying them to instructions.ts
-  --backend, -b <name>       LLM backend for reflection: 'claude-cli' (default) or 'codex-cli'
-  --scenario, -s <name>      Run only scenarios whose filename contains <name>
-  --log-path, -l <path>      Write the learning log to <path>
-  --timeout <seconds>        LLM reflection timeout in seconds (default: 180)
-  -h, --help                 Show this help message
-
-The loop stops when:
-  - All scenarios pass (score = 1.0)
-  - An iteration produces no improvement
-  - --max-iterations is reached
-
-Proposals are saved to scenarios/self-loop-proposals/ for review.
-
-Examples:
-  heimdall self-loop                          # run up to 3 iterations
-  heimdall self-loop --max-iterations 5       # run up to 5 iterations
-  heimdall self-loop --dry-run                # show proposals only, do not apply
-  heimdall self-loop --backend codex-cli      # use OpenAI Codex CLI for reflection
-`);
+      process.stdout.write(SELF_LOOP_HELP);
       process.exit(0);
     } else {
       process.stderr.write(`Error: unknown option '${args[i]}'\nRun with --help for usage.\n`);
@@ -152,6 +150,63 @@ Examples:
     process.stderr.write(`Error: unknown backend '${backend}'; supported: claude-cli, codex-cli\n`);
     process.exit(1);
   }
+
+  return { maxIterations, dryRun, backend, scenarioFilter, cliLogPath, reflectionTimeoutMs };
+}
+
+/** Print the end-of-run summary table: per-iteration scores, final score, and where output was saved. */
+export function printSelfLoopSummary(
+  iterationHistory: IterationResult[],
+  currentScore: number,
+  logPath: string,
+): void {
+  process.stdout.write('='.repeat(60) + '\n');
+  process.stdout.write('Self-Loop Summary\n');
+  process.stdout.write('='.repeat(60) + '\n');
+
+  if (iterationHistory.length === 0) {
+    process.stdout.write('No iterations were run (all scenarios already passing or LLM unavailable).\n');
+  } else {
+    for (const r of iterationHistory) {
+      const delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
+      const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
+      process.stdout.write(
+        `  Iteration ${r.iteration}: ${(r.baselineScore * 100).toFixed(0)}% → ${(r.newScore * 100).toFixed(0)}%` +
+        ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
+      );
+    }
+    process.stdout.write(`\nFinal score: ${(currentScore * 100).toFixed(0)}%\n`);
+
+    if (iterationHistory.some(r => r.improved)) {
+      process.stdout.write('instructions.ts was updated. Review changes with: git diff src/lib/instructions.ts\n');
+    }
+  }
+
+  process.stdout.write('\nProposals saved to: scenarios/self-loop-proposals/\n');
+  process.stdout.write('Learning entries saved to: ' + logPath + '\n');
+}
+
+async function callLlm(prompt: string, backend: string, timeoutMs: number): Promise<string> {
+  if (backend === 'codex-cli') {
+    return callCodexCli(prompt, { timeoutMs });
+  }
+  return callClaudeCli(prompt, { timeoutMs });
+}
+
+async function saveProposal(
+  proposalsDir: string,
+  iteration: number,
+  llmResponse: string,
+): Promise<void> {
+  await mkdir(proposalsDir, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = join(proposalsDir, `iteration-${iteration}-${ts}.txt`);
+  await writeFile(file, llmResponse, 'utf8');
+}
+
+async function main(): Promise<void> {
+  const { maxIterations, dryRun, backend, scenarioFilter, cliLogPath, reflectionTimeoutMs } =
+    parseSelfLoopArgs(process.argv.slice(2));
 
   // Verify LLM backend is available.
   const backendAvailable = backend === 'codex-cli'
@@ -342,31 +397,7 @@ Examples:
     }
   }
 
-  // Summary report.
-  process.stdout.write('='.repeat(60) + '\n');
-  process.stdout.write('Self-Loop Summary\n');
-  process.stdout.write('='.repeat(60) + '\n');
-
-  if (iterationHistory.length === 0) {
-    process.stdout.write('No iterations were run (all scenarios already passing or LLM unavailable).\n');
-  } else {
-    for (const r of iterationHistory) {
-      const delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
-      const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
-      process.stdout.write(
-        `  Iteration ${r.iteration}: ${(r.baselineScore * 100).toFixed(0)}% → ${(r.newScore * 100).toFixed(0)}%` +
-        ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
-      );
-    }
-    process.stdout.write(`\nFinal score: ${(currentScore * 100).toFixed(0)}%\n`);
-
-    if (iterationHistory.some(r => r.improved)) {
-      process.stdout.write('instructions.ts was updated. Review changes with: git diff src/lib/instructions.ts\n');
-    }
-  }
-
-  process.stdout.write('\nProposals saved to: scenarios/self-loop-proposals/\n');
-  process.stdout.write('Learning entries saved to: ' + logPath + '\n');
+  printSelfLoopSummary(iterationHistory, currentScore, logPath);
 }
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
