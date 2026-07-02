@@ -12,6 +12,7 @@ import {
   resolveLogPath,
   resolveRagOptions,
 } from '../self-improve.ts';
+import type { HeimdallConfig } from '../config.ts';
 import type { TaskHistoryEntry } from '../task-history.ts';
 
 function makeHistoryEntry(prompt: string, summary: string): TaskHistoryEntry {
@@ -244,32 +245,20 @@ describe('resolveLogPath', () => {
 });
 
 describe('resolveRagOptions', () => {
-  it('defaults to disabled with topK 10 when learning config is absent', () => {
-    expect(resolveRagOptions(undefined)).toEqual({ useRag: false, ragTopK: 10 });
-    expect(resolveRagOptions(null)).toEqual({ useRag: false, ragTopK: 10 });
+  it('maps the validated rag.enabled=false default straight through', () => {
+    const config: HeimdallConfig['learning'] = {
+      enabled: true,
+      rag: { enabled: false, topK: 5, minSimilarity: 0 },
+    };
+    expect(resolveRagOptions(config)).toEqual({ useRag: false, ragTopK: 5 });
   });
 
-  it('defaults to disabled with topK 10 when rag section is absent', () => {
-    expect(resolveRagOptions({})).toEqual({ useRag: false, ragTopK: 10 });
-  });
-
-  it('is disabled when rag.enabled is not exactly true', () => {
-    expect(resolveRagOptions({ rag: { enabled: false } })).toEqual({ useRag: false, ragTopK: 10 });
-    expect(resolveRagOptions({ rag: {} })).toEqual({ useRag: false, ragTopK: 10 });
-  });
-
-  it('enables RAG and passes through topK when both are set', () => {
-    expect(resolveRagOptions({ rag: { enabled: true, topK: 25 } })).toEqual({
-      useRag: true,
-      ragTopK: 25,
-    });
-  });
-
-  it('falls back to topK 10 when rag.topK is nullish', () => {
-    expect(resolveRagOptions({ rag: { enabled: true, topK: null } })).toEqual({
-      useRag: true,
-      ragTopK: 10,
-    });
+  it('maps enabled RAG and a non-default topK straight through', () => {
+    const config: HeimdallConfig['learning'] = {
+      enabled: true,
+      rag: { enabled: true, topK: 25, minSimilarity: 0 },
+    };
+    expect(resolveRagOptions(config)).toEqual({ useRag: true, ragTopK: 25 });
   });
 });
 

@@ -10,6 +10,7 @@
  */
 import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
 import { resolve } from 'node:path';
+import type { HeimdallConfig } from './config.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
 import { retrieveSimilarEntries } from './rag.ts';
@@ -164,24 +165,22 @@ export function resolveLogPath(
   return defaultPath;
 }
 
-/** Learning config shape self-improve mode needs to resolve RAG usage. */
-export interface RagConfigInput {
-  rag?: { enabled?: boolean | null; topK?: number | null } | null;
-}
-
 /**
  * Resolve whether to use RAG-based retrieval and the topK to request, from
  * `heimdall.config.yaml`'s `learning.rag` section. Centralizes the flag/topK
  * derivation so self-improve mode computes it once regardless of which code
  * path (--from-log vs. a fresh eval run) needs it.
+ *
+ * `learningConfig` comes from `loadConfig()`, which fills in valibot defaults
+ * recursively — `rag` is always present, so no defensive checks are needed.
  */
-export function resolveRagOptions(learningConfig: RagConfigInput | null | undefined): {
+export function resolveRagOptions(learningConfig: HeimdallConfig['learning']): {
   useRag: boolean;
   ragTopK: number;
 } {
   return {
-    useRag: learningConfig?.rag?.enabled === true,
-    ragTopK: learningConfig?.rag?.topK ?? 10,
+    useRag: learningConfig.rag.enabled,
+    ragTopK: learningConfig.rag.topK,
   };
 }
 
