@@ -10,6 +10,7 @@
  */
 import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
 import { resolve } from 'node:path';
+import type { HeimdallConfig } from './config.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
 import { retrieveSimilarEntries } from './rag.ts';
@@ -162,6 +163,25 @@ export function resolveLogPath(
   if (envPath) return resolve(envPath);
   if (configLogFile) return resolve(configLogFile);
   return defaultPath;
+}
+
+/**
+ * Resolve whether to use RAG-based retrieval and the topK to request, from
+ * `heimdall.config.yaml`'s `learning.rag` section. Centralizes the flag/topK
+ * derivation so self-improve mode computes it once regardless of which code
+ * path (--from-log vs. a fresh eval run) needs it.
+ *
+ * `learningConfig` comes from `loadConfig()`, which fills in valibot defaults
+ * recursively — `rag` is always present, so no defensive checks are needed.
+ */
+export function resolveRagOptions(learningConfig: HeimdallConfig['learning']): {
+  useRag: boolean;
+  ragTopK: number;
+} {
+  return {
+    useRag: learningConfig.rag.enabled,
+    ragTopK: learningConfig.rag.topK,
+  };
 }
 
 /**

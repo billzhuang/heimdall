@@ -10,7 +10,9 @@ import {
   readLearningLog,
   appendLearningEntry,
   resolveLogPath,
+  resolveRagOptions,
 } from '../self-improve.ts';
+import type { HeimdallConfig } from '../config.ts';
 import type { TaskHistoryEntry } from '../task-history.ts';
 
 function makeHistoryEntry(prompt: string, summary: string): TaskHistoryEntry {
@@ -239,6 +241,24 @@ describe('resolveLogPath', () => {
     const result = resolveLogPath(undefined, undefined, '/default/path');
     expect(result).toBe(resolve('relative/env-log.jsonl'));
     expect(result.startsWith('/')).toBe(true);
+  });
+});
+
+describe('resolveRagOptions', () => {
+  it('maps the validated rag.enabled=false default straight through', () => {
+    const config: HeimdallConfig['learning'] = {
+      enabled: true,
+      rag: { enabled: false, topK: 5, minSimilarity: 0 },
+    };
+    expect(resolveRagOptions(config)).toEqual({ useRag: false, ragTopK: 5 });
+  });
+
+  it('maps enabled RAG and a non-default topK straight through', () => {
+    const config: HeimdallConfig['learning'] = {
+      enabled: true,
+      rag: { enabled: true, topK: 25, minSimilarity: 0 },
+    };
+    expect(resolveRagOptions(config)).toEqual({ useRag: true, ragTopK: 25 });
   });
 });
 
