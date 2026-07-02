@@ -58,3 +58,32 @@ export function tokenizeShellArgs(input: string, binaryName?: string): string[] 
   }
   return tokens;
 }
+
+/**
+ * Return the index of the first non-option token in `parts` at or after
+ * `startIndex`, skipping option flags and consuming the value token that
+ * follows any flag present in `optionsWithValue`.
+ * Returns -1 when no such token exists.
+ */
+export function findNextNonOptionToken(
+  parts: string[],
+  startIndex: number,
+  optionsWithValue: ReadonlySet<string>,
+): number {
+  let skipNext = false;
+  for (let i = startIndex; i < parts.length; i++) {
+    const part = parts[i];
+    if (skipNext) {
+      skipNext = false;
+      continue;
+    }
+    if (part.startsWith('-')) {
+      if (!part.includes('=') && optionsWithValue.has(part)) {
+        skipNext = true;
+      }
+      continue;
+    }
+    return i;
+  }
+  return -1;
+}
