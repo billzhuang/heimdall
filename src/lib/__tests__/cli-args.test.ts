@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { requireNextArg, requireNonEmptyValue } from '../../triage-mode.ts';
+import { requireNextArg, requireNonEmptyValue } from '../cli-args.ts';
 
 describe('requireNextArg', () => {
   afterEach(() => {

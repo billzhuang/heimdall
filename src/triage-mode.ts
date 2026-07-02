@@ -36,6 +36,7 @@ import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
+import { requireNextArg, requireNonEmptyValue } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -207,22 +208,6 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
     if (findings.length > 0) {
       process.stderr.write(`[heimdall-triage] Recorded ${findings.length} baseline entr${findings.length === 1 ? 'y' : 'ies'} for recurring-pattern tracking.\n`);
     }
-  }
-}
-
-/** Write an error to stderr and exit(1) when the next CLI token is missing or looks like a flag. */
-export function requireNextArg(args: string[], i: number, msg: string): void {
-  if (!args[i + 1] || args[i + 1].startsWith('-')) {
-    process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
-  }
-}
-
-/** Write an error to stderr and exit(1) when value is empty. */
-export function requireNonEmptyValue(value: string, msg: string): void {
-  if (!value) {
-    process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
   }
 }
 
