@@ -111,6 +111,31 @@ async function nerdgraph(
 }
 
 /**
+ * Wrap an NRQL string in the `actor.account.nrql` GraphQL query shape shared by
+ * all three query types, then execute it via NerdGraph. `metadataFields` lets
+ * each caller request only the `metadata { ... }` sub-fields it needs.
+ */
+async function queryNrql(
+  nrql: string,
+  metadataFields: string,
+  config: NewRelicConfig,
+  signal: AbortSignal,
+): Promise<string> {
+  const gql = `{
+  actor {
+    account(id: ${config.accountId}) {
+      nrql(query: ${JSON.stringify(nrql)}) {
+        results
+        metadata { ${metadataFields} }
+      }
+    }
+  }
+}`;
+
+  return nerdgraph(gql, config.apiKey, signal);
+}
+
+/**
  * Conditionally append missing SINCE, UNTIL, and LIMIT clauses to a NRQL string.
  * Each clause is only appended when it is not already present (case-insensitive).
  * Returns the augmented NRQL string, or `{ error }` when a time value fails to parse.
@@ -154,18 +179,7 @@ async function queryMetrics(
   const augmented = augmentNrqlClauses(q, params, Date.now());
   if (typeof augmented === 'object') return augmented.error;
 
-  const gql = `{
-  actor {
-    account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(augmented)}) {
-        results
-        metadata { facets timeWindow { begin end since until } }
-      }
-    }
-  }
-}`;
-
-  return nerdgraph(gql, config.apiKey, signal);
+  return queryNrql(augmented, 'facets timeWindow { begin end since until }', config, signal);
 }
 
 async function queryApm(
@@ -184,18 +198,7 @@ async function queryApm(
 
   const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${nrqlUntilClause(until)} FACET appName LIMIT ${lim}`;
 
-  const gql = `{
-  actor {
-    account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(nrql)}) {
-        results
-        metadata { facets timeWindow { begin end } }
-      }
-    }
-  }
-}`;
-
-  return nerdgraph(gql, config.apiKey, signal);
+  return queryNrql(nrql, 'facets timeWindow { begin end }', config, signal);
 }
 
 async function queryAlerts(
@@ -217,18 +220,7 @@ async function queryAlerts(
   // Filtering event = 'open' surfaces currently active violations.
   const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${nrqlUntilClause(until)} LIMIT ${lim}`;
 
-  const gql = `{
-  actor {
-    account(id: ${config.accountId}) {
-      nrql(query: ${JSON.stringify(nrql)}) {
-        results
-        metadata { timeWindow { begin end } }
-      }
-    }
-  }
-}`;
-
-  return nerdgraph(gql, config.apiKey, signal);
+  return queryNrql(nrql, 'timeWindow { begin end }', config, signal);
 }
 
 /**
