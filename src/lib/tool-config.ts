@@ -33,6 +33,25 @@ export function clampLimit(
 }
 
 /**
+ * Resolve a string config value with config → env → default precedence, the
+ * pattern every observability tool factory uses for URLs and credentials.
+ * `configValue` wins if truthy; otherwise the first truthy env var (checked in
+ * order) wins; otherwise `fallback`.
+ */
+export function resolveConfigString(
+  configValue: string | null | undefined,
+  envVars: string | string[],
+  fallback = '',
+): string {
+  if (configValue) return configValue;
+  for (const name of Array.isArray(envVars) ? envVars : [envVars]) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+  return fallback;
+}
+
+/**
  * Build the " NAMESPACE LOCKDOWN ACTIVE: ..." suffix appended to a tool's
  * description when namespace lockdown is configured. Returns '' when
  * `lockedNamespace` is not set. `message` is only invoked when locked, so it

@@ -15,7 +15,7 @@ import * as v from 'valibot';
 import { runDatadogQuery, type DatadogConfig } from '../lib/datadog.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
-import { resolveTimeoutMs } from '../lib/tool-config.ts';
+import { resolveConfigString, resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_SITE = 'datadoghq.com';
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -33,14 +33,14 @@ export function makeDatadogQuery(
   } | null,
   regexRedactionRules?: CompiledRedactionRule[],
 ) {
-  const apiKey = datadogConfig?.apiKey || process.env.DD_API_KEY || process.env.DATADOG_API_KEY || '';
-  const appKey = datadogConfig?.appKey || process.env.DD_APP_KEY || process.env.DATADOG_APP_KEY || '';
+  const apiKey = resolveConfigString(datadogConfig?.apiKey, ['DD_API_KEY', 'DATADOG_API_KEY']);
+  const appKey = resolveConfigString(datadogConfig?.appKey, ['DD_APP_KEY', 'DATADOG_APP_KEY']);
   const rawTimeout = datadogConfig?.timeoutMs;
 
   const config: DatadogConfig = {
     apiKey,
     appKey,
-    site: datadogConfig?.site || process.env.DD_SITE || DEFAULT_SITE,
+    site: resolveConfigString(datadogConfig?.site, 'DD_SITE', DEFAULT_SITE),
     timeoutMs: resolveTimeoutMs(rawTimeout, DEFAULT_TIMEOUT_MS),
     regexRedactionRules,
   };

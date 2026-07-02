@@ -6,7 +6,7 @@ import * as v from 'valibot';
 import { runKubecostQuery, type KubecostConfig } from '../lib/kubecost.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
-import { buildLockdownNote, resolveTimeoutMs } from '../lib/tool-config.ts';
+import { buildLockdownNote, resolveConfigString, resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_KUBECOST_URL = 'http://kubecost-cost-analyzer.kubecost:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -21,7 +21,7 @@ export function makeKubecostQuery(
   lockedNamespace?: string | null,
 ) {
   const config: KubecostConfig = {
-    url: kubecostConfig?.url || process.env.KUBECOST_URL || DEFAULT_KUBECOST_URL,
+    url: resolveConfigString(kubecostConfig?.url, 'KUBECOST_URL', DEFAULT_KUBECOST_URL),
     timeoutMs: resolveTimeoutMs(kubecostConfig?.timeoutMs, DEFAULT_TIMEOUT_MS),
     regexRedactionRules,
     lockedNamespace: lockedNamespace ?? undefined,
