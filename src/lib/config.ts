@@ -36,7 +36,7 @@ const TOOL_DEFAULTS = {
   newRelicQuery: false,
   // Disabled by default: requires CDK CLI on PATH and AWS credentials.
   cdkQuery: false,
-};
+} as const;
 
 // v.nullish handles both `undefined` (missing key) and `null` (empty YAML block,
 // e.g. `tools:` with no value), which js-yaml parses as null, not undefined.
