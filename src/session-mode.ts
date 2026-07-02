@@ -31,7 +31,7 @@ import { getMessage } from './lib/error-utils.ts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-function formatSession(s: SessionRecord): string {
+export function formatSession(s: SessionRecord): string {
   const label = s.name ? ` (${s.name})` : '';
   const last = s.lastPromptAt
     ? `last prompt ${new Date(s.lastPromptAt).toLocaleString()}`
@@ -42,6 +42,22 @@ function formatSession(s: SessionRecord): string {
 function die(msg: string, code = 1): never {
   process.stderr.write(`Error: ${msg}\n`);
   process.exit(code);
+}
+
+/** Resolve a session id from --session/-s, --session=<id>, or the first positional arg. */
+export function resolveSessionIdArg(args: string[]): string | undefined {
+  let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
+
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--session' || a === '-s') {
+      sessionId = args[++i];
+    } else if (a.startsWith('--session=')) {
+      sessionId = a.slice('--session='.length);
+    }
+  }
+
+  return sessionId;
 }
 
 function showHelp(): void {
@@ -185,18 +201,8 @@ function cmdList(): void {
   sessions.forEach((s) => process.stdout.write(`${formatSession(s)}\n\n`));
 }
 
-function cmdInfo(args: string[]): void {
-  let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--session' || a === '-s') {
-      sessionId = args[++i];
-    } else if (a.startsWith('--session=')) {
-      sessionId = a.slice('--session='.length);
-    }
-  }
-
+export function cmdInfo(args: string[]): void {
+  const sessionId = resolveSessionIdArg(args);
   if (!sessionId) die('session id is required — heimdall session info <id>');
 
   let session: SessionRecord;
@@ -208,18 +214,8 @@ function cmdInfo(args: string[]): void {
   process.stdout.write(`${formatSession(session)}\n`);
 }
 
-function cmdEnd(args: string[]): void {
-  let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i];
-    if (a === '--session' || a === '-s') {
-      sessionId = args[++i];
-    } else if (a.startsWith('--session=')) {
-      sessionId = a.slice('--session='.length);
-    }
-  }
-
+export function cmdEnd(args: string[]): void {
+  const sessionId = resolveSessionIdArg(args);
   if (!sessionId) die('session id is required — heimdall session end <id>');
 
   try {
