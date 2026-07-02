@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { resolveTimeoutMs, clampLimit, buildLockdownNote } from '../tool-config.ts';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { resolveTimeoutMs, clampLimit, buildLockdownNote, resolveConfigString } from '../tool-config.ts';
 
 describe('resolveTimeoutMs', () => {
   it('returns the provided value when it is a positive finite number', () => {
@@ -109,5 +109,39 @@ describe('buildLockdownNote', () => {
       throw new Error('should not be called');
     };
     expect(buildLockdownNote('', message)).toBe('');
+  });
+});
+
+describe('resolveConfigString', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('returns configValue when set, without reading env', () => {
+    vi.stubEnv('SOME_URL', 'http://env');
+    expect(resolveConfigString('http://config', 'SOME_URL', 'http://default')).toBe('http://config');
+  });
+
+  it('falls back to the env var when configValue is absent', () => {
+    vi.stubEnv('SOME_URL', 'http://env');
+    expect(resolveConfigString(undefined, 'SOME_URL', 'http://default')).toBe('http://env');
+    expect(resolveConfigString(null, 'SOME_URL', 'http://default')).toBe('http://env');
+    expect(resolveConfigString('', 'SOME_URL', 'http://default')).toBe('http://env');
+  });
+
+  it('checks multiple env vars in order and uses the first truthy one', () => {
+    vi.stubEnv('PRIMARY', '');
+    vi.stubEnv('SECONDARY', 'secondary-value');
+    expect(resolveConfigString(undefined, ['PRIMARY', 'SECONDARY'], 'default')).toBe('secondary-value');
+  });
+
+  it('returns fallback when configValue and all env vars are unset', () => {
+    vi.stubEnv('SOME_URL', '');
+    expect(resolveConfigString(undefined, 'SOME_URL', 'http://default')).toBe('http://default');
+  });
+
+  it('defaults fallback to an empty string when omitted', () => {
+    vi.stubEnv('SOME_KEY', '');
+    expect(resolveConfigString(undefined, 'SOME_KEY')).toBe('');
   });
 });
