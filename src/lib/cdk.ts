@@ -11,7 +11,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { writeAudit, type AuditConfig } from './audit.ts';
+import { writeAudit, type AuditConfig, type AuditEntry } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { getExecErrorDetail } from './error-utils.ts';
@@ -49,6 +49,24 @@ export function tokenizeCdkArgs(input: string): string[] {
   return tokens;
 }
 
+/** Builds the shared fields of a CDK audit entry so call sites only vary outcome/duration. */
+function cdkAuditEntry(
+  cmdStr: string,
+  startTs: string,
+  allowed: boolean,
+  outcome: AuditEntry['outcome'],
+  durationMs?: number,
+): AuditEntry {
+  return {
+    ts: startTs,
+    level: 'audit',
+    cmd: cmdStr,
+    allowed,
+    outcome,
+    ...(durationMs !== undefined ? { durationMs } : {}),
+  };
+}
+
 /**
  * Validate and run a read-only CDK CLI command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
@@ -72,7 +90,7 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   }
 
   if (!validation.allowed) {
-    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: false, outcome: 'blocked' }, audit);
+    await writeAudit(cdkAuditEntry(cmdStr, startTs, false, 'blocked'), audit);
     return `${BLOCKED_PREFIX}${validation.reason}`;
   }
 
@@ -90,12 +108,12 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
 
     const rawOutput = stdout.trim() || stderr.trim() || NO_OUTPUT_MESSAGE;
     const output = applyRedaction(rawOutput, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
+    await writeAudit(cdkAuditEntry(cmdStr, startTs, true, 'ok', Date.now() - startMs), audit);
     return truncate(output);
   } catch (error) {
     const rawDetail = getExecErrorDetail(error);
     const detail = applyRedaction(rawDetail, regexRedactionRules);
-    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
+    await writeAudit(cdkAuditEntry(cmdStr, startTs, true, 'error', Date.now() - startMs), audit);
     return truncate(`cdk exited with an error:\n${detail}`);
   }
 }
