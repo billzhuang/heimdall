@@ -10,33 +10,53 @@ import { resolve } from 'node:path';
 import * as yaml from 'js-yaml';
 import * as v from 'valibot';
 
+// Single source of truth for each tool's default enablement. Used both as the
+// per-field fallback below and as the group-level fallback for `v.nullish` (the
+// value substituted when the whole `tools:` block is absent or null) — keeping
+// the two in sync instead of maintaining the same defaults in two literals.
+const TOOL_DEFAULTS = {
+  kubectl: true,
+  listContexts: true,
+  listNamespaces: true,
+  helmRelease: true,
+  prometheusQuery: false,
+  // Disabled by default: requires AWS CLI credentials in the environment.
+  awsCli: false,
+  // Disabled by default: requires trivy binary on PATH.
+  trivyScan: false,
+  // Disabled by default: requires a running Kubecost instance.
+  kubecostQuery: false,
+  // Disabled by default: requires a running Grafana Loki instance.
+  lokiQuery: false,
+  // Disabled by default: requires a running Jaeger or Grafana Tempo instance.
+  jaegerQuery: false,
+  // Disabled by default: requires Datadog API key and app key.
+  datadogQuery: false,
+  // Disabled by default: requires New Relic API key and account ID.
+  newRelicQuery: false,
+  // Disabled by default: requires CDK CLI on PATH and AWS credentials.
+  cdkQuery: false,
+};
+
 // v.nullish handles both `undefined` (missing key) and `null` (empty YAML block,
 // e.g. `tools:` with no value), which js-yaml parses as null, not undefined.
 const ToolsSchema = v.nullish(
   v.object({
-    kubectl: v.nullish(v.boolean(), true),
-    listContexts: v.nullish(v.boolean(), true),
-    listNamespaces: v.nullish(v.boolean(), true),
-    helmRelease: v.nullish(v.boolean(), true),
-    prometheusQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires AWS CLI credentials in the environment.
-    awsCli: v.nullish(v.boolean(), false),
-    // Disabled by default: requires trivy binary on PATH.
-    trivyScan: v.nullish(v.boolean(), false),
-    // Disabled by default: requires a running Kubecost instance.
-    kubecostQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires a running Grafana Loki instance.
-    lokiQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires a running Jaeger or Grafana Tempo instance.
-    jaegerQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires Datadog API key and app key.
-    datadogQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires New Relic API key and account ID.
-    newRelicQuery: v.nullish(v.boolean(), false),
-    // Disabled by default: requires CDK CLI on PATH and AWS credentials.
-    cdkQuery: v.nullish(v.boolean(), false),
+    kubectl: v.nullish(v.boolean(), TOOL_DEFAULTS.kubectl),
+    listContexts: v.nullish(v.boolean(), TOOL_DEFAULTS.listContexts),
+    listNamespaces: v.nullish(v.boolean(), TOOL_DEFAULTS.listNamespaces),
+    helmRelease: v.nullish(v.boolean(), TOOL_DEFAULTS.helmRelease),
+    prometheusQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.prometheusQuery),
+    awsCli: v.nullish(v.boolean(), TOOL_DEFAULTS.awsCli),
+    trivyScan: v.nullish(v.boolean(), TOOL_DEFAULTS.trivyScan),
+    kubecostQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.kubecostQuery),
+    lokiQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.lokiQuery),
+    jaegerQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.jaegerQuery),
+    datadogQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.datadogQuery),
+    newRelicQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.newRelicQuery),
+    cdkQuery: v.nullish(v.boolean(), TOOL_DEFAULTS.cdkQuery),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false, cdkQuery: false },
+  TOOL_DEFAULTS,
 );
 
 function makeUrlTimeoutSchema(defaultTimeoutMs = 10_000) {
