@@ -36,7 +36,7 @@ import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList } from './lib/cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -235,13 +235,10 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
       const raw = arg.slice('--contexts='.length);
       requireNonEmptyValue(raw, '--contexts= requires a non-empty comma-separated list');
       opts.contexts = parseCommaSeparatedList(raw, '--contexts= value produced an empty list after parsing');
-    } else if (arg === '--model') {
-      requireNextArg(args, i, '--model requires a value');
-      modelFlag = args[++i];
-    } else if (arg.startsWith('--model=')) {
-      const m = arg.slice('--model='.length);
-      requireNonEmptyValue(m, '--model= requires a non-empty value');
-      modelFlag = m;
+    } else if (arg === '--model' || arg.startsWith('--model=')) {
+      const parsed = parseModelFlag(args, i);
+      modelFlag = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === '-h' || arg === '--help') {
       process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
 

@@ -22,6 +22,7 @@ import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
+import { parseModelFlag } from './lib/cli-args.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -146,17 +147,10 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
       source = s as AlertSource;
     } else if (arg === '--no-seed') {
       seed = false;
-    } else if (arg === '--model') {
-      if (!args[i + 1] || args[i + 1].startsWith('-')) {
-        process.stderr.write(`Error: --model requires a value\n`); process.exit(1);
-      }
-      modelFlag = args[++i];
-    } else if (arg.startsWith('--model=')) {
-      const m = arg.slice('--model='.length);
-      if (!m) {
-        process.stderr.write(`Error: --model= requires a non-empty value\n`); process.exit(1);
-      }
-      modelFlag = m;
+    } else if (arg === '--model' || arg.startsWith('--model=')) {
+      const parsed = parseModelFlag(args, i);
+      modelFlag = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === '-h' || arg === '--help') {
       process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
 

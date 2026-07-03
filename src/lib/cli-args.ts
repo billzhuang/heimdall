@@ -32,3 +32,28 @@ export function parseCommaSeparatedList(raw: string, emptyMsg: string): string[]
   }
   return Array.from(new Set(parsed));
 }
+
+/**
+ * Parse a `--model <value>` / `-m <value>` / `--model=<value>` style flag at
+ * `args[i]`. Call only when the caller has already matched `args[i]` against
+ * one of `aliases` or the `--model=` prefix. Writes an error to stderr and
+ * exit(1) when the value is missing or empty, matching `requireNextArg` /
+ * `requireNonEmptyValue`.
+ *
+ * Returns the parsed value and the loop index to resume from (`i` unchanged
+ * for the `=` form, `i + 1` after consuming the following token).
+ */
+export function parseModelFlag(
+  args: string[],
+  i: number,
+  aliases: string[] = ['--model'],
+): { value: string; nextIndex: number } {
+  const arg = args[i];
+  if (aliases.includes(arg)) {
+    requireNextArg(args, i, `${arg} requires a value`);
+    return { value: args[i + 1], nextIndex: i + 1 };
+  }
+  const value = arg.slice('--model='.length);
+  requireNonEmptyValue(value, '--model= requires a non-empty value');
+  return { value, nextIndex: i };
+}

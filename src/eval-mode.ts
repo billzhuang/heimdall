@@ -22,6 +22,7 @@ import {
 import { resolveBinPath } from './lib/bin-path.ts';
 import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { parseModelFlag } from './lib/cli-args.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -37,19 +38,10 @@ async function main(): Promise<void> {
       scenarioFilter = args[++i];
     } else if (args[i].startsWith('--scenario=')) {
       scenarioFilter = args[i].slice('--scenario='.length);
-    } else if (args[i] === '--model' || args[i] === '-m') {
-      if (!args[i + 1] || args[i + 1].startsWith('-')) {
-        process.stderr.write(`Error: ${args[i]} requires a value\n`);
-        process.exit(1);
-      }
-      modelFlag = args[++i];
-    } else if (args[i].startsWith('--model=')) {
-      const m = args[i].slice('--model='.length);
-      if (!m) {
-        process.stderr.write(`Error: --model= requires a non-empty value\n`);
-        process.exit(1);
-      }
-      modelFlag = m;
+    } else if (args[i] === '--model' || args[i] === '-m' || args[i].startsWith('--model=')) {
+      const parsed = parseModelFlag(args, i, ['--model', '-m']);
+      modelFlag = parsed.value;
+      i = parsed.nextIndex;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(`Usage: heimdall eval [--scenario <name-substring>]
 
