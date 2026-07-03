@@ -67,7 +67,7 @@ export async function execAndReport(params: ExecAndReportParams): Promise<string
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     if (passthroughOnError) {
       if (detail) return truncate(detail);
-      return truncate(`${bin} exited with an error:\n${String(error)}`);
+      return truncate(`${bin} exited with an error:\n${applyRedaction(String(error), regexRedactionRules)}`);
     }
     return truncate(`${bin} exited with an error:\n${detail}`);
   }
