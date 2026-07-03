@@ -14,7 +14,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
 import { clampLimit } from './tool-config.ts';
-import { formatQueryError, withTimeout } from './http.ts';
+import { formatHttpErrorMessage, formatQueryError, withTimeout } from './http.ts';
 
 export interface DatadogConfig {
   apiKey: string;
@@ -117,12 +117,6 @@ function resolveSecondsRange(
   );
 }
 
-async function datadogErrorMessage(response: Response, queryType: string): Promise<string> {
-  const body = await response.text().catch(() => '');
-  const detail = body ? `: ${body.slice(0, 200)}` : '';
-  return `Datadog ${queryType} HTTP ${response.status} ${response.statusText}${detail}`;
-}
-
 function buildHeaders(config: DatadogConfig): Record<string, string> {
   return {
     'DD-API-KEY': config.apiKey,
@@ -154,7 +148,7 @@ async function fetchDatadog(
     body: init?.body,
     signal,
   });
-  if (!response.ok) return { ok: false, error: await datadogErrorMessage(response, queryType) };
+  if (!response.ok) return { ok: false, error: await formatHttpErrorMessage(response, `Datadog ${queryType}`) };
   return { ok: true, text: await response.text() };
 }
 
