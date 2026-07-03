@@ -64,7 +64,7 @@ export interface CdkCommandValidationResult {
   subcommand: string | null;
 }
 
-import { tokenizeShellArgs } from './tokenizer.ts';
+import { tokenizeShellArgs, findNextNonOptionToken } from './tokenizer.ts';
 
 /**
  * CDK global options that consume the following token as their value.
@@ -104,29 +104,6 @@ export function tokenizeCdkCommand(command: string): string[] {
 }
 
 /**
- * Scan `parts` starting at `startIdx`, skipping past option flags and their
- * values, and return the index of the first positional (subcommand) token.
- * Returns `parts.length` when no positional token exists.
- *
- * Flags in CDK_OPTIONS_WITH_VALUE in their space form (`--flag value`) consume
- * the immediately following token as the value.  The equals form (`--flag=value`)
- * is a single token and does NOT consume the next token.
- */
-function consumeGlobalFlagsIndex(parts: string[], startIdx: number): number {
-  let i = startIdx;
-  while (i < parts.length) {
-    const part = parts[i];
-    if (!part.startsWith('-')) return i; // positional token found
-    // Space form: --flag value — skip the value token only for known value-taking flags.
-    if (!part.includes('=') && CDK_OPTIONS_WITH_VALUE.has(part)) {
-      if (i + 1 < parts.length) i++;
-    }
-    i++;
-  }
-  return parts.length;
-}
-
-/**
  * Parse a CDK CLI command string to extract the subcommand.
  * Handles global flags that take a value so an attacker cannot smuggle a
  * destructive subcommand past the parser (e.g. `cdk --app "node app.js" deploy`).
@@ -149,8 +126,8 @@ export function parseCdkCommand(command: string): ParsedCdkCommand {
   if (binary !== 'cdk' && !binary.endsWith('/cdk')) return result;
   result.isCdk = true;
 
-  const subIdx = consumeGlobalFlagsIndex(parts, 1);
-  if (subIdx < parts.length) {
+  const subIdx = findNextNonOptionToken(parts, 1, CDK_OPTIONS_WITH_VALUE);
+  if (subIdx !== -1) {
     result.subcommand = parts[subIdx].toLowerCase();
     result.args = parts.slice(subIdx + 1);
   }
