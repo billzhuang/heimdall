@@ -135,6 +135,25 @@ async function captureCheckpoint(
   };
 }
 
+/**
+ * Build the startup log lines announcing sweep scope: single- vs multi-cluster,
+ * and namespace vs all-namespaces vs default.
+ */
+export function buildSweepStartupMessages(opts: TriageOptions): string[] {
+  const messages: string[] = [];
+  messages.push(
+    opts.contexts && opts.contexts.length > 0
+      ? `[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}`
+      : '[heimdall-triage] Starting cluster health sweep...',
+  );
+  if (opts.namespace) {
+    messages.push(`[heimdall-triage] Scope: namespace "${opts.namespace}"`);
+  } else if (opts.allNamespaces) {
+    messages.push('[heimdall-triage] Scope: all namespaces');
+  }
+  return messages;
+}
+
 export async function runTriageMode(opts: TriageOptions = {}, model?: string): Promise<void> {
   const config = loadConfig();
   // Only inject SLO step when prometheusQuery is enabled; the slo-evaluator
@@ -176,20 +195,8 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
   const basePrompt = buildTriagePrompt({ ...opts, slos });
   const prompt = driftSection ? driftSection + basePrompt : basePrompt;
 
-  if (opts.contexts && opts.contexts.length > 0) {
-    process.stderr.write(`[heimdall-triage] Starting multi-cluster sweep across: ${opts.contexts.join(', ')}\n`);
-    if (opts.namespace) {
-      process.stderr.write(`[heimdall-triage] Scope: namespace "${opts.namespace}"\n`);
-    } else if (opts.allNamespaces) {
-      process.stderr.write('[heimdall-triage] Scope: all namespaces\n');
-    }
-  } else {
-    process.stderr.write('[heimdall-triage] Starting cluster health sweep...\n');
-    if (opts.namespace) {
-      process.stderr.write(`[heimdall-triage] Scope: namespace "${opts.namespace}"\n`);
-    } else if (opts.allNamespaces) {
-      process.stderr.write('[heimdall-triage] Scope: all namespaces\n');
-    }
+  for (const message of buildSweepStartupMessages(opts)) {
+    process.stderr.write(`${message}\n`);
   }
 
   const output = await runAgent(prompt, model);
