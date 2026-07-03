@@ -257,6 +257,19 @@ describe('runDatadogQuery — logs', () => {
     const body = JSON.parse(init.body as string);
     expect(body.filter.indexes).toBeUndefined();
   });
+
+  it('omits query from body when not provided (matches all logs)', async () => {
+    const fetchMock = mockFetch('{"data":[]}');
+
+    await runDatadogQuery(
+      { queryType: 'logs', from: '-1h' },
+      BASE_CONFIG,
+    );
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.filter.query).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
