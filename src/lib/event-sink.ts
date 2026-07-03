@@ -66,13 +66,16 @@ export class EventSink {
     const record = findingToRecord(finding);
     const { filePath, webhookUrl, s3Bucket } = this.cfg;
 
+    // File and webhook sinks are independent — run them concurrently so a
+    // slow webhook POST (10s timeout) can't delay the file write, or vice versa.
+    const writes: Promise<void>[] = [];
     if (filePath) {
-      await trySink('file', () => appendJsonlLine(record, filePath));
+      writes.push(trySink('file', () => appendJsonlLine(record, filePath)));
     }
-
     if (webhookUrl) {
-      await trySink('webhook', () => postWebhook(webhookUrl, record));
+      writes.push(trySink('webhook', () => postWebhook(webhookUrl, record)));
     }
+    await Promise.all(writes);
 
     if (s3Bucket) {
       process.stderr.write(
