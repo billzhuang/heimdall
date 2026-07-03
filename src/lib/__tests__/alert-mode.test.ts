@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { addKubectlResultIfValid } from '../../alert-mode.ts';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { addKubectlResultIfValid, validateSourceArg } from '../../alert-mode.ts';
 import { BLOCKED_PREFIX } from '../harness.ts';
 
 describe('addKubectlResultIfValid', () => {
@@ -46,5 +46,40 @@ describe('addKubectlResultIfValid', () => {
       '--- label-1 ---\noutput-1',
       '--- label-4 ---\noutput-4',
     ]);
+  });
+});
+
+describe('validateSourceArg', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(['grafana', 'prometheus', 'pagerduty', 'raw'] as const)(
+    'returns %s unchanged for a valid source',
+    (source) => {
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+      expect(validateSourceArg(source)).toBe(source);
+      expect(exitSpy).not.toHaveBeenCalled();
+    },
+  );
+
+  it('writes an error and exits(1) for an unrecognized value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    validateSourceArg('datadog');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes an error and exits(1) for an empty value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    validateSourceArg('');
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
