@@ -46,6 +46,15 @@ function findingToRecord(finding: WatchFinding): EventSinkRecord {
   };
 }
 
+/** Run a sink write, logging (not throwing) any failure so other sinks still run. */
+async function trySink(label: string, write: () => Promise<void>): Promise<void> {
+  try {
+    await write();
+  } catch (err) {
+    process.stderr.write(`[heimdall-watch] EventSink ${label} error: ${String(err)}\n`);
+  }
+}
+
 export class EventSink {
   private readonly cfg: EventSinkConfig;
 
@@ -55,26 +64,19 @@ export class EventSink {
 
   async write(finding: WatchFinding): Promise<void> {
     const record = findingToRecord(finding);
+    const { filePath, webhookUrl, s3Bucket } = this.cfg;
 
-    if (this.cfg.filePath) {
-      try {
-        await appendJsonlLine(record, this.cfg.filePath);
-      } catch (err) {
-        process.stderr.write(`[heimdall-watch] EventSink file error: ${String(err)}\n`);
-      }
+    if (filePath) {
+      await trySink('file', () => appendJsonlLine(record, filePath));
     }
 
-    if (this.cfg.webhookUrl) {
-      try {
-        await postWebhook(this.cfg.webhookUrl, record);
-      } catch (err) {
-        process.stderr.write(`[heimdall-watch] EventSink webhook error: ${String(err)}\n`);
-      }
+    if (webhookUrl) {
+      await trySink('webhook', () => postWebhook(webhookUrl, record));
     }
 
-    if (this.cfg.s3Bucket) {
+    if (s3Bucket) {
       process.stderr.write(
-        `[heimdall-watch] EventSink: s3Bucket sink is not yet implemented (bucket: ${this.cfg.s3Bucket})\n`,
+        `[heimdall-watch] EventSink: s3Bucket sink is not yet implemented (bucket: ${s3Bucket})\n`,
       );
     }
   }
