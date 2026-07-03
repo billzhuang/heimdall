@@ -21,7 +21,7 @@ import {
   isJsonOutput,
   matchMock,
   NO_OUTPUT_MESSAGE,
-  parseDurationMs,
+  parseK8sDurationMs,
   getWaitTimeoutMs,
   resolveCacheUser,
   runKubectl,
@@ -100,62 +100,62 @@ describe('isJsonOutput', () => {
   });
 });
 
-describe('parseDurationMs', () => {
+describe('parseK8sDurationMs', () => {
   it('parses seconds', () => {
-    expect(parseDurationMs('30s')).toBe(30_000);
-    expect(parseDurationMs('1s')).toBe(1_000);
+    expect(parseK8sDurationMs('30s')).toBe(30_000);
+    expect(parseK8sDurationMs('1s')).toBe(1_000);
   });
 
   it('parses minutes', () => {
-    expect(parseDurationMs('2m')).toBe(120_000);
+    expect(parseK8sDurationMs('2m')).toBe(120_000);
   });
 
   it('parses hours', () => {
-    expect(parseDurationMs('1h')).toBe(3_600_000);
+    expect(parseK8sDurationMs('1h')).toBe(3_600_000);
   });
 
   it('parses compound durations', () => {
-    expect(parseDurationMs('1h30m')).toBe(5_400_000);
-    expect(parseDurationMs('2m30s')).toBe(150_000);
-    expect(parseDurationMs('1h30m45s')).toBe(5_445_000);
+    expect(parseK8sDurationMs('1h30m')).toBe(5_400_000);
+    expect(parseK8sDurationMs('2m30s')).toBe(150_000);
+    expect(parseK8sDurationMs('1h30m45s')).toBe(5_445_000);
   });
 
   it('returns null for unrecognised input', () => {
-    expect(parseDurationMs('')).toBeNull();
-    expect(parseDurationMs('0s')).toBeNull();
-    expect(parseDurationMs('abc')).toBeNull();
+    expect(parseK8sDurationMs('')).toBeNull();
+    expect(parseK8sDurationMs('0s')).toBeNull();
+    expect(parseK8sDurationMs('abc')).toBeNull();
   });
 
   it('returns null for all-zero compound duration', () => {
-    expect(parseDurationMs('0h0m0s')).toBeNull();
+    expect(parseK8sDurationMs('0h0m0s')).toBeNull();
   });
 
   it('accepts leading-zero component when total is non-zero', () => {
-    expect(parseDurationMs('0m30s')).toBe(30_000);
+    expect(parseK8sDurationMs('0m30s')).toBe(30_000);
   });
 
   it('accepts seconds value exceeding 59', () => {
-    expect(parseDurationMs('100s')).toBe(100_000);
+    expect(parseK8sDurationMs('100s')).toBe(100_000);
   });
 
   it('accepts minutes value of 60 or more', () => {
-    expect(parseDurationMs('60m')).toBe(3_600_000);
+    expect(parseK8sDurationMs('60m')).toBe(3_600_000);
   });
 
   it('returns null for out-of-order units (s before m)', () => {
-    expect(parseDurationMs('1s2m')).toBeNull();
+    expect(parseK8sDurationMs('1s2m')).toBeNull();
   });
 
   it('returns null for unsupported millisecond unit', () => {
-    expect(parseDurationMs('1ms')).toBeNull();
+    expect(parseK8sDurationMs('1ms')).toBeNull();
   });
 
   it('returns null for unsupported day unit', () => {
-    expect(parseDurationMs('1d')).toBeNull();
+    expect(parseK8sDurationMs('1d')).toBeNull();
   });
 
   it('returns null for a bare number without a unit', () => {
-    expect(parseDurationMs('1')).toBeNull();
+    expect(parseK8sDurationMs('1')).toBeNull();
   });
 });
 

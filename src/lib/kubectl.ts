@@ -126,9 +126,14 @@ function hasContextFlag(argv: string[]): boolean {
 /**
  * Parse a Kubernetes/Go duration string (e.g. "30s", "2m", "1h30m") to milliseconds.
  * Returns null for unrecognised formats; 0-ms durations also return null.
+ *
+ * Named distinctly from `duration.ts`'s `parseDurationMs` — that one parses a
+ * different, single-unit grammar (`"500ms"`, `"1.5h"`, `"2d"`) and returns
+ * null for the combined k8s form this function accepts (`"1h30m"`), so the
+ * two are not interchangeable despite the similar purpose.
  * Exported so tests can cover it without spawning kubectl.
  */
-export function parseDurationMs(s: string): number | null {
+export function parseK8sDurationMs(s: string): number | null {
   if (!s) return null;
   const m = s.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
   if (!m || m[0] === '') return null;
@@ -147,8 +152,8 @@ export function parseDurationMs(s: string): number | null {
 export function getWaitTimeoutMs(argv: string[]): number | null {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--timeout' && i + 1 < argv.length) return parseDurationMs(argv[i + 1]);
-    if (arg.startsWith('--timeout=')) return parseDurationMs(arg.slice('--timeout='.length));
+    if (arg === '--timeout' && i + 1 < argv.length) return parseK8sDurationMs(argv[i + 1]);
+    if (arg.startsWith('--timeout=')) return parseK8sDurationMs(arg.slice('--timeout='.length));
   }
   return null;
 }
