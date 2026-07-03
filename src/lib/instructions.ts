@@ -212,7 +212,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
 - slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.
 - certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${
-  conditionalSubagentGroups.map((g) => optionalLines(g.enabled ? g.lines : [])).join('')}`);
+  optionalLines(conditionalSubagentGroups.flatMap((g) => g.enabled ? g.lines : []))}`);
 
   sections.push(RESPONSE_FORMAT);
 
