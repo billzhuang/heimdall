@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { withTimeout, fetchWithTimeout, readErrorDetail, formatQueryError, makeResponseHandler } from '../http.ts';
+import { withTimeout, fetchWithTimeout, readErrorDetail, formatHttpErrorMessage, formatQueryError, makeResponseHandler } from '../http.ts';
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
@@ -182,6 +182,56 @@ describe('readErrorDetail', () => {
     const response = { text: () => Promise.resolve('token=secret123') } as unknown as Response;
     const rules = [{ name: 'token', re: /token=[^\s]+/g }];
     expect(await readErrorDetail(response, rules)).toBe(': [REDACTED:token]');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatHttpErrorMessage
+// ---------------------------------------------------------------------------
+
+describe('formatHttpErrorMessage', () => {
+  it('formats "<label> HTTP <status> <statusText>: <body>" for a non-empty body', async () => {
+    const response = {
+      status: 404,
+      statusText: 'Not Found',
+      text: () => Promise.resolve('no such dashboard'),
+    } as unknown as Response;
+    expect(await formatHttpErrorMessage(response, 'Datadog metrics')).toBe(
+      'Datadog metrics HTTP 404 Not Found: no such dashboard',
+    );
+  });
+
+  it('omits the body suffix when the body is empty', async () => {
+    const response = {
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: () => Promise.resolve(''),
+    } as unknown as Response;
+    expect(await formatHttpErrorMessage(response, 'New Relic NerdGraph')).toBe(
+      'New Relic NerdGraph HTTP 502 Bad Gateway',
+    );
+  });
+
+  it('truncates the body to 200 chars', async () => {
+    const long = 'x'.repeat(300);
+    const response = {
+      status: 500,
+      statusText: 'Internal Server Error',
+      text: () => Promise.resolve(long),
+    } as unknown as Response;
+    const message = await formatHttpErrorMessage(response, 'Datadog logs');
+    expect(message).toBe(`Datadog logs HTTP 500 Internal Server Error: ${'x'.repeat(200)}`);
+  });
+
+  it('swallows response.text() rejections, including AbortError, and returns the bare message', async () => {
+    const response = {
+      status: 503,
+      statusText: 'Service Unavailable',
+      text: () => Promise.reject(makeAbortError()),
+    } as unknown as Response;
+    expect(await formatHttpErrorMessage(response, 'New Relic NerdGraph')).toBe(
+      'New Relic NerdGraph HTTP 503 Service Unavailable',
+    );
   });
 });
 

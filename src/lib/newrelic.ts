@@ -13,7 +13,7 @@ import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { resolveTimeISO } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { clampLimit } from './tool-config.ts';
-import { formatQueryError, withTimeout } from './http.ts';
+import { formatHttpErrorMessage, formatQueryError, withTimeout } from './http.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -102,11 +102,7 @@ async function nerdgraph(
     signal,
   });
 
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    const detail = body ? `: ${body.slice(0, 200)}` : '';
-    return `New Relic NerdGraph HTTP ${response.status} ${response.statusText}${detail}`;
-  }
+  if (!response.ok) return formatHttpErrorMessage(response, 'New Relic NerdGraph');
   return await response.text();
 }
 

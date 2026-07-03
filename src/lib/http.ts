@@ -70,6 +70,17 @@ export function makeResponseHandler(
 }
 
 /**
+ * Format a non-2xx fetch Response as "<label> HTTP <status> <statusText>[: <body>]",
+ * capping the body detail at 200 characters. Body-read failures (including an
+ * abort) are swallowed, producing the bare "HTTP <status> <statusText>" message.
+ */
+export async function formatHttpErrorMessage(response: Response, label: string): Promise<string> {
+  const body = await response.text().catch(() => '');
+  const detail = body ? `: ${body.slice(0, 200)}` : '';
+  return `${label} HTTP ${response.status} ${response.statusText}${detail}`;
+}
+
+/**
  * Format a caught fetch error as a human-readable string.
  * AbortErrors produce a timeout message; all other errors produce a "failed" message.
  * The error message is redacted before returning.
