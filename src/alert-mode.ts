@@ -78,6 +78,21 @@ async function runAgent(prompt: string, model?: string): Promise<void> {
 
 type AlertSource = 'grafana' | 'prometheus' | 'pagerduty' | 'raw';
 
+const ALERT_SOURCES: readonly AlertSource[] = ['grafana', 'prometheus', 'pagerduty', 'raw'];
+
+/**
+ * Validate a raw `--source` CLI value against the known alert-source picklist.
+ * Writes an error to stderr and exit(1)s on an unrecognized value.
+ */
+export function validateSourceArg(value: string): AlertSource {
+  if (!(ALERT_SOURCES as readonly string[]).includes(value)) {
+    const list = `${ALERT_SOURCES.slice(0, -1).join(', ')}, or ${ALERT_SOURCES[ALERT_SOURCES.length - 1]}`;
+    process.stderr.write(`Error: --source must be ${list}\n`);
+    process.exit(1);
+  }
+  return value as AlertSource;
+}
+
 export async function runAlertMode(opts: { source: AlertSource; input: string; seed: boolean; model?: string }): Promise<void> {
   let alerts: ParsedAlert[];
 
@@ -134,17 +149,9 @@ if (fileURLToPath(import.meta.url) === process.argv[1]) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if ((arg === '--source' || arg === '-s') && args[i + 1]) {
-      const s = args[++i];
-      if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
-        process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
-      }
-      source = s;
+      source = validateSourceArg(args[++i]);
     } else if (arg.startsWith('--source=')) {
-      const s = arg.slice('--source='.length);
-      if (s !== 'grafana' && s !== 'prometheus' && s !== 'pagerduty' && s !== 'raw') {
-        process.stderr.write(`Error: --source must be grafana, prometheus, pagerduty, or raw\n`); process.exit(1);
-      }
-      source = s as AlertSource;
+      source = validateSourceArg(arg.slice('--source='.length));
     } else if (arg === '--no-seed') {
       seed = false;
     } else if (arg === '--model' || arg.startsWith('--model=')) {
