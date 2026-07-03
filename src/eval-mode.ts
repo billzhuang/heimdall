@@ -15,7 +15,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadScenarios,
-  runScenario,
+  runAllScenarios,
   type EvalScenario,
   type EvalResult,
 } from './lib/eval-runner.ts';
@@ -27,7 +27,7 @@ export type { EvalScenario, EvalResult };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let scenarioFilter: string | undefined;
   let modelFlag: string | undefined;
@@ -97,22 +97,19 @@ Examples:
 
   process.stdout.write(`\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'}...\n\n`);
 
-  const results: EvalResult[] = [];
-  for (const { scenario } of scenarios) {
-    const name = scenario.description;
-    process.stdout.write(`  Running: ${name}\n`);
-    const result = await runScenario(binPath, scenario);
-    results.push(result);
-
-    if (result.passed) {
-      process.stdout.write(`  ✓ PASS  ${name}\n`);
-    } else {
-      process.stdout.write(`  ✗ FAIL  ${name}\n`);
-      for (const failure of result.failures) {
-        process.stdout.write(`         - ${failure}\n`);
+  const results: EvalResult[] = await runAllScenarios(binPath, scenarios, {
+    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
+        for (const failure of result.failures) {
+          process.stdout.write(`         - ${failure}\n`);
+        }
       }
-    }
-  }
+    },
+  });
 
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;
@@ -124,7 +121,9 @@ Examples:
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
-  process.exit(1);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
+    process.exit(1);
+  });
+}

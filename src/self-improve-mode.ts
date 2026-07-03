@@ -18,7 +18,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadScenarios,
-  runScenario,
+  runAllScenarios,
   type EvalResult,
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
@@ -39,7 +39,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const LEARNING_LOG_NAME = 'learning-log.jsonl';
 const TASK_HISTORY_NAME = 'task-history.jsonl';
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = process.argv.slice(2);
   let scenarioFilter: string | undefined;
   let reflect = false;
@@ -154,21 +154,19 @@ Examples:
   );
 
   const binPath = resolveBinPath(__dirname);
-  const results: EvalResult[] = [];
-  for (const { scenario } of scenarios) {
-    process.stdout.write(`  Running: ${scenario.description}\n`);
-    const result = await runScenario(binPath, scenario);
-    results.push(result);
-
-    if (result.passed) {
-      process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
-    } else {
-      process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
-      for (const failure of result.failures) {
-        process.stdout.write(`         - ${failure}\n`);
+  const results: EvalResult[] = await runAllScenarios(binPath, scenarios, {
+    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
+        for (const failure of result.failures) {
+          process.stdout.write(`         - ${failure}\n`);
+        }
       }
-    }
-  }
+    },
+  });
 
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;
@@ -231,7 +229,9 @@ Examples:
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[heimdall-self-improve] Fatal error: ${getStackOrMessage(err)}\n`);
-  process.exit(1);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`[heimdall-self-improve] Fatal error: ${getStackOrMessage(err)}\n`);
+    process.exit(1);
+  });
+}
