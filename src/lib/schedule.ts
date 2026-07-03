@@ -21,17 +21,65 @@ export interface ScheduledTriageConfig {
   allNamespaces?: boolean | null;
 }
 
+/** Structural form of a single non-comma cron sub-expression (see {@link parseCronPart}). */
+type CronPartAst =
+  | { readonly kind: 'wildcard' }
+  | { readonly kind: 'step'; readonly step: number }
+  | { readonly kind: 'range'; readonly lo: number; readonly hi: number }
+  | { readonly kind: 'rangeStep'; readonly lo: number; readonly hi: number; readonly step: number }
+  | { readonly kind: 'startStep'; readonly start: number; readonly step: number }
+  | { readonly kind: 'exact'; readonly value: number };
+
+/**
+ * Parse a single non-comma cron sub-expression into its structural form.
+ *
+ * Shared by matchesCronField (matching) and validateCronPart (bounds checking)
+ * so both recognize exactly the same syntax:
+ *   *        - wildcard
+ *   STAR/n   - every nth value starting from the field's lower bound
+ *   a-b/n    - range with step (checked before plain a-b to avoid partial match)
+ *   a-b      - inclusive range
+ *   n/s      - start-value with step (e.g. 5/15 → 5, 20, 35, 50)
+ *   n        - exact value
+ *
+ * Returns undefined when `part` matches none of the above (including a bare
+ * non-numeric token).
+ */
+function parseCronPart(part: string): CronPartAst | undefined {
+  if (part === '*') return { kind: 'wildcard' };
+
+  const stepMatch = part.match(/^\*\/(\d+)$/);
+  if (stepMatch) return { kind: 'step', step: parseInt(stepMatch[1], 10) };
+
+  const rangeStepMatch = part.match(/^(\d+)-(\d+)\/(\d+)$/);
+  if (rangeStepMatch) {
+    return {
+      kind: 'rangeStep',
+      lo: parseInt(rangeStepMatch[1], 10),
+      hi: parseInt(rangeStepMatch[2], 10),
+      step: parseInt(rangeStepMatch[3], 10),
+    };
+  }
+
+  const rangeMatch = part.match(/^(\d+)-(\d+)$/);
+  if (rangeMatch) {
+    return { kind: 'range', lo: parseInt(rangeMatch[1], 10), hi: parseInt(rangeMatch[2], 10) };
+  }
+
+  const startStepMatch = part.match(/^(\d+)\/(\d+)$/);
+  if (startStepMatch) {
+    return { kind: 'startStep', start: parseInt(startStepMatch[1], 10), step: parseInt(startStepMatch[2], 10) };
+  }
+
+  const num = parseInt(part, 10);
+  return isNaN(num) ? undefined : { kind: 'exact', value: num };
+}
+
 /**
  * Check whether a cron field value matches a single cron field descriptor.
  *
- * Supported patterns:
- *   *        - always matches
- *   n        - exact value
- *   a-b      - inclusive range
- *   a-b/n    - range with step: values from a to b where (value - a) % n === 0
- *   n/s      - start-value with step: values >= n where (value - n) % s === 0
- *   STAR/n   - every nth value starting from lowerBound (e.g. dom/month fields start at 1)
- *   a,b,c    - comma-separated list of the above
+ * Supported patterns: see {@link parseCronPart}; `a,b,c` comma-separated lists
+ * of the above are also supported.
  *
  * @param lowerBound  Start of the field's valid range (0 for minute/hour/dow, 1 for dom/month).
  */
@@ -41,43 +89,23 @@ export function matchesCronField(value: number, field: string, lowerBound = 0): 
     return field.split(',').some((sub) => matchesCronField(value, sub.trim(), lowerBound));
   }
 
-  if (field === '*') return true;
+  const ast = parseCronPart(field);
+  if (!ast) return false;
 
-  // */n  — every nth value starting from lowerBound
-  const stepMatch = field.match(/^\*\/(\d+)$/);
-  if (stepMatch) {
-    const step = parseInt(stepMatch[1], 10);
-    return step > 0 && (value - lowerBound) % step === 0;
+  switch (ast.kind) {
+    case 'wildcard':
+      return true;
+    case 'step':
+      return ast.step > 0 && (value - lowerBound) % ast.step === 0;
+    case 'rangeStep':
+      return ast.step > 0 && value >= ast.lo && value <= ast.hi && (value - ast.lo) % ast.step === 0;
+    case 'range':
+      return value >= ast.lo && value <= ast.hi;
+    case 'startStep':
+      return ast.step > 0 && value >= ast.start && (value - ast.start) % ast.step === 0;
+    case 'exact':
+      return value === ast.value;
   }
-
-  // a-b/n  — range with step (must be tested before plain a-b to avoid partial match)
-  const rangeStepMatch = field.match(/^(\d+)-(\d+)\/(\d+)$/);
-  if (rangeStepMatch) {
-    const lo = parseInt(rangeStepMatch[1], 10);
-    const hi = parseInt(rangeStepMatch[2], 10);
-    const step = parseInt(rangeStepMatch[3], 10);
-    return step > 0 && value >= lo && value <= hi && (value - lo) % step === 0;
-  }
-
-  // a-b  — inclusive range
-  const rangeMatch = field.match(/^(\d+)-(\d+)$/);
-  if (rangeMatch) {
-    const lo = parseInt(rangeMatch[1], 10);
-    const hi = parseInt(rangeMatch[2], 10);
-    return value >= lo && value <= hi;
-  }
-
-  // n/s  — start-value with step (e.g. 5/15 → 5, 20, 35, 50)
-  const startStepMatch = field.match(/^(\d+)\/(\d+)$/);
-  if (startStepMatch) {
-    const start = parseInt(startStepMatch[1], 10);
-    const step = parseInt(startStepMatch[2], 10);
-    return step > 0 && value >= start && (value - start) % step === 0;
-  }
-
-  // Exact numeric value
-  const num = parseInt(field, 10);
-  return !isNaN(num) && value === num;
 }
 
 function outOfRangeError(name: string, field: string, lo: number, hi: number): string {
@@ -108,30 +136,24 @@ export function validateCronPart(
 ): string | undefined {
   if (part === '*' || part.startsWith('*/')) return undefined;
 
-  // a-b or a-b/n — validate range bounds and optional step
-  const rangeM = part.match(/^(\d+)-(\d+)(\/(\d+))?$/);
-  if (rangeM) {
-    const a = parseInt(rangeM[1], 10);
-    const b = parseInt(rangeM[2], 10);
-    if (a > b || a < lo || b > hi) return outOfRangeError(name, field, lo, hi);
-    if (rangeM[4] !== undefined && parseInt(rangeM[4], 10) === 0) return stepZeroError(name, field);
-    return undefined;
-  }
+  const ast = parseCronPart(part);
+  if (!ast) return outOfRangeError(name, field, lo, hi);
 
-  // n/s — start-value with step: validate starting value and step
-  const startStepM = part.match(/^(\d+)\/(\d+)$/);
-  if (startStepM) {
-    const n = parseInt(startStepM[1], 10);
-    const s = parseInt(startStepM[2], 10);
-    if (n < lo || n > hi) return outOfRangeError(name, field, lo, hi);
-    if (s === 0) return stepZeroError(name, field);
-    return undefined;
+  switch (ast.kind) {
+    case 'wildcard':
+    case 'step':
+      return undefined;
+    case 'rangeStep':
+      if (ast.lo > ast.hi || ast.lo < lo || ast.hi > hi) return outOfRangeError(name, field, lo, hi);
+      return ast.step === 0 ? stepZeroError(name, field) : undefined;
+    case 'range':
+      return ast.lo > ast.hi || ast.lo < lo || ast.hi > hi ? outOfRangeError(name, field, lo, hi) : undefined;
+    case 'startStep':
+      if (ast.start < lo || ast.start > hi) return outOfRangeError(name, field, lo, hi);
+      return ast.step === 0 ? stepZeroError(name, field) : undefined;
+    case 'exact':
+      return ast.value < lo || ast.value > hi ? outOfRangeError(name, field, lo, hi) : undefined;
   }
-
-  // Exact numeric value
-  const n = parseInt(part, 10);
-  if (isNaN(n) || n < lo || n > hi) return outOfRangeError(name, field, lo, hi);
-  return undefined;
 }
 
 /** Per-field metadata for cron validation. day-of-week upper bound is 7 (Sunday alias). */
