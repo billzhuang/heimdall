@@ -139,6 +139,11 @@ export function validateCronPart(
   lo: number,
   hi: number,
 ): string | undefined {
+  // Wildcard and step forms are never bounds-checked (even */0 passes here —
+  // validateCronExpression's separate hasMatch scan is what rejects */0).
+  // The 'wildcard'/'step' switch cases below are unreachable in practice but
+  // kept for exhaustiveness; don't add step>0 validation there believing it
+  // will run.
   if (part === '*' || part.startsWith('*/')) return undefined;
 
   const ast = parseCronPart(part);
