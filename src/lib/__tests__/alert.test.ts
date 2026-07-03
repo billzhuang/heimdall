@@ -5,6 +5,7 @@ import {
   parsePagerDutyV2Payload,
   parsePagerDutyV3Payload,
   parsePagerDutyPayload,
+  resolveDeploymentFallback,
 } from '../alert.ts';
 
 // ── parseAlertManagerPayload ─────────────────────────────────────────────────
@@ -227,6 +228,26 @@ describe('buildAlertPrompt', () => {
     });
     expect(prompt).toContain('Summary: High memory usage');
     expect(prompt).toContain('Description: Worker nodes are under pressure');
+  });
+});
+
+// ── resolveDeploymentFallback ────────────────────────────────────────────────
+
+describe('resolveDeploymentFallback', () => {
+  it('prefers an explicit serviceMap deployment mapping', () => {
+    expect(resolveDeploymentFallback({ namespace: 'prod', deployment: 'api' }, 'api-service')).toBe('api');
+  });
+
+  it('returns undefined when serviceMap maps a namespace only', () => {
+    expect(resolveDeploymentFallback({ namespace: 'prod' }, 'api-service')).toBeUndefined();
+  });
+
+  it('falls back to the raw service name when the service is unmapped', () => {
+    expect(resolveDeploymentFallback({}, 'api-service')).toBe('api-service');
+  });
+
+  it('returns undefined when the service is unmapped and no service name is given', () => {
+    expect(resolveDeploymentFallback({}, undefined)).toBeUndefined();
   });
 });
 
