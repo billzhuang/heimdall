@@ -163,31 +163,36 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
 
   sections.push(READ_ONLY_POLICY);
 
-  const awsSubagentLines = has('awsCli') ? [
-    '- eks-troubleshooter — EKS cluster issues, node groups, managed node scaling, EKS add-ons.',
-    '- iam-auditor — IAM policies, roles, permissions, trust relationships, least-privilege review.',
-    '- aws-resource-analyzer — AWS resource inventory, configuration checks, quota/limit inspection.',
-  ] : [];
-
-  const finopsSubagentLines = has('kubecostQuery') ? [
-    '- cost-analyzer — FinOps deep-dive: namespace/workload cost attribution, cost trend analysis, rightsizing recommendations using Kubecost data.',
-  ] : [];
-
-  const datadogSubagentLines = has('datadogQuery') ? [
-    '- datadog-investigator — Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.',
-  ] : [];
-
-  const newRelicSubagentLines = has('newRelicQuery') ? [
-    '- newrelic-investigator — New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.',
-  ] : [];
-
-  const goldenSignalsSubagentLines = (has('prometheusQuery') || has('datadogQuery') || has('newRelicQuery')) ? [
-    '- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.',
-  ] : [];
-
-  const cdkSubagentLines = has('cdkQuery') ? [
-    '- cdk-investigator — CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.',
-  ] : [];
+  const conditionalSubagentGroups: Array<{ enabled: boolean; lines: string[] }> = [
+    {
+      enabled: has('awsCli'),
+      lines: [
+        '- eks-troubleshooter — EKS cluster issues, node groups, managed node scaling, EKS add-ons.',
+        '- iam-auditor — IAM policies, roles, permissions, trust relationships, least-privilege review.',
+        '- aws-resource-analyzer — AWS resource inventory, configuration checks, quota/limit inspection.',
+      ],
+    },
+    {
+      enabled: has('kubecostQuery'),
+      lines: ['- cost-analyzer — FinOps deep-dive: namespace/workload cost attribution, cost trend analysis, rightsizing recommendations using Kubecost data.'],
+    },
+    {
+      enabled: has('datadogQuery'),
+      lines: ['- datadog-investigator — Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.'],
+    },
+    {
+      enabled: has('newRelicQuery'),
+      lines: ['- newrelic-investigator — New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.'],
+    },
+    {
+      enabled: has('prometheusQuery') || has('datadogQuery') || has('newRelicQuery'),
+      lines: ['- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.'],
+    },
+    {
+      enabled: has('cdkQuery'),
+      lines: ['- cdk-investigator — CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.'],
+    },
+  ];
 
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
@@ -207,12 +212,7 @@ Delegate with your task capability when a problem needs deep, focused analysis:
 - capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
 - slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.
 - certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${
-  optionalLines(awsSubagentLines)}${
-  optionalLines(finopsSubagentLines)}${
-  optionalLines(datadogSubagentLines)}${
-  optionalLines(newRelicSubagentLines)}${
-  optionalLines(goldenSignalsSubagentLines)}${
-  optionalLines(cdkSubagentLines)}`);
+  optionalLines(conditionalSubagentGroups.flatMap((g) => g.enabled ? g.lines : []))}`);
 
   sections.push(RESPONSE_FORMAT);
 
