@@ -69,7 +69,11 @@ function fakeSignalTarget(): SignalTarget & { emit(event: 'SIGINT' | 'SIGTERM'):
       listeners.get(event)?.delete(listener);
     },
     emit(event) {
-      for (const listener of listeners.get(event) ?? []) listener();
+      const set = listeners.get(event);
+      if (!set) return;
+      const copy = Array.from(set);
+      set.clear();
+      for (const listener of copy) listener();
     },
     listenerCount() {
       let count = 0;
