@@ -28,6 +28,16 @@ export function fetchWithTimeout<T>(
   return withTimeout(timeoutMs, (signal) => fetch(url, { signal }).then(handler));
 }
 
+/** Cap a body string at 200 characters and format it as a `: <body>` suffix (empty string when blank). */
+function truncatedDetail(body: string): string {
+  return body ? `: ${body.slice(0, 200)}` : '';
+}
+
+/** Format `"<label> HTTP <status> <statusText><detail>"` for a non-2xx Response. */
+function formatHttpStatusLine(label: string, response: Response, detail: string): string {
+  return `${label} HTTP ${response.status} ${response.statusText}${detail}`;
+}
+
 /**
  * Read the error body from a non-2xx response, apply redaction, and format it
  * as a `: <body>` detail string (empty string when the body is blank).
@@ -39,8 +49,7 @@ export async function readErrorDetail(
 ): Promise<string> {
   try {
     const body = await response.text();
-    const redacted = applyRedaction(body, redactionRules);
-    return redacted ? `: ${redacted.slice(0, 200)}` : '';
+    return truncatedDetail(applyRedaction(body, redactionRules));
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') throw err;
     return '';
@@ -62,7 +71,7 @@ export function makeResponseHandler(
   return async (response) => {
     if (!response.ok) {
       const detail = await readErrorDetail(response, rules);
-      return `${serviceName} HTTP ${response.status} ${response.statusText}${detail}`;
+      return formatHttpStatusLine(serviceName, response, detail);
     }
     const text = await response.text();
     return truncate(applyRedaction(text, rules));
@@ -76,8 +85,7 @@ export function makeResponseHandler(
  */
 export async function formatHttpErrorMessage(response: Response, label: string): Promise<string> {
   const body = await response.text().catch(() => '');
-  const detail = body ? `: ${body.slice(0, 200)}` : '';
-  return `${label} HTTP ${response.status} ${response.statusText}${detail}`;
+  return formatHttpStatusLine(label, response, truncatedDetail(body));
 }
 
 /**
