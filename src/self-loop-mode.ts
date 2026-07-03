@@ -78,8 +78,48 @@ async function saveProposal(
   await writeFile(file, llmResponse, 'utf8');
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export interface SelfLoopCliArgs {
+  maxIterations: number;
+  dryRun: boolean;
+  backend: string;
+  scenarioFilter?: string;
+  cliLogPath?: string;
+  reflectionTimeoutMs: number;
+}
+
+const HELP_TEXT = `Usage: heimdall self-loop [options]
+
+Run the automated self-improvement loop: eval → reflect → patch → re-eval → keep/revert.
+
+Options:
+  --max-iterations, -n <N>  Maximum improvement iterations (default: ${DEFAULT_MAX_ITERATIONS})
+  --dry-run                  Show proposals without applying them to instructions.ts
+  --backend, -b <name>       LLM backend for reflection: 'claude-cli' (default) or 'codex-cli'
+  --scenario, -s <name>      Run only scenarios whose filename contains <name>
+  --log-path, -l <path>      Write the learning log to <path>
+  --timeout <seconds>        LLM reflection timeout in seconds (default: 180)
+  -h, --help                 Show this help message
+
+The loop stops when:
+  - All scenarios pass (score = 1.0)
+  - An iteration produces no improvement
+  - --max-iterations is reached
+
+Proposals are saved to scenarios/self-loop-proposals/ for review.
+
+Examples:
+  heimdall self-loop                          # run up to 3 iterations
+  heimdall self-loop --max-iterations 5       # run up to 5 iterations
+  heimdall self-loop --dry-run                # show proposals only, do not apply
+  heimdall self-loop --backend codex-cli      # use OpenAI Codex CLI for reflection
+`;
+
+/**
+ * Parse `heimdall self-loop` CLI flags.
+ * Exits the process (via requirePositiveInt, --help, or an unrecognized flag)
+ * rather than returning when the arguments are invalid.
+ */
+export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
   let maxIterations = DEFAULT_MAX_ITERATIONS;
   let dryRun = false;
   let backend = 'claude-cli';
@@ -115,38 +155,20 @@ async function main(): Promise<void> {
       requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
       reflectionTimeoutMs = secs * 1000;
     } else if (args[i] === '-h' || args[i] === '--help') {
-      process.stdout.write(`Usage: heimdall self-loop [options]
-
-Run the automated self-improvement loop: eval → reflect → patch → re-eval → keep/revert.
-
-Options:
-  --max-iterations, -n <N>  Maximum improvement iterations (default: ${DEFAULT_MAX_ITERATIONS})
-  --dry-run                  Show proposals without applying them to instructions.ts
-  --backend, -b <name>       LLM backend for reflection: 'claude-cli' (default) or 'codex-cli'
-  --scenario, -s <name>      Run only scenarios whose filename contains <name>
-  --log-path, -l <path>      Write the learning log to <path>
-  --timeout <seconds>        LLM reflection timeout in seconds (default: 180)
-  -h, --help                 Show this help message
-
-The loop stops when:
-  - All scenarios pass (score = 1.0)
-  - An iteration produces no improvement
-  - --max-iterations is reached
-
-Proposals are saved to scenarios/self-loop-proposals/ for review.
-
-Examples:
-  heimdall self-loop                          # run up to 3 iterations
-  heimdall self-loop --max-iterations 5       # run up to 5 iterations
-  heimdall self-loop --dry-run                # show proposals only, do not apply
-  heimdall self-loop --backend codex-cli      # use OpenAI Codex CLI for reflection
-`);
+      process.stdout.write(HELP_TEXT);
       process.exit(0);
     } else {
       process.stderr.write(`Error: unknown option '${args[i]}'\nRun with --help for usage.\n`);
       process.exit(1);
     }
   }
+
+  return { maxIterations, dryRun, backend, scenarioFilter, cliLogPath, reflectionTimeoutMs };
+}
+
+async function main(): Promise<void> {
+  const { maxIterations, dryRun, backend, scenarioFilter, cliLogPath, reflectionTimeoutMs } =
+    parseSelfLoopArgs(process.argv.slice(2));
 
   if (!['claude-cli', 'codex-cli'].includes(backend)) {
     process.stderr.write(`Error: unknown backend '${backend}'; supported: claude-cli, codex-cli\n`);
