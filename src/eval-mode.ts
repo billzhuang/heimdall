@@ -28,22 +28,7 @@ export type { EvalScenario, EvalResult };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  let scenarioFilter: string | undefined;
-  let modelFlag: string | undefined;
-
-  for (let i = 0; i < args.length; i++) {
-    if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
-      scenarioFilter = args[++i];
-    } else if (args[i].startsWith('--scenario=')) {
-      scenarioFilter = args[i].slice('--scenario='.length);
-    } else if (args[i] === '--model' || args[i] === '-m' || args[i].startsWith('--model=')) {
-      const parsed = parseModelFlag(args, i, ['--model', '-m']);
-      modelFlag = parsed.value;
-      i = parsed.nextIndex;
-    } else if (args[i] === '-h' || args[i] === '--help') {
-      process.stdout.write(`Usage: heimdall eval [--scenario <name-substring>]
+const HELP_TEXT = `Usage: heimdall eval [--scenario <name-substring>]
 
 Run synthetic RCA evaluation scenarios against the Heimdall agent.
 No real cluster is needed — kubectl responses are mocked.
@@ -57,9 +42,42 @@ Examples:
   heimdall eval                       # run all scenarios
   heimdall eval --scenario crashloop  # run only the CrashLoop scenario
   npm run eval
-`);
-      process.exit(0);
+`;
+
+export interface EvalCliArgs {
+  scenarioFilter?: string;
+  modelFlag?: string;
+  help: boolean;
+}
+
+/** Parse `heimdall eval` CLI flags. Unrecognized flags are silently ignored. */
+export function parseEvalArgs(args: string[]): EvalCliArgs {
+  let scenarioFilter: string | undefined;
+  let modelFlag: string | undefined;
+
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
+      scenarioFilter = args[++i];
+    } else if (args[i].startsWith('--scenario=')) {
+      scenarioFilter = args[i].slice('--scenario='.length);
+    } else if (args[i] === '--model' || args[i] === '-m' || args[i].startsWith('--model=')) {
+      const parsed = parseModelFlag(args, i, ['--model', '-m']);
+      modelFlag = parsed.value;
+      i = parsed.nextIndex;
+    } else if (args[i] === '-h' || args[i] === '--help') {
+      return { scenarioFilter, modelFlag, help: true };
     }
+  }
+
+  return { scenarioFilter, modelFlag, help: false };
+}
+
+async function main(): Promise<void> {
+  const { scenarioFilter, modelFlag, help } = parseEvalArgs(process.argv.slice(2));
+
+  if (help) {
+    process.stdout.write(HELP_TEXT);
+    process.exit(0);
   }
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
@@ -116,7 +134,9 @@ Examples:
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
-  process.exit(1);
-});
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
+    process.exit(1);
+  });
+}
