@@ -109,7 +109,6 @@ export function capture(
     });
     child.stdout.setEncoding('utf-8');
     child.stdout.on('data', (chunk: string) => { stdout += chunk; });
-    /* v8 ignore next */
     child.on('close', (code) => resolve({ stdout, code: code ?? 1 }));
     child.on('error', (err) => {
       process.stderr.write(`[heimdall-action] spawn error: ${err.message}\n`);
