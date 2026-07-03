@@ -347,42 +347,7 @@ export function createServeApp(
   return app;
 }
 
-/** Resolve a port arg via `parsePortArg`, printing the error and exiting(1) on failure. */
-function resolvePortArgOrExit(raw: string, label: string): number {
-  const result = parsePortArg(raw, label);
-  if ('errorMessage' in result) {
-    process.stderr.write(result.errorMessage);
-    process.exit(1);
-  }
-  return result.port;
-}
-
-// --- CLI entrypoint — parse args and start server when run directly ----------
-if (isMainModule(import.meta.url)) {
-  const cliArgs = process.argv.slice(2);
-  let portArg: number | undefined;
-  let hostArg: string | undefined;
-  let modelArg: string | undefined;
-
-  for (let i = 0; i < cliArgs.length; i++) {
-    const arg = cliArgs[i];
-    if (arg === '--port') {
-      const raw = cliArgs[++i];
-      if (!raw) { process.stderr.write('Error: --port requires a value\n'); process.exit(1); }
-      portArg = resolvePortArgOrExit(raw, '--port');
-    } else if (arg.startsWith('--port=')) {
-      const raw = arg.slice('--port='.length);
-      portArg = resolvePortArgOrExit(raw, '--port');
-    } else if (arg === '--host') {
-      hostArg = cliArgs[++i];
-    } else if (arg.startsWith('--host=')) {
-      hostArg = arg.slice('--host='.length);
-    } else if (arg === '--model') {
-      modelArg = cliArgs[++i];
-    } else if (arg.startsWith('--model=')) {
-      modelArg = arg.slice('--model='.length);
-    } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(`Usage: heimdall serve [--port <n>] [--host <addr>] [--model <provider/model>]
+const HELP_TEXT = `Usage: heimdall serve [--port <n>] [--host <addr>] [--model <provider/model>]
 
 Start an HTTP server exposing Heimdall's AI diagnostic capability as a REST API.
 
@@ -402,13 +367,83 @@ Examples:
   heimdall serve
   heimdall serve --port 8080
   HEIMDALL_PORT=8080 heimdall serve
-`);
-      process.exit(0);
+`;
+
+/** Parsed `heimdall serve` CLI flags. */
+export interface ServeCliArgs {
+  port?: number;
+  host?: string;
+  model?: string;
+}
+
+export type ServeArgsResult =
+  | { kind: 'ok'; args: ServeCliArgs }
+  | { kind: 'help' }
+  | { kind: 'error'; message: string };
+
+/**
+ * Parse `heimdall serve` CLI flags. Pure — returns a discriminated result
+ * instead of writing to stderr/stdout and calling process.exit, so parsing
+ * can be unit tested directly; the CLI entrypoint below performs the I/O.
+ */
+export function parseServeArgs(cliArgs: string[]): ServeArgsResult {
+  let portArg: number | undefined;
+  let hostArg: string | undefined;
+  let modelArg: string | undefined;
+
+  for (let i = 0; i < cliArgs.length; i++) {
+    const arg = cliArgs[i];
+    if (arg === '--port') {
+      const raw = cliArgs[++i];
+      if (!raw) return { kind: 'error', message: 'Error: --port requires a value\n' };
+      const parsed = parsePortArg(raw, '--port');
+      if ('errorMessage' in parsed) return { kind: 'error', message: parsed.errorMessage };
+      portArg = parsed.port;
+    } else if (arg.startsWith('--port=')) {
+      const raw = arg.slice('--port='.length);
+      const parsed = parsePortArg(raw, '--port');
+      if ('errorMessage' in parsed) return { kind: 'error', message: parsed.errorMessage };
+      portArg = parsed.port;
+    } else if (arg === '--host') {
+      hostArg = cliArgs[++i];
+    } else if (arg.startsWith('--host=')) {
+      hostArg = arg.slice('--host='.length);
+    } else if (arg === '--model') {
+      modelArg = cliArgs[++i];
+    } else if (arg.startsWith('--model=')) {
+      modelArg = arg.slice('--model='.length);
+    } else if (arg === '-h' || arg === '--help') {
+      return { kind: 'help' };
     } else {
-      process.stderr.write(`Error: unknown option: ${arg}\n`);
-      process.exit(1);
+      return { kind: 'error', message: `Error: unknown option: ${arg}\n` };
     }
   }
+
+  return { kind: 'ok', args: { port: portArg, host: hostArg, model: modelArg } };
+}
+
+/** Resolve a port arg via `parsePortArg`, printing the error and exiting(1) on failure. */
+function resolvePortArgOrExit(raw: string, label: string): number {
+  const result = parsePortArg(raw, label);
+  if ('errorMessage' in result) {
+    process.stderr.write(result.errorMessage);
+    process.exit(1);
+  }
+  return result.port;
+}
+
+// --- CLI entrypoint — parse args and start server when run directly ----------
+if (isMainModule(import.meta.url)) {
+  const parsedArgs = parseServeArgs(process.argv.slice(2));
+  if (parsedArgs.kind === 'error') {
+    process.stderr.write(parsedArgs.message);
+    process.exit(1);
+  }
+  if (parsedArgs.kind === 'help') {
+    process.stdout.write(HELP_TEXT);
+    process.exit(0);
+  }
+  const { port: portArg, host: hostArg, model: modelArg } = parsedArgs.args;
 
   const config = loadConfig();
   const rawEnvPort = process.env['HEIMDALL_PORT'];

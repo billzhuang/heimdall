@@ -14,7 +14,7 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp, parsePortValue, parsePortArg } from '../../serve-mode.ts';
+import { createServeApp, parsePortValue, parsePortArg, parseServeArgs } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -68,6 +68,99 @@ describe('parsePortArg', () => {
   it('returns a labeled error message for HEIMDALL_PORT', () => {
     expect(parsePortArg('abc', 'HEIMDALL_PORT')).toEqual({
       errorMessage: 'Error: HEIMDALL_PORT must be an integer between 1 and 65535, got "abc"\n',
+    });
+  });
+});
+
+describe('parseServeArgs', () => {
+  it('returns empty args when given no flags', () => {
+    expect(parseServeArgs([])).toEqual({ kind: 'ok', args: { port: undefined, host: undefined, model: undefined } });
+  });
+
+  it('parses --port <n> (space form)', () => {
+    expect(parseServeArgs(['--port', '8080'])).toEqual({
+      kind: 'ok',
+      args: { port: 8080, host: undefined, model: undefined },
+    });
+  });
+
+  it('parses --port=<n> (equals form)', () => {
+    expect(parseServeArgs(['--port=8080'])).toEqual({
+      kind: 'ok',
+      args: { port: 8080, host: undefined, model: undefined },
+    });
+  });
+
+  it('errors when --port is missing its value', () => {
+    expect(parseServeArgs(['--port'])).toEqual({
+      kind: 'error',
+      message: 'Error: --port requires a value\n',
+    });
+  });
+
+  it('errors when --port value is out of range', () => {
+    expect(parseServeArgs(['--port', '99999'])).toEqual({
+      kind: 'error',
+      message: 'Error: --port must be an integer between 1 and 65535, got "99999"\n',
+    });
+  });
+
+  it('errors when --port=<value> is non-numeric', () => {
+    expect(parseServeArgs(['--port=abc'])).toEqual({
+      kind: 'error',
+      message: 'Error: --port must be an integer between 1 and 65535, got "abc"\n',
+    });
+  });
+
+  it('parses --host <addr> (space form)', () => {
+    expect(parseServeArgs(['--host', '0.0.0.0'])).toEqual({
+      kind: 'ok',
+      args: { port: undefined, host: '0.0.0.0', model: undefined },
+    });
+  });
+
+  it('parses --host=<addr> (equals form)', () => {
+    expect(parseServeArgs(['--host=0.0.0.0'])).toEqual({
+      kind: 'ok',
+      args: { port: undefined, host: '0.0.0.0', model: undefined },
+    });
+  });
+
+  it('parses --model <provider/model> (space form)', () => {
+    expect(parseServeArgs(['--model', 'anthropic/claude-opus-4-8'])).toEqual({
+      kind: 'ok',
+      args: { port: undefined, host: undefined, model: 'anthropic/claude-opus-4-8' },
+    });
+  });
+
+  it('parses --model=<provider/model> (equals form)', () => {
+    expect(parseServeArgs(['--model=anthropic/claude-opus-4-8'])).toEqual({
+      kind: 'ok',
+      args: { port: undefined, host: undefined, model: 'anthropic/claude-opus-4-8' },
+    });
+  });
+
+  it('parses all three flags together', () => {
+    expect(
+      parseServeArgs(['--port', '8080', '--host', '0.0.0.0', '--model', 'anthropic/claude-opus-4-8']),
+    ).toEqual({
+      kind: 'ok',
+      args: { port: 8080, host: '0.0.0.0', model: 'anthropic/claude-opus-4-8' },
+    });
+  });
+
+  it('returns help for -h', () => {
+    expect(parseServeArgs(['-h'])).toEqual({ kind: 'help' });
+  });
+
+  it('returns help for --help', () => {
+    expect(parseServeArgs(['--help'])).toEqual({ kind: 'help' });
+  });
+
+  it('errors on an unknown option', () => {
+    expect(parseServeArgs(['--bogus'])).toEqual({
+      kind: 'error',
+      message: 'Error: unknown option: --bogus\n',
     });
   });
 });
