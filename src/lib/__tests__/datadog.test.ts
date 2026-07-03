@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runDatadogQuery } from '../datadog.ts';
+import { runDatadogQuery, filterMonitorsByStatus } from '../datadog.ts';
 import { resolveTimeSeconds, resolveTimeISO } from '../time-resolution.ts';
 import type { DatadogConfig } from '../datadog.ts';
 import { mockFetch, restoreGlobalsAfterEach } from './test-helpers.ts';
@@ -325,6 +325,48 @@ describe('runDatadogQuery — events', () => {
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
     expect(decoded).toContain('page[limit]=25');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterMonitorsByStatus
+// ---------------------------------------------------------------------------
+
+describe('filterMonitorsByStatus', () => {
+  it('returns the text unchanged when monitorStatus is unset', () => {
+    const payload = JSON.stringify([{ id: 1, overall_state: 'Alert' }]);
+    expect(filterMonitorsByStatus(payload, undefined)).toBe(payload);
+  });
+
+  it('returns the text unchanged when monitorStatus is blank', () => {
+    const payload = JSON.stringify([{ id: 1, overall_state: 'Alert' }]);
+    expect(filterMonitorsByStatus(payload, '  ')).toBe(payload);
+  });
+
+  it('keeps only entries whose overall_state matches, case-insensitively', () => {
+    const payload = JSON.stringify([
+      { id: 1, overall_state: 'Alert' },
+      { id: 2, overall_state: 'OK' },
+      { id: 3, overall_state: 'warn' },
+    ]);
+    const result = filterMonitorsByStatus(payload, 'alert,Warn');
+    expect(JSON.parse(result).map((m: { id: number }) => m.id)).toEqual([1, 3]);
+  });
+
+  it('drops entries missing an overall_state field', () => {
+    const payload = JSON.stringify([{ id: 1 }, { id: 2, overall_state: 'Alert' }]);
+    const result = filterMonitorsByStatus(payload, 'Alert');
+    expect(JSON.parse(result).map((m: { id: number }) => m.id)).toEqual([2]);
+  });
+
+  it('returns the text unchanged when it is not a JSON array', () => {
+    const payload = '{"status":"ok"}';
+    expect(filterMonitorsByStatus(payload, 'Alert')).toBe(payload);
+  });
+
+  it('returns the text unchanged when it is not valid JSON', () => {
+    const payload = 'not json at all';
+    expect(filterMonitorsByStatus(payload, 'Alert')).toBe(payload);
   });
 });
 
