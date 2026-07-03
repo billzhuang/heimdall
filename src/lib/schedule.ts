@@ -30,6 +30,11 @@ type CronPartAst =
   | { readonly kind: 'startStep'; readonly start: number; readonly step: number }
   | { readonly kind: 'exact'; readonly value: number };
 
+const CRON_STEP_RE = /^\*\/(\d+)$/;
+const CRON_RANGE_STEP_RE = /^(\d+)-(\d+)\/(\d+)$/;
+const CRON_RANGE_RE = /^(\d+)-(\d+)$/;
+const CRON_START_STEP_RE = /^(\d+)\/(\d+)$/;
+
 /**
  * Parse a single non-comma cron sub-expression into its structural form.
  *
@@ -48,10 +53,10 @@ type CronPartAst =
 function parseCronPart(part: string): CronPartAst | undefined {
   if (part === '*') return { kind: 'wildcard' };
 
-  const stepMatch = part.match(/^\*\/(\d+)$/);
+  const stepMatch = part.match(CRON_STEP_RE);
   if (stepMatch) return { kind: 'step', step: parseInt(stepMatch[1], 10) };
 
-  const rangeStepMatch = part.match(/^(\d+)-(\d+)\/(\d+)$/);
+  const rangeStepMatch = part.match(CRON_RANGE_STEP_RE);
   if (rangeStepMatch) {
     return {
       kind: 'rangeStep',
@@ -61,12 +66,12 @@ function parseCronPart(part: string): CronPartAst | undefined {
     };
   }
 
-  const rangeMatch = part.match(/^(\d+)-(\d+)$/);
+  const rangeMatch = part.match(CRON_RANGE_RE);
   if (rangeMatch) {
     return { kind: 'range', lo: parseInt(rangeMatch[1], 10), hi: parseInt(rangeMatch[2], 10) };
   }
 
-  const startStepMatch = part.match(/^(\d+)\/(\d+)$/);
+  const startStepMatch = part.match(CRON_START_STEP_RE);
   if (startStepMatch) {
     return { kind: 'startStep', start: parseInt(startStepMatch[1], 10), step: parseInt(startStepMatch[2], 10) };
   }
