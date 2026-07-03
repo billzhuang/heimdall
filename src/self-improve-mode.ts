@@ -29,41 +29,19 @@ import {
   buildReflectionPrompt,
   resolveLogPath,
   resolveRagOptions,
+  type LearningEntry,
 } from './lib/self-improve.ts';
-import { readTaskHistory } from './lib/task-history.ts';
+import { readTaskHistory, type TaskHistoryEntry } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { isMainModule } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const LEARNING_LOG_NAME = 'learning-log.jsonl';
 const TASK_HISTORY_NAME = 'task-history.jsonl';
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  let scenarioFilter: string | undefined;
-  let reflect = false;
-  let fromLog = false;
-  let cliLogPath: string | undefined;
-  let logStdout = false;
-
-  for (let i = 0; i < args.length; i++) {
-    if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
-      scenarioFilter = args[++i];
-    } else if (args[i].startsWith('--scenario=')) {
-      scenarioFilter = args[i].slice('--scenario='.length);
-    } else if (args[i] === '--reflect') {
-      reflect = true;
-    } else if (args[i] === '--from-log') {
-      fromLog = true;
-    } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
-      cliLogPath = args[++i];
-    } else if (args[i].startsWith('--log-path=')) {
-      cliLogPath = args[i].slice('--log-path='.length);
-    } else if (args[i] === '--log-stdout') {
-      logStdout = true;
-    } else if (args[i] === '-h' || args[i] === '--help') {
-      process.stdout.write(`Usage: heimdall self-improve [--scenario <name>] [--reflect] [--from-log] [--log-path <path>] [--log-stdout]
+const HELP_TEXT = `Usage: heimdall self-improve [--scenario <name>] [--reflect] [--from-log] [--log-path <path>] [--log-stdout]
 
 Run eval scenarios and record failures as structured learning entries.
 
@@ -94,10 +72,71 @@ Examples:
   heimdall self-improve --log-path /mnt/efs/learning-log.jsonl  # write log to persistent volume
   heimdall self-improve --log-stdout                            # emit JSONL entries to stdout
   HEIMDALL_LEARNING_LOG=/mnt/data/log.jsonl heimdall self-improve
-`);
+`;
+
+export interface SelfImproveCliArgs {
+  scenarioFilter?: string;
+  reflect: boolean;
+  fromLog: boolean;
+  cliLogPath?: string;
+  logStdout: boolean;
+}
+
+/**
+ * Parse `heimdall self-improve` CLI flags.
+ * Exits the process (via --help) rather than returning when help is requested.
+ * Unrecognized flags are silently ignored, matching this mode's historical behavior.
+ */
+export function parseSelfImproveArgs(args: string[]): SelfImproveCliArgs {
+  let scenarioFilter: string | undefined;
+  let reflect = false;
+  let fromLog = false;
+  let cliLogPath: string | undefined;
+  let logStdout = false;
+
+  for (let i = 0; i < args.length; i++) {
+    if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
+      scenarioFilter = args[++i];
+    } else if (args[i].startsWith('--scenario=')) {
+      scenarioFilter = args[i].slice('--scenario='.length);
+    } else if (args[i] === '--reflect') {
+      reflect = true;
+    } else if (args[i] === '--from-log') {
+      fromLog = true;
+    } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
+      cliLogPath = args[++i];
+    } else if (args[i].startsWith('--log-path=')) {
+      cliLogPath = args[i].slice('--log-path='.length);
+    } else if (args[i] === '--log-stdout') {
+      logStdout = true;
+    } else if (args[i] === '-h' || args[i] === '--help') {
+      process.stdout.write(HELP_TEXT);
       process.exit(0);
     }
   }
+
+  return { scenarioFilter, reflect, fromLog, cliLogPath, logStdout };
+}
+
+/** Print the reflection-prompt banner used by both the failure and all-passed flows. */
+function printReflectionPrompt(
+  entries: LearningEntry[],
+  taskHistory: TaskHistoryEntry[],
+  useRag: boolean,
+  ragTopK: number,
+): void {
+  process.stdout.write('\n' + '='.repeat(60) + '\n');
+  process.stdout.write(
+    'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
+  );
+  process.stdout.write('='.repeat(60) + '\n\n');
+  process.stdout.write(buildReflectionPrompt(entries, taskHistory, useRag, ragTopK) + '\n\n');
+  process.stdout.write('='.repeat(60) + '\n');
+}
+
+async function main(): Promise<void> {
+  const { scenarioFilter, reflect, fromLog, cliLogPath, logStdout } =
+    parseSelfImproveArgs(process.argv.slice(2));
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const config = loadConfig();
@@ -200,13 +239,7 @@ Examples:
 
     if (reflect) {
       const taskHistory = await readTaskHistory(taskHistoryPath);
-      process.stdout.write('\n' + '='.repeat(60) + '\n');
-      process.stdout.write(
-        'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
-      );
-      process.stdout.write('='.repeat(60) + '\n\n');
-      process.stdout.write(buildReflectionPrompt(learningEntries, taskHistory, useRag, ragTopK) + '\n\n');
-      process.stdout.write('='.repeat(60) + '\n');
+      printReflectionPrompt(learningEntries, taskHistory, useRag, ragTopK);
     } else {
       process.stdout.write(
         `\nTip: run with --reflect to generate a meta-prompt for instruction improvements.\n`,
@@ -219,19 +252,15 @@ Examples:
     if (reflect) {
       const taskHistory = await readTaskHistory(taskHistoryPath);
       if (taskHistory.length > 0) {
-        process.stdout.write('\n' + '='.repeat(60) + '\n');
-        process.stdout.write(
-          'Reflection prompt (paste into any LLM to get targeted instruction improvements):\n',
-        );
-        process.stdout.write('='.repeat(60) + '\n\n');
-        process.stdout.write(buildReflectionPrompt([], taskHistory, useRag, ragTopK) + '\n\n');
-        process.stdout.write('='.repeat(60) + '\n');
+        printReflectionPrompt([], taskHistory, useRag, ragTopK);
       }
     }
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`[heimdall-self-improve] Fatal error: ${getStackOrMessage(err)}\n`);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`[heimdall-self-improve] Fatal error: ${getStackOrMessage(err)}\n`);
+    process.exit(1);
+  });
+}
