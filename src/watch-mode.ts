@@ -45,6 +45,7 @@ import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { requireNextArg, requireNonEmptyValue } from './lib/cli-args.ts';
+import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
 // Backoff: 1 s → 2 s → 4 s … capped at 30 s, ±30 % jitter.
@@ -254,23 +255,19 @@ export async function runWatchMode(model?: string): Promise<void> {
   }
 
   let attempt = 0;
-  const controller = new AbortController();
+  const { signal, cleanup } = installShutdownController();
 
-  const onSignal = () => { controller.abort(); };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
-
-  while (!controller.signal.aborted) {
+  while (!signal.aborted) {
     const streamStartMs = Date.now();
 
     try {
-      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, controller.signal, eventSink, baselineFile, model);
+      await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, signal, eventSink, baselineFile, model);
     } catch (err: unknown) {
-      if (controller.signal.aborted) break;
+      if (signal.aborted) break;
       process.stderr.write(`[heimdall-watch] Stream error: ${getMessage(err)}\n`);
     }
 
-    if (controller.signal.aborted) break;
+    if (signal.aborted) break;
 
     const uptimeMs = Date.now() - streamStartMs;
     if (shouldResetBackoff(uptimeMs, BACKOFF_RESET_THRESHOLD_MS)) {
@@ -289,21 +286,13 @@ export async function runWatchMode(model?: string): Promise<void> {
       ` (attempt ${attempt + 1}${maxAttempts !== null ? `/${maxAttempts}` : ''})...\n`,
     );
 
-    // Interruptible sleep: resolves early if the abort signal fires.
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, delayMs);
-      controller.signal.addEventListener('abort', () => {
-        clearTimeout(timer);
-        resolve();
-      }, { once: true });
-    });
+    await abortableSleep(delayMs, signal);
 
     attempt++;
   }
 
   process.stderr.write('[heimdall-watch] Shutting down cleanly.\n');
-  process.removeListener('SIGINT', onSignal);
-  process.removeListener('SIGTERM', onSignal);
+  cleanup();
 }
 
 // --- CLI arg parsing when run directly ---

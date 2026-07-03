@@ -33,6 +33,7 @@ import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
+import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -126,25 +127,6 @@ async function runTriage(opts: TriageOptions, signal?: AbortSignal): Promise<boo
   }
 }
 
-/** Interruptible sleep that resolves early when the abort signal fires. */
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve();
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
 /**
  * Main entry point for schedule mode.
  *
@@ -185,12 +167,9 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
     return;
   }
 
-  const controller = new AbortController();
-  const onSignal = () => { controller.abort(); };
-  process.once('SIGINT', onSignal);
-  process.once('SIGTERM', onSignal);
+  const { signal, cleanup } = installShutdownController();
 
-  while (!controller.signal.aborted) {
+  while (!signal.aborted) {
     const now = new Date();
     const nextFire = nextFireTime(cron, now);
     const delayMs = nextFire.getTime() - Date.now();
@@ -199,15 +178,14 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
       `[heimdall-schedule] Next triage at ${nextFire.toISOString()} (in ${formatDelay(delayMs)})\n`,
     );
 
-    await sleep(delayMs, controller.signal);
-    if (controller.signal.aborted) break;
+    await abortableSleep(delayMs, signal);
+    if (signal.aborted) break;
 
-    await runTriage(triageOpts, controller.signal);
+    await runTriage(triageOpts, signal);
   }
 
   process.stderr.write('[heimdall-schedule] Shutting down cleanly.\n');
-  process.removeListener('SIGINT', onSignal);
-  process.removeListener('SIGTERM', onSignal);
+  cleanup();
 }
 
 // --- CLI arg parsing when run directly ---
