@@ -44,7 +44,7 @@ import {
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { requireNextArg, requireNonEmptyValue } from './lib/cli-args.ts';
+import { parseModelFlag } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
@@ -301,13 +301,10 @@ let watchModelFlag: string | undefined;
 
 for (let i = 0; i < watchArgs.length; i++) {
   const arg = watchArgs[i];
-  if (arg === '--model') {
-    requireNextArg(watchArgs, i, '--model requires a value');
-    watchModelFlag = watchArgs[++i];
-  } else if (arg.startsWith('--model=')) {
-    const m = arg.slice('--model='.length);
-    requireNonEmptyValue(m, '--model= requires a non-empty value');
-    watchModelFlag = m;
+  if (arg === '--model' || arg.startsWith('--model=')) {
+    const parsed = parseModelFlag(watchArgs, i);
+    watchModelFlag = parsed.value;
+    i = parsed.nextIndex;
   } else if (arg === '-h' || arg === '--help') {
     process.stdout.write(`Usage: heimdall --watch [--model <provider/model>]\n\nOptions:\n  --model <provider/model>  Override the LLM model\n  -h, --help                Show this help\n`);
     process.exit(0);

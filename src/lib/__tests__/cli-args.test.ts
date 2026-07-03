@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList } from '../cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag } from '../cli-args.ts';
 
 describe('requireNextArg', () => {
   afterEach(() => {
@@ -82,6 +82,60 @@ describe('parseCommaSeparatedList', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
     parseCommaSeparatedList(' , ,', '--contexts value produced an empty list after parsing');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --contexts value produced an empty list after parsing\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('parseModelFlag', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('parses "--model <value>" and advances the index past the value', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const args = ['--model', 'anthropic/claude-sonnet-4-6'];
+    expect(parseModelFlag(args, 0)).toEqual({ value: 'anthropic/claude-sonnet-4-6', nextIndex: 1 });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('parses "--model=<value>" without advancing the index', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const args = ['--model=anthropic/claude-sonnet-4-6'];
+    expect(parseModelFlag(args, 0)).toEqual({ value: 'anthropic/claude-sonnet-4-6', nextIndex: 0 });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('accepts a custom alias (e.g. "-m")', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const args = ['-m', 'anthropic/claude-sonnet-4-6'];
+    expect(parseModelFlag(args, 0, ['--model', '-m'])).toEqual({
+      value: 'anthropic/claude-sonnet-4-6',
+      nextIndex: 1,
+    });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('writes an alias-specific error and exits when the value is missing', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseModelFlag(['-m'], 0, ['--model', '-m']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: -m requires a value\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes an error and exits when the next token looks like a flag', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseModelFlag(['--model', '--other'], 0);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --model requires a value\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes an error and exits when "--model=" has an empty value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseModelFlag(['--model='], 0);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
