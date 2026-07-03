@@ -26,10 +26,12 @@ import { main } from '../../eval-mode.ts';
 describe('eval-mode main()', () => {
   let stdout: string[];
   let originalArgv: string[];
+  let originalModel: string | undefined;
   let exitSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     stdout = [];
+    originalModel = process.env.HEIMDALL_MODEL;
     vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
       stdout.push(String(chunk));
       return true;
@@ -43,6 +45,11 @@ describe('eval-mode main()', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     process.argv = originalArgv;
+    if (originalModel === undefined) {
+      delete process.env.HEIMDALL_MODEL;
+    } else {
+      process.env.HEIMDALL_MODEL = originalModel;
+    }
   });
 
   it('prints Running/PASS/FAIL lines per scenario in order and a final summary', async () => {
@@ -64,7 +71,22 @@ describe('eval-mode main()', () => {
     expect(out).toContain('         - missing X\n');
     expect(out).toContain('         - missing Y\n');
     expect(out).toContain('Results: 1 passed, 1 failed out of 2 scenarios\n');
-    expect(out.indexOf('Scenario A')).toBeLessThan(out.indexOf('Scenario B'));
+
+    const orderedLines = [
+      '  Running: Scenario A\n',
+      '  ✓ PASS  Scenario A\n',
+      '  Running: Scenario B\n',
+      '  ✗ FAIL  Scenario B\n',
+      '         - missing X\n',
+      '         - missing Y\n',
+      'Results: 1 passed, 1 failed out of 2 scenarios\n',
+    ];
+    let cursor = -1;
+    for (const line of orderedLines) {
+      const next = out.indexOf(line, cursor + 1);
+      expect(next).toBeGreaterThan(cursor);
+      cursor = next;
+    }
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
