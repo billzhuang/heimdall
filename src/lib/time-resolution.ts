@@ -18,6 +18,11 @@ function msToIso(ms: number): string | null {
   try { return new Date(ms).toISOString(); } catch { return null; }
 }
 
+/** Format `ms` as ISO8601, falling back to `fallback` when `ms` is null or out of Date range. */
+function formatMsOrFallback(ms: number | null, fallback: string): string {
+  return ms === null ? fallback : (msToIso(ms) ?? fallback);
+}
+
 /**
  * Resolve a time expression to Unix milliseconds.
  *
@@ -89,11 +94,10 @@ export function resolveTimeUs(expr: string, nowMs: number): number | null {
  */
 export function resolveTimePassthrough(expr: string, nowMs: number): string {
   if (expr.startsWith('-')) {
-    const ms = resolveTimeMs(expr, nowMs);
-    return ms === null ? expr : (msToIso(ms) ?? expr);
+    return formatMsOrFallback(resolveTimeMs(expr, nowMs), expr);
   }
   if (BARE_INT_RE.test(expr)) {
-    return msToIso(Number(expr) * 1_000) ?? expr;
+    return formatMsOrFallback(Number(expr) * 1_000, expr);
   }
   return expr;
 }
