@@ -17,7 +17,6 @@
  *   HEIMDALL_SESSION_DIR  – directory for session handle files (default: ~/.heimdall/sessions)
  *   HEIMDALL_SERVER       – default Flue server URL (default: http://localhost:3000)
  */
-import { fileURLToPath } from 'node:url';
 import { createFlueClient } from '@flue/sdk';
 import {
   createSession,
@@ -28,6 +27,7 @@ import {
   type SessionRecord,
 } from './lib/session.ts';
 import { getMessage } from './lib/error-utils.ts';
+import { isMainModule } from './lib/cli-args.ts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ export function cmdEnd(args: string[]): void {
 
 // ── CLI entrypoint ────────────────────────────────────────────────────────────
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const [subcommand, ...rest] = process.argv.slice(2);
 
   if (!subcommand || subcommand === '-h' || subcommand === '--help') {

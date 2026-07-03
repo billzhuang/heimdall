@@ -2,6 +2,16 @@
  * Shared CLI argument-validation helpers used by the mode entry points
  * (triage-mode.ts, watch-mode.ts, ...) when hand-rolling flag parsing.
  */
+import { fileURLToPath } from 'node:url';
+
+/**
+ * True when this module was invoked directly as the process entry point
+ * (`node file.js`), false when it was imported by another module (including
+ * a test file). Pass the importing module's `import.meta.url`.
+ */
+export function isMainModule(importMetaUrl: string): boolean {
+  return fileURLToPath(importMetaUrl) === process.argv[1];
+}
 
 /** Write an error to stderr and exit(1) when the next CLI token is missing or looks like a flag. */
 export function requireNextArg(args: string[], i: number, msg: string): void {

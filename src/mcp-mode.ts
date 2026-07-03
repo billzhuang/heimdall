@@ -36,12 +36,12 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { fileURLToPath } from 'node:url';
 import * as v from 'valibot';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import type { ToolDefinition } from '@flue/runtime';
 import { loadConfig } from './lib/config.ts';
 import { compileRules } from './lib/regex-redact.ts';
+import { isMainModule } from './lib/cli-args.ts';
 import { kubectlPlugin } from './tools/kubectl.ts';
 import { listContextsPlugin, listNamespacesPlugin } from './tools/kubeconfig.ts';
 import { helmReleasePlugin } from './tools/helm.ts';
@@ -215,7 +215,7 @@ export function createMcpServer(): Server {
 }
 
 // Start the MCP server when this file is run directly (not when imported).
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
