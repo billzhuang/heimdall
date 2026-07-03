@@ -28,6 +28,18 @@ export interface ExecAndReportParams {
   regexRedactionRules?: CompiledRedactionRule[];
   noOutputMessage: string;
   truncate: (text: string) => string;
+  /**
+   * Prefer stdout over stderr when extracting error detail. Set for tools
+   * (e.g. Trivy) that write structured results to stdout even on non-zero exit.
+   */
+  stdoutFirst?: boolean;
+  /**
+   * Return the raw error detail as-is, without the "<bin> exited with an
+   * error:" prefix, when detail is non-empty. Set for tools whose non-zero
+   * exit code is a valid result (e.g. Trivy exits 1 when vulnerabilities are
+   * found) rather than a genuine failure.
+   */
+  passthroughOnError?: boolean;
 }
 
 /**
@@ -40,6 +52,7 @@ export async function execAndReport(params: ExecAndReportParams): Promise<string
   const {
     bin, argv, cmd, startTs, startMs, execOptions,
     audit, regexRedactionRules = [], noOutputMessage, truncate,
+    stdoutFirst = false, passthroughOnError = false,
   } = params;
 
   try {
@@ -49,9 +62,13 @@ export async function execAndReport(params: ExecAndReportParams): Promise<string
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
-    const rawDetail = getExecErrorDetail(error);
+    const rawDetail = getExecErrorDetail(error, stdoutFirst);
     const detail = applyRedaction(rawDetail, regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
+    if (passthroughOnError) {
+      if (detail) return truncate(detail);
+      return truncate(`${bin} exited with an error:\n${String(error)}`);
+    }
     return truncate(`${bin} exited with an error:\n${detail}`);
   }
 }
