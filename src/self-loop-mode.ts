@@ -45,6 +45,7 @@ import {
   type IterationResult,
 } from './lib/self-loop.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { isMainModule } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -391,7 +392,7 @@ async function main(): Promise<void> {
   process.stdout.write('Learning entries saved to: ' + logPath + '\n');
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   main().catch((err: unknown) => {
     process.stderr.write(`[heimdall-self-loop] Fatal error: ${getStackOrMessage(err)}\n`);
     process.exit(1);

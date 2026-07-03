@@ -36,6 +36,7 @@ import { resolveModel } from './lib/model.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
+import { isMainModule } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -357,7 +358,7 @@ function resolvePortArgOrExit(raw: string, label: string): number {
 }
 
 // --- CLI entrypoint — parse args and start server when run directly ----------
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const cliArgs = process.argv.slice(2);
   let portArg: number | undefined;
   let hostArg: string | undefined;

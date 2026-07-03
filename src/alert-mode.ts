@@ -22,7 +22,7 @@ import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
-import { parseModelFlag } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -139,7 +139,7 @@ export async function runAlertMode(opts: { source: AlertSource; input: string; s
 }
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
   let source: AlertSource = 'raw';
   let seed = true;

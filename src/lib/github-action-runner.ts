@@ -26,6 +26,7 @@ import {
   type ActionSeverity,
 } from './github-action.ts';
 import type { OneShotFinding } from './format-output.ts';
+import { isMainModule } from './cli-args.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -280,6 +281,6 @@ export async function main(captureImpl?: CaptureFn): Promise<void> {
 
 // Only run when this file is the entry point, not when imported by tests.
 /* v8 ignore next 2 */
-if (process.argv[1] === __filename) {
+if (isMainModule(import.meta.url)) {
   await main();
 }

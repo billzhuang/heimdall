@@ -34,6 +34,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
+import { isMainModule } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -189,7 +190,7 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
 }
 
 // --- CLI arg parsing when run directly ---
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
   let runOnce = false;
 

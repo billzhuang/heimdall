@@ -22,7 +22,7 @@ import {
 import { resolveBinPath } from './lib/bin-path.ts';
 import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { parseModelFlag } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   }
 }
 
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   main().catch((err: unknown) => {
     process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
     process.exit(1);

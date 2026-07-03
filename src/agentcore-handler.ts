@@ -32,12 +32,12 @@
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { fileURLToPath } from 'node:url';
 import { runAgentDiagnose } from './serve-mode.ts';
 import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { getMessage } from './lib/error-utils.ts';
+import { isMainModule } from './lib/cli-args.ts';
 
 const AGENTCORE_PORT_DEFAULT = 8080;
 
@@ -157,7 +157,7 @@ export function createAgentCoreApp(
 }
 
 // --- CLI entrypoint — start HTTP server when run directly --------------------
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const config = loadConfig();
 
   const defaultModel = resolveModelOrUndefined(process.env['HEIMDALL_MODEL']);

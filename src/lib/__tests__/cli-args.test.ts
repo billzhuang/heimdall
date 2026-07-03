@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag } from '../cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule } from '../cli-args.ts';
 
 describe('requireNextArg', () => {
   afterEach(() => {
@@ -137,5 +137,21 @@ describe('parseModelFlag', () => {
     parseModelFlag(['--model='], 0);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('isMainModule', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns true when the file URL resolves to process.argv[1]', () => {
+    vi.spyOn(process, 'argv', 'get').mockReturnValue(['node', '/repo/src/some-mode.ts']);
+    expect(isMainModule('file:///repo/src/some-mode.ts')).toBe(true);
+  });
+
+  it('returns false when process.argv[1] points at a different file (e.g. imported by a test runner)', () => {
+    vi.spyOn(process, 'argv', 'get').mockReturnValue(['node', '/repo/node_modules/.bin/vitest']);
+    expect(isMainModule('file:///repo/src/some-mode.ts')).toBe(false);
   });
 });

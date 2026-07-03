@@ -36,7 +36,7 @@ import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag } from './lib/cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -212,7 +212,7 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
 }
 
 // --- CLI arg parsing when run directly ---
-if (fileURLToPath(import.meta.url) === process.argv[1]) {
+if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
   const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
   let modelFlag: string | undefined;
