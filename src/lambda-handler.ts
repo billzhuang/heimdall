@@ -31,6 +31,7 @@
 import { handle } from 'hono/aws-lambda';
 import { createServeApp, runAgentDiagnose } from './serve-mode.ts';
 import { resolveModelOrUndefined } from './lib/model.ts';
+import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts';
 import { loadConfig } from './lib/config.ts';
 
 /**
@@ -49,17 +50,13 @@ export function createLambdaHandler(
 ): ReturnType<typeof handle> {
   const config = loadConfig();
 
-  const rawApiKey = process.env['HEIMDALL_API_KEY'] ?? config.server?.apiKey;
-  const apiKey = rawApiKey && rawApiKey.trim() ? rawApiKey.trim() : undefined;
+  const apiKey = resolveApiKey(process.env['HEIMDALL_API_KEY'], config.server?.apiKey);
 
   // Treat an invalid / absent HEIMDALL_MODEL as unset; createServeApp falls
   // back to DEFAULT_MODEL through the model resolution chain.
   const defaultModel = resolveModelOrUndefined(process.env['HEIMDALL_MODEL']);
 
-  const metricsServiceName =
-    config.otel?.serviceName?.trim() ||
-    process.env['OTEL_SERVICE_NAME']?.trim() ||
-    undefined;
+  const metricsServiceName = resolveMetricsServiceName(config.otel?.serviceName, process.env['OTEL_SERVICE_NAME']);
 
   const app = createServeApp(agentFn, defaultModel, apiKey, metricsServiceName);
   return handle(app);

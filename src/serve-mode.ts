@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { resolveModel } from './lib/model.ts';
+import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
@@ -410,16 +411,8 @@ if (isMainModule(import.meta.url)) {
     process.env['HEIMDALL_HOST'] ??
     config.server?.host ??
     '127.0.0.1';
-  // HEIMDALL_API_KEY env var takes precedence over config file value.
-  // Trim and treat empty/whitespace strings as absent so HEIMDALL_API_KEY=""
-  // doesn't silently disable auth when the config file has a valid key.
-  const rawApiKey = process.env['HEIMDALL_API_KEY'] ?? config.server?.apiKey;
-  const apiKey = rawApiKey && rawApiKey.trim() ? rawApiKey.trim() : undefined;
-
-  const metricsServiceName =
-    config.otel?.serviceName?.trim() ||
-    process.env['OTEL_SERVICE_NAME']?.trim() ||
-    undefined;
+  const apiKey = resolveApiKey(process.env['HEIMDALL_API_KEY'], config.server?.apiKey);
+  const metricsServiceName = resolveMetricsServiceName(config.otel?.serviceName, process.env['OTEL_SERVICE_NAME']);
   const app = createServeApp(runAgentDiagnose, modelArg, apiKey, metricsServiceName);
 
   serve({ fetch: app.fetch, port, hostname: host }, (info) => {
