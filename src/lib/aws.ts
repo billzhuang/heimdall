@@ -8,7 +8,7 @@
  * - Output is capped to protect the model's context window.
  */
 import { validateAwsCommand } from './aws-safety.ts';
-import { tokenizeShellArgs } from './tokenizer.ts';
+import { tokenizeShellArgs, buildShellCommand } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
@@ -76,7 +76,7 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
   const argv = tokenizeAwsArgs(trimmed);
   if (argv.length === 0) return 'Error: no AWS CLI subcommand provided.';
 
-  const cmd = `aws ${argv.map((a) => (/[\s'"\\]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(' ')}`;
+  const cmd = buildShellCommand('aws', argv);
   const validation = validateAwsCommand(cmd);
 
   if (!validation) {

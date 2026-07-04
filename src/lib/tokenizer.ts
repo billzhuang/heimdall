@@ -60,6 +60,30 @@ export function tokenizeShellArgs(input: string, binaryName?: string): string[] 
 }
 
 /**
+ * Quote a single argv token for display/validation purposes, matching POSIX
+ * shell single-quoting: wraps in `'...'` and escapes embedded single quotes
+ * as `'\''`. Only applied when the token contains whitespace, a quote, a
+ * backslash, or is empty (an unquoted empty token would otherwise vanish
+ * when the result is joined and re-split) — plain tokens are left bare for
+ * readability.
+ */
+function quoteShellArg(arg: string): string {
+  if (arg === '') return "''";
+  return /[\s'"\\]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg;
+}
+
+/**
+ * Rebuild a display/validation command string from a binary name and argv,
+ * shell-quoting any token that needs it. Used to reconstruct the string form
+ * that string-based validators (and audit logs) expect from already-tokenized
+ * argv, so validation and execution stay in sync with what actually runs.
+ */
+export function buildShellCommand(bin: string, argv: string[]): string {
+  if (argv.length === 0) return bin;
+  return `${bin} ${argv.map(quoteShellArg).join(' ')}`;
+}
+
+/**
  * Return the index of the first non-option token in `parts` at or after
  * `startIndex`, skipping option flags and consuming the value token that
  * follows any flag present in `optionsWithValue`.

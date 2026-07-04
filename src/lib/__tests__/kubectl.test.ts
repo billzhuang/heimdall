@@ -255,9 +255,9 @@ describe('runKubectl (policy enforcement)', () => {
     expect(result).toMatch(/no kubectl subcommand provided/i);
   });
 
-  it('quotes args containing whitespace in the display command (line 217 ternary)', async () => {
+  it('quotes args containing whitespace in the display command', async () => {
     // tokenizeArgs strips the quotes, leaving 'my pod' as one arg with a space.
-    // The ternary at kubectl.ts line 217 re-wraps it for audit/display purposes.
+    // buildShellCommand (tokenizer.ts) re-wraps it for audit/display purposes.
     // `delete` is destructive so the command is blocked before kubectl is spawned.
     const result = await runKubectl(`delete pod 'my pod' -n prod`);
     expect(result).toMatch(/^BLOCKED:/);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tokenizeShellArgs } from '../tokenizer.ts';
+import { tokenizeShellArgs, buildShellCommand } from '../tokenizer.ts';
 
 describe('tokenizeShellArgs', () => {
   it('splits simple space-separated args', () => {
@@ -107,5 +107,39 @@ describe('tokenizeShellArgs — omitted binaryName', () => {
   it('does not strip the first token even when it matches a known binary name', () => {
     // Without binaryName, 'kubectl' is kept — no implicit stripping.
     expect(tokenizeShellArgs('kubectl get pods')).toEqual(['kubectl', 'get', 'pods']);
+  });
+});
+
+describe('buildShellCommand', () => {
+  it('joins plain tokens with the binary name, unquoted', () => {
+    expect(buildShellCommand('kubectl', ['get', 'pods', '-n', 'prod'])).toBe(
+      'kubectl get pods -n prod',
+    );
+  });
+
+  it('single-quotes a token containing whitespace', () => {
+    expect(buildShellCommand('kubectl', ['get', 'my pod'])).toBe(`kubectl get 'my pod'`);
+  });
+
+  it('single-quotes a token containing a double quote', () => {
+    expect(buildShellCommand('aws', ['ec2', 'describe-instances', 'a"b'])).toBe(
+      `aws ec2 describe-instances 'a"b'`,
+    );
+  });
+
+  it('single-quotes a token containing a backslash', () => {
+    expect(buildShellCommand('aws', ['a\\b'])).toBe(`aws 'a\\b'`);
+  });
+
+  it('escapes embedded single quotes as \'\\\'\'', () => {
+    expect(buildShellCommand('kubectl', ["it's"])).toBe(`kubectl 'it'\\''s'`);
+  });
+
+  it('returns just the binary name for an empty argv', () => {
+    expect(buildShellCommand('kubectl', [])).toBe('kubectl');
+  });
+
+  it('quotes empty string arguments as \'\' so they are not lost when re-tokenized', () => {
+    expect(buildShellCommand('kubectl', ['get', '-l', ''])).toBe(`kubectl get -l ''`);
   });
 });
