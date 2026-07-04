@@ -1,5 +1,5 @@
-import { appendFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { appendFile } from 'node:fs/promises';
+import { withMkdirRetry } from './fs-retry.ts';
 
 export interface AuditConfig {
   enabled: boolean;
@@ -21,17 +21,10 @@ export interface AuditEntry {
 /** Append `line` to `file`, creating its parent directory on ENOENT and retrying once. */
 async function appendAuditLine(file: string, line: string): Promise<boolean> {
   try {
-    await appendFile(file, line, 'utf8');
+    await withMkdirRetry(file, () => appendFile(file, line, 'utf8'));
     return true;
-  } catch (err) {
-    if ((err as { code?: string })?.code !== 'ENOENT') return false;
-    try {
-      await mkdir(dirname(file), { recursive: true });
-      await appendFile(file, line, 'utf8');
-      return true;
-    } catch {
-      return false;
-    }
+  } catch {
+    return false;
   }
 }
 
