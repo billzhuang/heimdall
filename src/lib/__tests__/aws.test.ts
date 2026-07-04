@@ -295,7 +295,7 @@ describe('runAwsCli — exec paths (mocked child_process)', () => {
 
   it('quotes arguments containing spaces in the cmd audit string', async () => {
     // '--output\\ text' tokenizes to '--output text' (one token with a space).
-    // The ternary at line 82 wraps it in single quotes because /[\s'"\\]/.test(a) is true.
+    // buildShellCommand (tokenizer.ts) wraps it in single quotes because it contains whitespace.
     stubExec((_cmd, _args, _opts, cb) => cb(null, { stdout: 'text-output', stderr: '' }));
     const result = await runAwsCli('ec2 describe-instances --output\\ text');
     expect(result).toBe('text-output');
