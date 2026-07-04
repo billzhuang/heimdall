@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { runKubecostQuery } from '../kubecost.ts';
+import { runKubecostQuery, resolveAllocationNamespace } from '../kubecost.ts';
 import type { KubecostConfig } from '../kubecost.ts';
 import { mockFetch, makeAbortError } from './test-helpers.ts';
 
@@ -214,6 +214,37 @@ describe('runKubecostQuery — namespace lockdown', () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const url = fetchMock.mock.calls[0][0] as string;
     expect(url).not.toContain('filterNamespaces');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveAllocationNamespace (pure helper)
+// ---------------------------------------------------------------------------
+
+describe('resolveAllocationNamespace', () => {
+  it('passes the requested namespace through unchanged when nothing is locked', () => {
+    expect(resolveAllocationNamespace('staging', undefined)).toEqual({ namespace: 'staging' });
+  });
+
+  it('resolves to undefined when nothing is locked and no namespace is requested', () => {
+    expect(resolveAllocationNamespace(undefined, undefined)).toEqual({ namespace: undefined });
+    expect(resolveAllocationNamespace(null, undefined)).toEqual({ namespace: undefined });
+  });
+
+  it('resolves to the locked namespace when none is requested', () => {
+    expect(resolveAllocationNamespace(undefined, 'prod')).toEqual({ namespace: 'prod' });
+    expect(resolveAllocationNamespace(null, 'prod')).toEqual({ namespace: 'prod' });
+  });
+
+  it('resolves to the locked namespace when the request matches it', () => {
+    expect(resolveAllocationNamespace('prod', 'prod')).toEqual({ namespace: 'prod' });
+  });
+
+  it('returns a blocked message when the request differs from the locked namespace', () => {
+    const result = resolveAllocationNamespace('staging', 'prod');
+    expect('blockedMessage' in result).toBe(true);
+    expect((result as { blockedMessage: string }).blockedMessage).toMatch(/BLOCKED/);
+    expect((result as { blockedMessage: string }).blockedMessage).toContain('prod');
   });
 });
 
