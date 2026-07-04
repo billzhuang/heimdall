@@ -10,12 +10,8 @@
  * execFile so model-supplied release names and namespaces cannot inject shell
  * metacharacters.
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { makeTruncate } from './output-truncation.ts';
-import { getExecErrorDetail } from './error-utils.ts';
-
-const execFileAsync = promisify(execFile);
+import { execAndReport } from './cli-exec.ts';
 
 const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -87,16 +83,17 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
     return `Error: unknown helm action '${action as string}'. Allowed: ${ALLOWED_HELM_ACTIONS.join(', ')}.`;
   }
 
-  try {
-    const { stdout, stderr } = await execFileAsync('helm', argv, {
-      encoding: 'utf8',
-      timeout: EXEC_TIMEOUT_MS,
-      maxBuffer: MAX_BUFFER_BYTES,
-    });
-    const output = stdout.trim() || stderr.trim() || '(command produced no output)';
-    return truncate(output);
-  } catch (error) {
-    const detail = getExecErrorDetail(error);
-    return truncate(`helm exited with an error:\n${detail}`);
-  }
+  const startTs = new Date().toISOString();
+  const startMs = Date.now();
+
+  return execAndReport({
+    bin: 'helm',
+    argv,
+    cmd: `helm ${argv.join(' ')}`,
+    startTs,
+    startMs,
+    execOptions: { timeout: EXEC_TIMEOUT_MS, maxBuffer: MAX_BUFFER_BYTES },
+    noOutputMessage: '(command produced no output)',
+    truncate,
+  });
 }
