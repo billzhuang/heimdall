@@ -186,6 +186,44 @@ describe('spawnAndCollect', () => {
     expect(killCount).toBe(1);
   });
 
+  it('passes fully inherited stdio to spawn when stdio: "inherit"', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ stdoutData: 'ignored', exitCode: 0 }),
+    );
+    const result = await spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 1000,
+      stdio: 'inherit',
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+    expect(spawn).toHaveBeenCalledWith('bin', [], expect.objectContaining({ stdio: ['ignore', 'inherit', 'inherit'] }));
+    expect(result).toBe('');
+  });
+
+  it('does not buffer stdout/stderr when stdio: "inherit" (real inherit gives null streams)', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      setImmediate(() => childEmitter.emit('close', 0, null));
+      return {
+        pid: 4242,
+        stdout: null,
+        stderr: null,
+        kill: () => {},
+        on: childEmitter.on.bind(childEmitter),
+        once: childEmitter.once.bind(childEmitter),
+      } as unknown as ReturnType<typeof spawn>;
+    });
+    const result = await spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 1000,
+      stdio: 'inherit',
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+    expect(result).toBe('');
+  });
+
   it('settles only once when close fires after the timeout has already rejected', async () => {
     vi.spyOn(process, 'kill').mockImplementation(() => true);
     let closeHandler: ((code: number | null, signal: string | null) => void) | undefined;

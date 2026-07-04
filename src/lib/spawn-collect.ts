@@ -34,6 +34,14 @@ export interface SpawnAndCollectOptions {
    * timeout kill can reach its descendants too (e.g. a wrapped Flue agent).
    */
   detached?: boolean;
+  /**
+   * Child stdio mode. `'pipe'` (default) buffers stdout/stderr and passes them
+   * to `onExit`/resolves with stdout. `'inherit'` streams the child's stdout
+   * and stderr directly to the parent's — for callers that want the agent's
+   * output visible live and don't need it as a string — and always passes
+   * empty strings to `onExit`/resolves with `''`.
+   */
+  stdio?: 'pipe' | 'inherit';
   /** Build the Error to reject with when timeoutMs elapses before the child exits. */
   onTimeout: () => Error;
   /**
@@ -52,7 +60,7 @@ export interface SpawnAndCollectOptions {
 export function spawnAndCollect(
   binPath: string,
   args: string[],
-  { env, timeoutMs, detached = false, onTimeout, onExit }: SpawnAndCollectOptions,
+  { env, timeoutMs, detached = false, stdio = 'pipe', onTimeout, onExit }: SpawnAndCollectOptions,
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let settled = false;
@@ -65,10 +73,16 @@ export function spawnAndCollect(
     const outChunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
 
-    const child = spawn(binPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'], detached });
+    const child = spawn(binPath, args, {
+      env,
+      stdio: stdio === 'inherit' ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe'],
+      detached,
+    });
 
-    child.stdout?.on('data', (chunk: Buffer) => outChunks.push(chunk));
-    child.stderr?.on('data', (chunk: Buffer) => errChunks.push(chunk));
+    if (stdio !== 'inherit') {
+      child.stdout?.on('data', (chunk: Buffer) => outChunks.push(chunk));
+      child.stderr?.on('data', (chunk: Buffer) => errChunks.push(chunk));
+    }
 
     const timer = setTimeout(() => {
       settle(() => {
