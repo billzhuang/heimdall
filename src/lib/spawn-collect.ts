@@ -55,9 +55,9 @@ export function spawnAndCollect(
 
     const timer = setTimeout(() => {
       settle(() => {
-        if (detached) {
+        if (detached && child.pid !== undefined) {
           try {
-            process.kill(-(child.pid as number), 'SIGTERM');
+            process.kill(-child.pid, 'SIGTERM');
           } catch {
             child.kill('SIGTERM');
           }
