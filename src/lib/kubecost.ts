@@ -46,6 +46,33 @@ const ENDPOINT_PATH: Record<KubecostEndpoint, string> = {
   assets: '/model/assets',
 };
 
+/** Result of {@link resolveAllocationNamespace}: either the namespace to query, or a blocked-response message. */
+export type AllocationNamespaceResolution =
+  | { namespace: string | undefined }
+  | { blockedMessage: string };
+
+/**
+ * Resolve the `filterNamespaces` value for an allocation query, applying
+ * namespace lockdown when configured.
+ *
+ * When no namespace is locked, the caller-requested namespace passes through
+ * unchanged. When locked, the locked namespace is used unless the caller
+ * explicitly requests a different, non-null namespace — in which case the
+ * query is blocked.
+ */
+export function resolveAllocationNamespace(
+  requested: string | null | undefined,
+  lockedNamespace: string | undefined,
+): AllocationNamespaceResolution {
+  if (!lockedNamespace) return { namespace: requested ?? undefined };
+  if (requested != null && requested !== lockedNamespace) {
+    return {
+      blockedMessage: `BLOCKED: namespace lockdown is active — queries are restricted to namespace '${lockedNamespace}'. Remove the namespace parameter or set it to '${lockedNamespace}'.`,
+    };
+  }
+  return { namespace: lockedNamespace };
+}
+
 /**
  * Execute a read-only Kubecost query and return the JSON response as a string.
  *
@@ -64,19 +91,12 @@ export async function runKubecostQuery(
     return 'Error: the "namespace" filter only applies to allocation queries, not to assets queries. Omit namespace and re-run, or use endpoint "allocation" instead.';
   }
 
-  // Namespace lockdown: code-enforced when config.lockedNamespace is set.
-  // For allocation queries, override filterNamespaces with the locked value.
-  // Block if the caller explicitly passes a different namespace.
+  // For allocation queries, resolve the effective namespace under lockdown.
   let effectiveNamespace: string | undefined;
   if (endpoint === 'allocation') {
-    if (config.lockedNamespace) {
-      if (params.namespace != null && params.namespace !== config.lockedNamespace) {
-        return `BLOCKED: namespace lockdown is active — queries are restricted to namespace '${config.lockedNamespace}'. Remove the namespace parameter or set it to '${config.lockedNamespace}'.`;
-      }
-      effectiveNamespace = config.lockedNamespace;
-    } else {
-      effectiveNamespace = params.namespace ?? undefined;
-    }
+    const resolved = resolveAllocationNamespace(params.namespace, config.lockedNamespace);
+    if ('blockedMessage' in resolved) return resolved.blockedMessage;
+    effectiveNamespace = resolved.namespace;
   }
 
   return runJsonQuery(config, ENDPOINT_PATH[endpoint], 'Kubecost', truncate, (searchParams) => {
