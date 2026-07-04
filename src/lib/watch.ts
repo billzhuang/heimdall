@@ -65,7 +65,7 @@ function eventNamespace(event: K8sEventObject, fallback = 'unknown'): string {
 }
 
 /** Resolve the involved object's kind/name, falling back when either is absent. */
-function eventObjectRef(event: K8sEventObject): { kind: string; name: string } {
+export function eventObjectRef(event: K8sEventObject): { kind: string; name: string } {
   return {
     kind: event.involvedObject.kind ?? 'Unknown',
     name: event.involvedObject.name ?? 'unknown',
