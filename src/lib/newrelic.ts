@@ -9,11 +9,11 @@
  * API key and account ID come from trusted config/env — never from
  * model-selected arguments.
  */
-import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
+import type { CompiledRedactionRule } from './regex-redact.ts';
 import { resolveTimeISO, resolveTimeRange } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { clampLimit } from './tool-config.ts';
-import { formatHttpErrorMessage, formatQueryError, withTimeout } from './http.ts';
+import { formatHttpErrorMessage, runDispatchedQuery } from './http.ts';
 
 export interface NewRelicConfig {
   apiKey: string;
@@ -237,23 +237,14 @@ export async function runNewRelicQuery(
     return 'Error: New Relic account ID is not configured. Set the NEW_RELIC_ACCOUNT_ID environment variable, or add accountId to the newRelic section in heimdall.config.yaml.';
   }
 
-  try {
-    return await withTimeout(config.timeoutMs, async (signal) => {
-      let raw: string;
-      switch (params.queryType) {
-        case 'metrics':
-          raw = await queryMetrics(params, config, signal);
-          break;
-        case 'apm':
-          raw = await queryApm(params, config, signal);
-          break;
-        case 'alerts':
-          raw = await queryAlerts(params, config, signal);
-          break;
-      }
-      return truncate(applyRedaction(raw, config.regexRedactionRules ?? []));
-    });
-  } catch (err) {
-    return formatQueryError(err, 'New Relic', config.timeoutMs, config.regexRedactionRules ?? []);
-  }
+  return runDispatchedQuery(config.timeoutMs, 'New Relic', config.regexRedactionRules ?? [], truncate, (signal) => {
+    switch (params.queryType) {
+      case 'metrics':
+        return queryMetrics(params, config, signal);
+      case 'apm':
+        return queryApm(params, config, signal);
+      case 'alerts':
+        return queryAlerts(params, config, signal);
+    }
+  });
 }
