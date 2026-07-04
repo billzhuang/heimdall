@@ -28,7 +28,7 @@ import { resolveBinPath } from './lib/bin-path.ts';
 import {
   buildLearningEntry,
   appendLearningEntry,
-  resolveLogPath,
+  resolveLearningPaths,
 } from './lib/self-improve.ts';
 import { readTaskHistory } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
@@ -57,8 +57,6 @@ export function requirePositiveInt(n: number, msg: string): void {
   }
 }
 
-const LEARNING_LOG_NAME = 'learning-log.jsonl';
-const TASK_HISTORY_NAME = 'task-history.jsonl';
 const DEFAULT_MAX_ITERATIONS = 3;
 
 async function callLlm(prompt: string, backend: string, timeoutMs: number): Promise<string> {
@@ -192,10 +190,7 @@ async function main(): Promise<void> {
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const proposalsDir = join(scenariosDir, 'self-loop-proposals');
   const config = loadConfig();
-  const logPath = resolveLogPath(cliLogPath, config.learning?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
-  const taskHistoryPath = config.learning?.file
-    ? resolve(config.learning.file)
-    : join(scenariosDir, TASK_HISTORY_NAME);
+  const { logPath, taskHistoryPath } = resolveLearningPaths(scenariosDir, cliLogPath, config.learning);
   const instructionsPath = resolve(__dirname, '..', 'src', 'lib', 'instructions.ts');
   const binPath = resolveBinPath(__dirname);
 

@@ -9,7 +9,7 @@
  * run → evaluate → learn → improve → repeat.
  */
 import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import type { HeimdallConfig } from './config.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
@@ -163,6 +163,29 @@ export function resolveLogPath(
   if (envPath) return resolve(envPath);
   if (configLogFile) return resolve(configLogFile);
   return defaultPath;
+}
+
+/** Package-relative filename for the self-improve learning log. */
+export const LEARNING_LOG_NAME = 'learning-log.jsonl';
+/** Package-relative filename for the task-history log. */
+export const TASK_HISTORY_NAME = 'task-history.jsonl';
+
+/**
+ * Resolve both the learning-log and task-history paths shared by self-improve
+ * and self-loop mode. See `resolveLogPath` for the learning-log resolution
+ * order; the task-history path uses `learningConfig.file` if set, else
+ * `scenariosDir/task-history.jsonl`.
+ */
+export function resolveLearningPaths(
+  scenariosDir: string,
+  cliLogPath: string | null | undefined,
+  learningConfig: HeimdallConfig['learning'] | null | undefined,
+): { logPath: string; taskHistoryPath: string } {
+  const logPath = resolveLogPath(cliLogPath, learningConfig?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
+  const taskHistoryPath = learningConfig?.file
+    ? resolve(learningConfig.file)
+    : join(scenariosDir, TASK_HISTORY_NAME);
+  return { logPath, taskHistoryPath };
 }
 
 /**

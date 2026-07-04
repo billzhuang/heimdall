@@ -14,7 +14,7 @@
  *   heimdall self-improve --reflect
  *   heimdall self-improve --reflect --from-log
  */
-import { resolve, dirname, join } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadScenarios,
@@ -27,7 +27,7 @@ import {
   appendLearningEntry,
   readLearningLog,
   buildReflectionPrompt,
-  resolveLogPath,
+  resolveLearningPaths,
   resolveRagOptions,
   type LearningEntry,
 } from './lib/self-improve.ts';
@@ -37,9 +37,6 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const LEARNING_LOG_NAME = 'learning-log.jsonl';
-const TASK_HISTORY_NAME = 'task-history.jsonl';
 
 const HELP_TEXT = `Usage: heimdall self-improve [--scenario <name>] [--reflect] [--from-log] [--log-path <path>] [--log-stdout]
 
@@ -140,10 +137,7 @@ async function main(): Promise<void> {
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const config = loadConfig();
-  const logPath = resolveLogPath(cliLogPath, config.learning?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
-  const taskHistoryPath = config.learning?.file
-    ? resolve(config.learning.file)
-    : join(scenariosDir, TASK_HISTORY_NAME);
+  const { logPath, taskHistoryPath } = resolveLearningPaths(scenariosDir, cliLogPath, config.learning);
   const { useRag, ragTopK } = resolveRagOptions(config.learning);
 
   // --from-log: skip running evals; reflect on existing log entries instead.

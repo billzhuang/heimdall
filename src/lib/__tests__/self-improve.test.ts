@@ -10,6 +10,7 @@ import {
   readLearningLog,
   appendLearningEntry,
   resolveLogPath,
+  resolveLearningPaths,
   resolveRagOptions,
 } from '../self-improve.ts';
 import type { HeimdallConfig } from '../config.ts';
@@ -241,6 +242,52 @@ describe('resolveLogPath', () => {
     const result = resolveLogPath(undefined, undefined, '/default/path');
     expect(result).toBe(resolve('relative/env-log.jsonl'));
     expect(result.startsWith('/')).toBe(true);
+  });
+});
+
+describe('resolveLearningPaths', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('defaults both paths under scenariosDir when nothing is set', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    const result = resolveLearningPaths('/pkg/scenarios', undefined, undefined);
+    expect(result).toEqual({
+      logPath: join('/pkg/scenarios', 'learning-log.jsonl'),
+      taskHistoryPath: join('/pkg/scenarios', 'task-history.jsonl'),
+    });
+  });
+
+  it('cli --log-path overrides only the learning log, not task history', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    const result = resolveLearningPaths('/pkg/scenarios', '/cli/log.jsonl', undefined);
+    expect(result.logPath).toBe(resolve('/cli/log.jsonl'));
+    expect(result.taskHistoryPath).toBe(join('/pkg/scenarios', 'task-history.jsonl'));
+  });
+
+  it('config.learning.file overrides the task-history path', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    const config: HeimdallConfig['learning'] = {
+      enabled: true,
+      file: '/config/task-history.jsonl',
+      rag: { enabled: false, topK: 10, minSimilarity: 0 },
+    };
+    const result = resolveLearningPaths('/pkg/scenarios', undefined, config);
+    expect(result.taskHistoryPath).toBe(resolve('/config/task-history.jsonl'));
+    expect(result.logPath).toBe(join('/pkg/scenarios', 'learning-log.jsonl'));
+  });
+
+  it('config.learning.logFile overrides the learning-log path', () => {
+    vi.stubEnv('HEIMDALL_LEARNING_LOG', '');
+    const config: HeimdallConfig['learning'] = {
+      enabled: true,
+      logFile: '/config/learning-log.jsonl',
+      rag: { enabled: false, topK: 10, minSimilarity: 0 },
+    };
+    const result = resolveLearningPaths('/pkg/scenarios', undefined, config);
+    expect(result.logPath).toBe(resolve('/config/learning-log.jsonl'));
+    expect(result.taskHistoryPath).toBe(join('/pkg/scenarios', 'task-history.jsonl'));
   });
 });
 
