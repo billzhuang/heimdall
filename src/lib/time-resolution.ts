@@ -114,8 +114,29 @@ export type ResolvedTimeRange<T> = { from: T; to: T | null } | { error: string }
  *
  * Shared by the Datadog and New Relic query backends, which both resolve a
  * lookback-windowed time range before issuing a request.
+ *
+ * Overloaded so callers that pass a non-null `defaultTo` (Datadog, which
+ * always defaults `to` to "now") get a statically non-null `to` back,
+ * instead of having to defensively re-fall-back to a value that can never
+ * actually be null at runtime.
  */
-export function resolveTimeRange<T>(
+export function resolveTimeRange<T extends NonNullable<unknown>>(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs: number,
+  resolveFn: (value: string, nowMs: number) => T | null,
+  defaultFrom: T,
+  defaultTo: T,
+): { from: T; to: T } | { error: string };
+export function resolveTimeRange<T extends NonNullable<unknown>>(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs: number,
+  resolveFn: (value: string, nowMs: number) => T | null,
+  defaultFrom: T,
+  defaultTo: T | null,
+): ResolvedTimeRange<T>;
+export function resolveTimeRange<T extends NonNullable<unknown>>(
   from: string | null | undefined,
   to: string | null | undefined,
   nowMs: number,
