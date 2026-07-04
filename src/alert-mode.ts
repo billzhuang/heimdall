@@ -10,7 +10,6 @@
  *   npm run alert -- --source grafana alert.json
  *   npm run alert -- --source raw "Pod api-xyz in prod is CrashLoopBackOff"
  */
-import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,6 +21,7 @@ import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
+import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
@@ -58,21 +58,15 @@ async function seedKubectl(alert: ParsedAlert): Promise<string> {
   return parts.join('\n\n');
 }
 
-async function runAgent(prompt: string, model?: string): Promise<void> {
+export async function runAgent(prompt: string, model?: string): Promise<void> {
   const binPath = resolveBinPath(__dirname);
-  return new Promise((res, rej) => {
-    let settled = false;
-    const settle = (err?: Error) => { if (!settled) { settled = true; if (err) rej(err); else res(); } };
-
-    const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
-    const child = spawn(binPath, ['-p', prompt], { stdio: ['ignore', 'inherit', 'inherit'], env });
-    const timer = setTimeout(() => { child.kill('SIGTERM'); settle(new Error('alert investigation timed out')); }, ALERT_TIMEOUT_MS);
-
-    child.on('close', (code: number | null, signal: string | null) => {
-      clearTimeout(timer);
-      settle(interpretChildExit(code, signal) ?? undefined);
-    });
-    child.on('error', (err: Error) => { clearTimeout(timer); settle(err); });
+  const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
+  await spawnAndCollect(binPath, ['-p', prompt], {
+    env,
+    timeoutMs: ALERT_TIMEOUT_MS,
+    stdio: 'inherit',
+    onTimeout: () => new Error('alert investigation timed out'),
+    onExit: (code, signal) => interpretChildExit(code, signal),
   });
 }
 
