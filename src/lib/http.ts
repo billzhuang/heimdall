@@ -106,6 +106,28 @@ export function formatQueryError(
   return `${service} query failed: ${applyRedaction(message, redactionRules)}`;
 }
 
+/**
+ * Run a multi-endpoint query dispatcher under a timeout, then truncate and
+ * redact its result; catch any error (including timeout) into `formatQueryError`.
+ *
+ * Centralizes the timeout / truncate / redact / catch-and-format sequence shared
+ * by query tools that route to one of several endpoints based on a `queryType`
+ * (Datadog, New Relic), as opposed to `runJsonQuery`'s single-endpoint shape.
+ */
+export async function runDispatchedQuery(
+  timeoutMs: number,
+  serviceName: string,
+  redactionRules: CompiledRedactionRule[],
+  truncate: (s: string) => string,
+  dispatch: (signal: AbortSignal) => Promise<string>,
+): Promise<string> {
+  try {
+    return await withTimeout(timeoutMs, async (signal) => truncate(applyRedaction(await dispatch(signal), redactionRules)));
+  } catch (err) {
+    return formatQueryError(err, serviceName, timeoutMs, redactionRules);
+  }
+}
+
 /** Minimal shape shared by the query-tool configs that call `runJsonQuery`. */
 export interface JsonQueryConfig {
   url: string;
