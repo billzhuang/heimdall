@@ -39,6 +39,7 @@ import {
   shouldDiagnose,
   computeBackoffMs,
   shouldResetBackoff,
+  eventObjectRef,
   type CooldownState,
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
@@ -189,8 +190,9 @@ async function runWatchStream(
       const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
       const severity = inferDiagnosisSeverity(diagnosis);
       const summary = truncateSummary(`[${event.reason}] ${diagnosis}`);
+      const { kind: baselineKind, name: baselineName } = eventObjectRef(event);
       try {
-        await upsertBaseline(clusterName, ns, event.involvedObject.kind ?? 'Unknown', event.involvedObject.name ?? 'unknown', summary, baselineFile);
+        await upsertBaseline(clusterName, ns, baselineKind, baselineName, summary, baselineFile);
       } catch (err: unknown) {
         process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${getMessage(err)}\n`);
       }
