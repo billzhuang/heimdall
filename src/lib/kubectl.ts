@@ -268,8 +268,7 @@ function resolveExecutionContext(argv: string[], options: RunKubectlOptions): Ex
 async function resolveCacheFile(
   argv: string[],
   subcommand: string | null,
-  execCtx: Pick<ExecutionContext, 'inCluster' | 'resolvedKubeconfig'>,
-  kubeconfigEnv: string,
+  execCtx: ExecutionContext,
 ): Promise<string | null> {
   if (!isCacheEnabled() || subcommand !== 'get' || !isJsonOutput(argv)) return null;
 
@@ -282,7 +281,7 @@ async function resolveCacheFile(
       effectiveContext = cfg?.currentContext ?? '';
     }
   }
-  const identity = JSON.stringify({ argv, kubeconfig: kubeconfigEnv, effectiveContext });
+  const identity = JSON.stringify({ argv, kubeconfig: execCtx.env.KUBECONFIG ?? '', effectiveContext });
   const hash = createHash('sha256').update(identity).digest('hex');
   return joinPath(getCacheDir(), `${hash}.json`);
 }
@@ -349,10 +348,10 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
 
   const execCtx = resolveExecutionContext(argv, options);
   argv = execCtx.argv;
-  const { env, inCluster, resolvedKubeconfig } = execCtx;
+  const { env } = execCtx;
 
   // Serve JSON `get` reads from the short-TTL cache when possible.
-  const cacheFile = await resolveCacheFile(argv, validation.subcommand, { inCluster, resolvedKubeconfig }, env.KUBECONFIG ?? '');
+  const cacheFile = await resolveCacheFile(argv, validation.subcommand, execCtx);
   if (cacheFile) {
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());
     if (cached !== null) {
