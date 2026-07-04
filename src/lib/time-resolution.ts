@@ -101,3 +101,33 @@ export function resolveTimePassthrough(expr: string, nowMs: number): string {
   }
   return expr;
 }
+
+export type ResolvedTimeRange<T> = { from: T; to: T | null } | { error: string };
+
+/**
+ * Resolve a `from`/`to` time-range pair with `resolveFn`, falling back to
+ * `defaultFrom`/`defaultTo` when unset, and surface a parse error otherwise.
+ *
+ * `defaultTo` may be `null` for backends (e.g. NRQL UNTIL) where an absent
+ * `to` should stay absent rather than default to "now" — the caller decides
+ * by choosing what it passes as `defaultTo`.
+ *
+ * Shared by the Datadog and New Relic query backends, which both resolve a
+ * lookback-windowed time range before issuing a request.
+ */
+export function resolveTimeRange<T>(
+  from: string | null | undefined,
+  to: string | null | undefined,
+  nowMs: number,
+  resolveFn: (value: string, nowMs: number) => T | null,
+  defaultFrom: T,
+  defaultTo: T | null,
+): ResolvedTimeRange<T> {
+  const resolvedFrom = from ? resolveFn(from, nowMs) : defaultFrom;
+  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
+
+  const resolvedTo = to ? resolveFn(to, nowMs) : defaultTo;
+  if (to && resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
+
+  return { from: resolvedFrom, to: resolvedTo };
+}

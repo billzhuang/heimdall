@@ -10,7 +10,7 @@
  * model-selected arguments.
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { resolveTimeISO } from './time-resolution.ts';
+import { resolveTimeISO, resolveTimeRange } from './time-resolution.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { clampLimit } from './tool-config.ts';
 import { formatHttpErrorMessage, formatQueryError, withTimeout } from './http.ts';
@@ -78,15 +78,15 @@ function resolveNrqlTimeRange(
   nowMs: number,
   defaultLookbackMs: number,
 ): NrqlTimeRange {
-  const since = params.from
-    ? resolveNrqlTime(params.from, nowMs)
-    : new Date(nowMs - defaultLookbackMs).toISOString();
-  if (since === null) return { error: `Error: could not parse "from" time: "${params.from}".` };
-
-  const until = params.to ? resolveNrqlTime(params.to, nowMs) : null;
-  if (params.to && until === null) return { error: `Error: could not parse "to" time: "${params.to}".` };
-
-  return { since, until };
+  const range = resolveTimeRange(
+    params.from,
+    params.to,
+    nowMs,
+    resolveNrqlTime,
+    new Date(nowMs - defaultLookbackMs).toISOString(),
+    null,
+  );
+  return 'error' in range ? range : { since: range.from, until: range.to };
 }
 
 /** Execute a NerdGraph GraphQL query and return the raw JSON response text. */

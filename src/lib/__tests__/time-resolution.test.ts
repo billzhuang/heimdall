@@ -5,6 +5,7 @@ import {
   resolveTimeISO,
   resolveTimeUs,
   resolveTimePassthrough,
+  resolveTimeRange,
 } from '../time-resolution.ts';
 
 const NOW = new Date('2024-06-01T12:00:00Z').getTime(); // 1717243200000
@@ -240,5 +241,49 @@ describe('resolveTimePassthrough', () => {
 
   it('passes through arbitrary non-matching strings unchanged', () => {
     expect(resolveTimePassthrough('yesterday', NOW)).toBe('yesterday');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveTimeRange — shared from/to range resolver (Datadog, New Relic)
+// ---------------------------------------------------------------------------
+
+describe('resolveTimeRange', () => {
+  const DEFAULT_FROM = 'default-from';
+  const DEFAULT_TO = 'default-to';
+
+  it('falls back to defaultFrom/defaultTo when both are unset', () => {
+    const result = resolveTimeRange(undefined, undefined, NOW, resolveTimeISO, DEFAULT_FROM, DEFAULT_TO);
+    expect(result).toEqual({ from: DEFAULT_FROM, to: DEFAULT_TO });
+  });
+
+  it('resolves an explicit from/to pair with resolveFn', () => {
+    const result = resolveTimeRange('-1h', '-30m', NOW, resolveTimeISO, DEFAULT_FROM, DEFAULT_TO);
+    expect(result).toEqual({ from: resolveTimeISO('-1h', NOW), to: resolveTimeISO('-30m', NOW) });
+  });
+
+  it('returns a "from" parse error and does not fall back', () => {
+    const result = resolveTimeRange('-5y', undefined, NOW, resolveTimeISO, DEFAULT_FROM, DEFAULT_TO);
+    expect(result).toEqual({ error: 'Error: could not parse "from" time: "-5y".' });
+  });
+
+  it('returns a "to" parse error when from is valid', () => {
+    const result = resolveTimeRange('-1h', '-5y', NOW, resolveTimeISO, DEFAULT_FROM, DEFAULT_TO);
+    expect(result).toEqual({ error: 'Error: could not parse "to" time: "-5y".' });
+  });
+
+  it('prioritizes the "from" error when both from and to fail to parse', () => {
+    const result = resolveTimeRange('-5y', '-5y', NOW, resolveTimeISO, DEFAULT_FROM, DEFAULT_TO);
+    expect(result).toEqual({ error: 'Error: could not parse "from" time: "-5y".' });
+  });
+
+  it('supports a null defaultTo so an unset "to" stays null (NRQL UNTIL semantics)', () => {
+    const result = resolveTimeRange('-1h', undefined, NOW, resolveTimeISO, DEFAULT_FROM, null);
+    expect(result).toEqual({ from: resolveTimeISO('-1h', NOW), to: null });
+  });
+
+  it('still reports a "to" parse error even when defaultTo is null', () => {
+    const result = resolveTimeRange('-1h', '-5y', NOW, resolveTimeISO, DEFAULT_FROM, null);
+    expect(result).toEqual({ error: 'Error: could not parse "to" time: "-5y".' });
   });
 });
