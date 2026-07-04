@@ -189,17 +189,7 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
   cleanup();
 }
 
-// --- CLI arg parsing when run directly ---
-if (isMainModule(import.meta.url)) {
-  const args = process.argv.slice(2);
-  let runOnce = false;
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === '--once') {
-      runOnce = true;
-    } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(`Usage: heimdall schedule [--once]
+const SCHEDULE_HELP_TEXT = `Usage: heimdall schedule [--once]
 
 Run Heimdall operations on a cron schedule defined in heimdall.config.yaml.
 
@@ -220,13 +210,38 @@ Examples:
   npm run schedule -- --once    # one-shot, exit when done
   heimdall schedule --once      # same via the bin CLI
   flue run triage --target node # run triage as a Flue workflow (for external schedulers)
-`);
+`;
+
+export interface ScheduleCliArgs {
+  runOnce: boolean;
+}
+
+/**
+ * Parse `heimdall schedule` CLI flags. Exits the process directly for
+ * --help and unknown options, matching this mode's historical behavior.
+ */
+export function parseScheduleArgv(argv: string[]): ScheduleCliArgs {
+  let runOnce = false;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--once') {
+      runOnce = true;
+    } else if (arg === '-h' || arg === '--help') {
+      process.stdout.write(SCHEDULE_HELP_TEXT);
       process.exit(0);
     } else {
       process.stderr.write(`Error: unknown option: ${arg}\n`);
       process.exit(1);
     }
   }
+
+  return { runOnce };
+}
+
+// --- CLI arg parsing when run directly ---
+if (isMainModule(import.meta.url)) {
+  const { runOnce } = parseScheduleArgv(process.argv.slice(2));
 
   runScheduleMode(runOnce).catch((err: unknown) => {
     process.stderr.write(`[heimdall-schedule] Fatal error: ${getStackOrMessage(err)}\n`);
