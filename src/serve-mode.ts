@@ -27,7 +27,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { bearerAuth } from 'hono/bearer-auth';
-import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
@@ -37,6 +36,7 @@ import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.t
 import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { isMainModule } from './lib/cli-args.ts';
+import { spawnAndCollect } from './lib/spawn-collect.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -64,59 +64,28 @@ export function parsePortArg(raw: string, label: string): { port: number } | { e
 /**
  * Spawn `heimdall -p <prompt> --json` and capture the structured JSON output.
  * Returns the raw JSON string emitted by format-json.ts.
+ *
+ * Runs the child as a process group leader (detached) so a timeout's SIGTERM
+ * reaches all grandchildren (Flue agent, kubectl, etc.), not just the shell
+ * wrapper. `timeoutMs` defaults to DIAGNOSE_TIMEOUT_MS; overridable for tests.
  */
-export async function runAgentDiagnose(prompt: string, model: string): Promise<string> {
+export async function runAgentDiagnose(
+  prompt: string,
+  model: string,
+  timeoutMs = DIAGNOSE_TIMEOUT_MS,
+): Promise<string> {
   const binPath = resolveBinPath(__dirname);
-  return new Promise((resolveP, rejectP) => {
-    let stdout = '';
-    let settled = false;
-
-    const env = { ...process.env, HEIMDALL_MODEL: model };
-    const child = spawn(binPath, ['-p', prompt, '--json'], {
-      // detached=true makes the child a process group leader so SIGTERM on timeout
-      // reaches all grandchildren (Flue agent, kubectl, etc.), not just the shell wrapper.
-      // stderr is piped so diagnostic output is captured for error messages.
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: true,
-      env,
-    });
-
-    let stderr = '';
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        try {
-          process.kill(-child.pid!, 'SIGTERM');
-        } catch {
-          child.kill('SIGTERM');
-        }
-        rejectP(new Error('agent timed out after 5 minutes'));
-      }
-    }, DIAGNOSE_TIMEOUT_MS);
-
-    child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
-    child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf-8'); });
-
-    child.on('close', (code: number | null, signal: string | null) => {
-      clearTimeout(timer);
-      if (settled) return;
-      settled = true;
-      if (code === 0) {
-        resolveP(stdout);
-      } else if (signal !== null) {
-        rejectP(new Error(`heimdall agent killed by signal ${signal}`));
-      } else {
-        rejectP(new Error(`heimdall agent exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`));
-      }
-    });
-
-    child.on('error', (err: Error) => {
-      clearTimeout(timer);
-      if (!settled) {
-        settled = true;
-        rejectP(err);
-      }
-    });
+  const env = { ...process.env, HEIMDALL_MODEL: model };
+  return spawnAndCollect(binPath, ['-p', prompt, '--json'], {
+    env,
+    timeoutMs,
+    detached: true,
+    onTimeout: () => new Error(`agent timed out after ${timeoutMs / 1000}s`),
+    onExit: (code, signal, stdout, stderr) => {
+      if (code === 0) return null;
+      if (signal !== null) return new Error(`heimdall agent killed by signal ${signal}`);
+      return new Error(`heimdall agent exited with code ${code}${stderr ? `: ${stderr}` : ''}`);
+    },
   });
 }
 
