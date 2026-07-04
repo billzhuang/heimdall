@@ -171,6 +171,22 @@ export function resolveDeploymentFallback(
   return mapped.deployment ?? (mapped.namespace !== undefined ? undefined : serviceName);
 }
 
+/** Builds a `PdIncidentRef` from a V2 or V3 incident object plus its resolved service name. */
+function toPdIncidentRef(
+  incident: Pick<PagerDutyV2Incident | PagerDutyV3Incident, 'title' | 'id' | 'status' | 'urgency'>,
+  serviceName: string | undefined,
+  runbookUrl?: string,
+): PdIncidentRef {
+  return {
+    title: incident.title,
+    id: incident.id,
+    status: incident.status,
+    urgency: incident.urgency,
+    serviceName,
+    runbookUrl,
+  };
+}
+
 function buildPdAlert(incident: PdIncidentRef, serviceMap: PagerDutyServiceMap): ParsedAlert {
   const { title, id, status, urgency, serviceName, runbookUrl } = incident;
   const mapped = resolveServiceTarget(serviceName, serviceMap);
@@ -206,10 +222,7 @@ export function parsePagerDutyV2Payload(
     const runbookUrl = incident.links
       ?.find((l) => l?.text?.toLowerCase()?.includes('runbook'))
       ?.href;
-    return [buildPdAlert(
-      { title: incident.title, id: incident.id, status: incident.status, urgency: incident.urgency, serviceName: incident.service?.name, runbookUrl },
-      serviceMap,
-    )];
+    return [buildPdAlert(toPdIncidentRef(incident, incident.service?.name, runbookUrl), serviceMap)];
   });
 }
 
@@ -235,10 +248,7 @@ export function parsePagerDutyV3Payload(
     const incident = data.incident ?? data;
     // V3 service references expose the display name as `summary`; fall back to `name` for compat.
     const serviceName = incident.service?.summary ?? incident.service?.name;
-    return [buildPdAlert(
-      { title: incident.title, id: incident.id, status: incident.status, urgency: incident.urgency, serviceName },
-      serviceMap,
-    )];
+    return [buildPdAlert(toPdIncidentRef(incident, serviceName), serviceMap)];
   });
 }
 
