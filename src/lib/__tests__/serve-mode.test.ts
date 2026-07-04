@@ -5,7 +5,7 @@
  * agent subprocess is spawned. runAgentDiagnose is passed as a mock to
  * createServeApp, keeping tests fast and deterministic.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../config.ts', () => ({
   loadConfig: () => ({
@@ -14,7 +14,7 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp, parsePortValue, parsePortArg } from '../../serve-mode.ts';
+import { createServeApp, parsePortValue, parsePortArg, parseServeArgv } from '../../serve-mode.ts';
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -375,5 +375,73 @@ describe('createServeApp — API key authentication', () => {
       );
       expect(res.status).toBe(200);
     });
+  });
+});
+
+describe('parseServeArgv', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns empty result for no args', () => {
+    expect(parseServeArgv([])).toEqual({ port: undefined, host: undefined, model: undefined });
+  });
+
+  it('parses --port, --host, --model in space-separated form', () => {
+    expect(parseServeArgv(['--port', '8080', '--host', '0.0.0.0', '--model', 'anthropic/claude-opus-4-8'])).toEqual({
+      port: 8080,
+      host: '0.0.0.0',
+      model: 'anthropic/claude-opus-4-8',
+    });
+  });
+
+  it('parses --port=, --host=, --model= in equals form', () => {
+    expect(parseServeArgv(['--port=8080', '--host=0.0.0.0', '--model=anthropic/claude-opus-4-8'])).toEqual({
+      port: 8080,
+      host: '0.0.0.0',
+      model: 'anthropic/claude-opus-4-8',
+    });
+  });
+
+  it('exits 1 with a single error when --port is missing a value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseServeArgv(['--port']);
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --port requires a value\n');
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits 1 with a labeled error when --port is out of range', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseServeArgv(['--port', '99999']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --port must be an integer between 1 and 65535, got "99999"\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('prints usage and exits 0 for --help/-h', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseServeArgv(['--help']);
+    expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: heimdall serve'));
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    parseServeArgv(['-h']);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('exits 1 with an error for an unknown option', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseServeArgv(['--bogus']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('leaves --host and --model undefined when their value is omitted (historical behavior)', () => {
+    expect(parseServeArgv(['--host'])).toEqual({ port: undefined, host: undefined, model: undefined });
+    expect(parseServeArgv(['--model'])).toEqual({ port: undefined, host: undefined, model: undefined });
   });
 });
