@@ -50,8 +50,6 @@ function pushNamespaceFlag(argv: string[], namespace: string | undefined): void 
  */
 export async function runHelm(action: HelmAction, options: RunHelmOptions = {}): Promise<string> {
   const { release, namespace, getType, allNamespaces } = options;
-  const startTs = new Date().toISOString();
-  const startMs = Date.now();
 
   // Reject names starting with '-': execFile prevents shell injection, but helm
   // would still parse such values as flags (option injection / argument injection).
@@ -84,6 +82,9 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
     // Exhaustive guard — TypeScript ensures HelmAction is one of the above.
     return `Error: unknown helm action '${action as string}'. Allowed: ${ALLOWED_HELM_ACTIONS.join(', ')}.`;
   }
+
+  const startTs = new Date().toISOString();
+  const startMs = Date.now();
 
   return execAndReport({
     bin: 'helm',
