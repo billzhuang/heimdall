@@ -1,7 +1,7 @@
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { withMkdirRetry } from './fs-retry.ts';
 
 /** Generate a unique JSONL log entry id (`<unix-ms>-<12 hex chars>`) and ISO-8601 timestamp. */
 export function generateEntryId(): { id: string; timestamp: string } {
@@ -10,23 +10,6 @@ export function generateEntryId(): { id: string; timestamp: string } {
     id: `${now.getTime()}-${randomBytes(6).toString('hex')}`,
     timestamp: now.toISOString(),
   };
-}
-
-/**
- * Run `op()` and, on ENOENT, create the parent directory and retry once.
- * Non-ENOENT errors are re-thrown immediately.
- */
-async function withMkdirRetry(filePath: string, op: () => Promise<void>): Promise<void> {
-  try {
-    await op();
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
-      await mkdir(dirname(filePath), { recursive: true });
-      await op();
-    } else {
-      throw err;
-    }
-  }
 }
 
 /** Append a single item as a JSONL line to a file (creates the file and parent dirs if absent). */
