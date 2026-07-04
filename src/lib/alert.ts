@@ -173,7 +173,7 @@ export function resolveDeploymentFallback(
 
 /** Builds a `PdIncidentRef` from a V2 or V3 incident object plus its resolved service name. */
 function toPdIncidentRef(
-  incident: Pick<PagerDutyV2Incident | PagerDutyV3Incident, 'title' | 'id' | 'status' | 'urgency'>,
+  incident: Pick<PdIncidentRef, 'title' | 'id' | 'status' | 'urgency'>,
   serviceName: string | undefined,
   runbookUrl?: string,
 ): PdIncidentRef {
