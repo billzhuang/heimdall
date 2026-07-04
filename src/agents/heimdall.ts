@@ -35,7 +35,7 @@ import { loadConfig } from '../lib/config.ts';
 import { compileRules } from '../lib/regex-redact.ts';
 import { loadRunbooks } from '../lib/runbooks.ts';
 import { selectDiverseEntries, buildRagContext } from '../lib/rag.ts';
-import type { TaskHistoryEntry } from '../lib/task-history.ts';
+import { resolveTaskHistoryFilePath, type TaskHistoryEntry } from '../lib/task-history.ts';
 import { queryTopBaselines, buildBaselineContext, resolveBaselineFilePath, type BaselineEntry } from '../lib/baseline.ts';
 import { getMessage } from '../lib/error-utils.ts';
 
@@ -55,13 +55,9 @@ function loadTaskHistorySync(logPath: string): TaskHistoryEntry[] {
   return readJsonlFileSync<TaskHistoryEntry>(logPath, { tail: 100 });
 }
 
-const TASK_HISTORY_NAME = 'task-history.jsonl';
-
 const ragContext = (() => {
   if (config.learning?.rag?.enabled !== true) return undefined;
-  const logPath = config.learning.file
-    ? resolve(config.learning.file)
-    : resolve(configDir, 'scenarios', TASK_HISTORY_NAME);
+  const logPath = resolveTaskHistoryFilePath(config.learning.file, resolve(configDir, 'scenarios'));
   const history = loadTaskHistorySync(logPath);
   if (history.length === 0) return undefined;
   const topK = config.learning.rag.topK ?? 5;
