@@ -6,6 +6,7 @@
  * createServeApp, keeping tests fast and deterministic.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { EventEmitter } from 'node:events';
 
 vi.mock('../config.ts', () => ({
   loadConfig: () => ({
@@ -14,7 +15,55 @@ vi.mock('../config.ts', () => ({
   }),
 }));
 
-import { createServeApp, parsePortValue, parsePortArg, parseServeArgv } from '../../serve-mode.ts';
+vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
+
+import { spawn } from 'node:child_process';
+import { createServeApp, parsePortValue, parsePortArg, parseServeArgv, runAgentDiagnose } from '../../serve-mode.ts';
+
+// ---------------------------------------------------------------------------
+// Fake child process factory for runAgentDiagnose tests
+// ---------------------------------------------------------------------------
+
+type FakeChildOptions = {
+  stdoutData?: string;
+  stderrData?: string;
+  exitCode?: number | null;
+  signal?: string | null;
+  emitError?: Error;
+  pid?: number;
+};
+
+function fakeChild({
+  stdoutData = '',
+  stderrData = '',
+  exitCode = 0,
+  signal = null,
+  emitError,
+  pid = 4242,
+}: FakeChildOptions = {}) {
+  const childEmitter = new EventEmitter();
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+
+  setImmediate(() => {
+    if (emitError) {
+      childEmitter.emit('error', emitError);
+    } else {
+      if (stdoutData) stdout.emit('data', Buffer.from(stdoutData));
+      if (stderrData) stderr.emit('data', Buffer.from(stderrData));
+      childEmitter.emit('close', exitCode, signal);
+    }
+  });
+
+  return {
+    pid,
+    stdout,
+    stderr,
+    kill: () => {},
+    on: childEmitter.on.bind(childEmitter),
+    once: childEmitter.once.bind(childEmitter),
+  } as unknown as ReturnType<typeof spawn>;
+}
 
 function makeApp(agentFn: (prompt: string, model: string) => Promise<string>) {
   return createServeApp(agentFn);
@@ -30,6 +79,104 @@ function makeAppWithAuth(
 const neverCalled = async (_prompt: string, _model: string): Promise<string> => {
   throw new Error('agent should not be called');
 };
+
+describe('runAgentDiagnose', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('resolves with trimmed stdout on a clean exit', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ stdoutData: '  {"summary":"ok"}  \n' }),
+    );
+    const result = await runAgentDiagnose('why is my pod failing?', 'anthropic/claude-sonnet-4-6');
+    expect(result).toBe('{"summary":"ok"}');
+  });
+
+  it('spawns the resolved binary detached with -p/--json args and HEIMDALL_MODEL set', async () => {
+    let capturedArgs: string[] = [];
+    let capturedOptions: Record<string, unknown> = {};
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce((_bin: string, args: string[], options: Record<string, unknown>) => {
+      capturedArgs = args;
+      capturedOptions = options;
+      return fakeChild({ stdoutData: 'ok' });
+    });
+    await runAgentDiagnose('check pods', 'anthropic/claude-opus-4-8');
+    expect(capturedArgs).toEqual(['-p', 'check pods', '--json']);
+    expect(capturedOptions['detached']).toBe(true);
+    expect((capturedOptions['env'] as NodeJS.ProcessEnv)['HEIMDALL_MODEL']).toBe('anthropic/claude-opus-4-8');
+  });
+
+  it('rejects with the exit code and stderr when the process exits non-zero', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ exitCode: 1, stderrData: 'boom' }),
+    );
+    await expect(runAgentDiagnose('p', 'm')).rejects.toThrow('heimdall agent exited with code 1: boom');
+  });
+
+  it('rejects with just the exit code when stderr is empty', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => fakeChild({ exitCode: 1 }));
+    await expect(runAgentDiagnose('p', 'm')).rejects.toThrow('heimdall agent exited with code 1');
+  });
+
+  it('rejects with a signal-kill message when the child is killed by a signal', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ exitCode: null, signal: 'SIGKILL' }),
+    );
+    await expect(runAgentDiagnose('p', 'm')).rejects.toThrow('heimdall agent killed by signal SIGKILL');
+  });
+
+  it('rejects when spawn emits an error event', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ emitError: new Error('spawn ENOENT') }),
+    );
+    await expect(runAgentDiagnose('p', 'm')).rejects.toThrow('spawn ENOENT');
+  });
+
+  it('kills the process group and rejects with a timeout message when timeoutMs elapses', async () => {
+    const killSpy = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      // Never emit 'close' — simulates a hung process.
+      return {
+        pid: 4242,
+        stdout,
+        stderr,
+        kill: () => {},
+        on: childEmitter.on.bind(childEmitter),
+        once: childEmitter.once.bind(childEmitter),
+      } as unknown as ReturnType<typeof spawn>;
+    });
+
+    await expect(runAgentDiagnose('p', 'm', 50)).rejects.toThrow('agent timed out after 5 minutes');
+    expect(killSpy).toHaveBeenCalledWith(-4242, 'SIGTERM');
+  });
+
+  it('falls back to a direct kill when the process-group kill throws', async () => {
+    vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw new Error('ESRCH');
+    });
+    let killCount = 0;
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      return {
+        pid: 4242,
+        stdout,
+        stderr,
+        kill: () => { killCount++; },
+        on: childEmitter.on.bind(childEmitter),
+        once: childEmitter.once.bind(childEmitter),
+      } as unknown as ReturnType<typeof spawn>;
+    });
+
+    await expect(runAgentDiagnose('p', 'm', 50)).rejects.toThrow('agent timed out after 5 minutes');
+    expect(killCount).toBe(1);
+  });
+});
 
 describe('parsePortValue', () => {
   it('accepts valid port numbers', () => {
