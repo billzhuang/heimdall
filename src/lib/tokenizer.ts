@@ -62,10 +62,13 @@ export function tokenizeShellArgs(input: string, binaryName?: string): string[] 
 /**
  * Quote a single argv token for display/validation purposes, matching POSIX
  * shell single-quoting: wraps in `'...'` and escapes embedded single quotes
- * as `'\''`. Only applied when the token contains whitespace, a quote, or a
- * backslash — plain tokens are left bare for readability.
+ * as `'\''`. Only applied when the token contains whitespace, a quote, a
+ * backslash, or is empty (an unquoted empty token would otherwise vanish
+ * when the result is joined and re-split) — plain tokens are left bare for
+ * readability.
  */
 function quoteShellArg(arg: string): string {
+  if (arg === '') return "''";
   return /[\s'"\\]/.test(arg) ? `'${arg.replace(/'/g, "'\\''")}'` : arg;
 }
 
@@ -76,6 +79,7 @@ function quoteShellArg(arg: string): string {
  * argv, so validation and execution stay in sync with what actually runs.
  */
 export function buildShellCommand(bin: string, argv: string[]): string {
+  if (argv.length === 0) return bin;
   return `${bin} ${argv.map(quoteShellArg).join(' ')}`;
 }
 

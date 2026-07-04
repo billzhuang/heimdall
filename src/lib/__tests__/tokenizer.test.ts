@@ -136,6 +136,10 @@ describe('buildShellCommand', () => {
   });
 
   it('returns just the binary name for an empty argv', () => {
-    expect(buildShellCommand('kubectl', [])).toBe('kubectl ');
+    expect(buildShellCommand('kubectl', [])).toBe('kubectl');
+  });
+
+  it('quotes empty string arguments as \'\' so they are not lost when re-tokenized', () => {
+    expect(buildShellCommand('kubectl', ['get', '-l', ''])).toBe(`kubectl get -l ''`);
   });
 });
