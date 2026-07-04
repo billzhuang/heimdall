@@ -180,6 +180,21 @@ let _otelInterval: ReturnType<typeof setInterval> | null = null;
 let _otelStartTimeMs = 0;
 
 /**
+ * Resolve a string OTEL config value: the config field (trimmed) wins, then
+ * the env var (trimmed), then `fallback`. Whitespace-only values are treated
+ * as absent so the `||` chain falls through correctly.
+ */
+function resolveOtelString(configValue: string | null | undefined, envVarName: string): string | null;
+function resolveOtelString(configValue: string | null | undefined, envVarName: string, fallback: string): string;
+function resolveOtelString(
+  configValue: string | null | undefined,
+  envVarName: string,
+  fallback: string | null = null,
+): string | null {
+  return configValue?.trim() || process.env[envVarName]?.trim() || fallback;
+}
+
+/**
  * Parse the OTEL_EXPORTER_OTLP_HEADERS format: "key=value,key2=value2".
  * URL-decoded per the OpenTelemetry spec.
  */
@@ -339,10 +354,7 @@ export async function pushOtlpMetrics(
 export function startOtelExport(config: OtelExportConfig): void {
   if (_otelInterval !== null) return;
 
-  const endpoint =
-    config.endpoint?.trim() ||
-    process.env['OTEL_EXPORTER_OTLP_ENDPOINT']?.trim() ||
-    null;
+  const endpoint = resolveOtelString(config.endpoint, 'OTEL_EXPORTER_OTLP_ENDPOINT');
 
   if (!config.enabled && !endpoint) return;
 
@@ -362,10 +374,7 @@ export function startOtelExport(config: OtelExportConfig): void {
     parseInt(process.env['OTEL_METRIC_EXPORT_INTERVAL'] ?? '', 10);
   const intervalMs = Number.isFinite(rawInterval) && rawInterval > 0 ? rawInterval : 60_000;
 
-  const serviceName =
-    config.serviceName?.trim() ||
-    process.env['OTEL_SERVICE_NAME']?.trim() ||
-    'heimdall';
+  const serviceName = resolveOtelString(config.serviceName, 'OTEL_SERVICE_NAME', 'heimdall');
 
   _otelStartTimeMs = Date.now();
 
