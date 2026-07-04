@@ -7,7 +7,24 @@
  * only the kill strategy and the timeout/exit error text differed per
  * call site, so those are left as caller-supplied callbacks.
  */
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
+
+/**
+ * Kill a spawned child, preferring its process group (so a timeout kill
+ * reaches detached descendants too) and falling back to a direct kill when
+ * the process-group kill isn't available or throws (e.g. already exited).
+ */
+function killChild(child: ChildProcess, detached: boolean): void {
+  if (detached && child.pid !== undefined) {
+    try {
+      process.kill(-child.pid, 'SIGTERM');
+      return;
+    } catch {
+      // fall through to a direct kill
+    }
+  }
+  child.kill('SIGTERM');
+}
 
 export interface SpawnAndCollectOptions {
   env: NodeJS.ProcessEnv;
@@ -55,15 +72,7 @@ export function spawnAndCollect(
 
     const timer = setTimeout(() => {
       settle(() => {
-        if (detached && child.pid !== undefined) {
-          try {
-            process.kill(-child.pid, 'SIGTERM');
-          } catch {
-            child.kill('SIGTERM');
-          }
-        } else {
-          child.kill('SIGTERM');
-        }
+        killChild(child, detached);
         reject(onTimeout());
       });
     }, timeoutMs);
