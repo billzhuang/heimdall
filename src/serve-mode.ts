@@ -399,7 +399,11 @@ export function parseServeArgv(argv: string[]): ServeCliArgs {
     const arg = argv[i];
     if (arg === '--port') {
       const raw = argv[++i];
-      if (!raw) { process.stderr.write('Error: --port requires a value\n'); process.exit(1); }
+      if (!raw) {
+        process.stderr.write('Error: --port requires a value\n');
+        process.exit(1);
+        return { port: portArg, host: hostArg, model: modelArg };
+      }
       portArg = resolvePortArgOrExit(raw, '--port');
     } else if (arg.startsWith('--port=')) {
       const raw = arg.slice('--port='.length);

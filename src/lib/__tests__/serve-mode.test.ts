@@ -403,11 +403,13 @@ describe('parseServeArgv', () => {
     });
   });
 
-  it('exits 1 with an error when --port is missing a value', () => {
+  it('exits 1 with a single error when --port is missing a value', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
     parseServeArgv(['--port']);
+    expect(stderrSpy).toHaveBeenCalledTimes(1);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --port requires a value\n');
+    expect(exitSpy).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
