@@ -80,7 +80,7 @@ export async function runAgentDiagnose(
     env,
     timeoutMs,
     detached: true,
-    onTimeout: () => new Error('agent timed out after 5 minutes'),
+    onTimeout: () => new Error(`agent timed out after ${timeoutMs / 1000}s`),
     onExit: (code, signal, stdout, stderr) => {
       if (code === 0) return null;
       if (signal !== null) return new Error(`heimdall agent killed by signal ${signal}`);

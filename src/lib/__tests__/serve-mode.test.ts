@@ -150,7 +150,7 @@ describe('runAgentDiagnose', () => {
       } as unknown as ReturnType<typeof spawn>;
     });
 
-    await expect(runAgentDiagnose('p', 'm', 50)).rejects.toThrow('agent timed out after 5 minutes');
+    await expect(runAgentDiagnose('p', 'm', 50)).rejects.toThrow('agent timed out after 0.05s');
     expect(killSpy).toHaveBeenCalledWith(-4242, 'SIGTERM');
   });
 
@@ -173,7 +173,7 @@ describe('runAgentDiagnose', () => {
       } as unknown as ReturnType<typeof spawn>;
     });
 
-    await expect(runAgentDiagnose('p', 'm', 50)).rejects.toThrow('agent timed out after 5 minutes');
+    await expect(runAgentDiagnose('p', 'm', 50)).rejects.toThrow('agent timed out after 0.05s');
     expect(killCount).toBe(1);
   });
 });
