@@ -64,6 +64,14 @@ function eventNamespace(event: K8sEventObject, fallback = 'unknown'): string {
   return event.metadata.namespace ?? event.involvedObject.namespace ?? fallback;
 }
 
+/** Resolve the involved object's kind/name, falling back when either is absent. */
+function eventObjectRef(event: K8sEventObject): { kind: string; name: string } {
+  return {
+    kind: event.involvedObject.kind ?? 'Unknown',
+    name: event.involvedObject.name ?? 'unknown',
+  };
+}
+
 /**
  * Build the de-dup key for an event.
  * Uses `involvedObject.uid` when present so that a pod deleted and recreated
@@ -72,8 +80,8 @@ function eventNamespace(event: K8sEventObject, fallback = 'unknown'): string {
  */
 export function eventCooldownKey(event: K8sEventObject): string {
   const ns = eventNamespace(event, '');
-  const objId = event.involvedObject.uid
-    ?? `${event.involvedObject.kind ?? 'Unknown'}/${event.involvedObject.name ?? 'unknown'}`;
+  const { kind, name } = eventObjectRef(event);
+  const objId = event.involvedObject.uid ?? `${kind}/${name}`;
   return `${ns}/${objId}/${event.reason}`;
 }
 
@@ -251,8 +259,7 @@ export function matchesWatchFilter(
  */
 export function buildDiagnosticPrompt(event: K8sEventObject): string {
   const ns = eventNamespace(event);
-  const objKind = event.involvedObject.kind ?? 'Unknown';
-  const objName = event.involvedObject.name ?? 'unknown';
+  const { kind: objKind, name: objName } = eventObjectRef(event);
 
   return [
     'A Kubernetes Warning event was just received:',
@@ -271,12 +278,13 @@ export function formatFinding(
   ts: string,
   diagnosis?: string,
 ): WatchFinding {
+  const { kind: objectKind, name: objectName } = eventObjectRef(event);
   const finding: WatchFinding = {
     ts,
     namespace: eventNamespace(event),
     reason: event.reason,
-    objectKind: event.involvedObject.kind ?? 'Unknown',
-    objectName: event.involvedObject.name ?? 'unknown',
+    objectKind,
+    objectName,
     message: event.message,
   };
   if (diagnosis !== undefined) finding.diagnosis = diagnosis;
