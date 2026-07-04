@@ -224,6 +224,224 @@ describe('spawnAndCollect', () => {
     expect(result).toBe('');
   });
 
+  it('rejects with onAbort() without spawning when signal is already aborted', async () => {
+    const callsBefore = (spawn as ReturnType<typeof vi.fn>).mock.calls.length;
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      spawnAndCollect('bin', [], {
+        env: {},
+        timeoutMs: 1000,
+        signal: controller.signal,
+        onAbort: () => new Error('already aborted'),
+        onTimeout: () => new Error('timed out'),
+        onExit: onExitDefault,
+      }),
+    ).rejects.toThrow('already aborted');
+    expect((spawn as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('rejects with a generic Aborted error when signal aborts and no onAbort is given', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      spawnAndCollect('bin', [], {
+        env: {},
+        timeoutMs: 1000,
+        signal: controller.signal,
+        onTimeout: () => new Error('timed out'),
+        onExit: onExitDefault,
+      }),
+    ).rejects.toThrow('Aborted');
+  });
+
+  it('kills the child and rejects with onAbort() when signal aborts mid-run', async () => {
+    const killSpy = vi.fn();
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const child = fakeChild({ hang: true, pid: 4242 });
+      (child as unknown as { kill: typeof killSpy }).kill = killSpy;
+      return child;
+    });
+
+    const controller = new AbortController();
+    const promise = spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 1000,
+      signal: controller.signal,
+      onAbort: () => new Error('aborted mid-run'),
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+
+    controller.abort();
+    await expect(promise).rejects.toThrow('aborted mid-run');
+    expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('clears the pending SIGKILL escalation and abort listener when the child exits during the grace period', async () => {
+    vi.useFakeTimers();
+    const killSpy = vi.fn();
+    let closeHandler: ((code: number | null, signal: string | null) => void) | undefined;
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      return {
+        pid: 4242,
+        stdout,
+        stderr,
+        kill: killSpy,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          return childEmitter.on(event, handler);
+        },
+        once: childEmitter.once.bind(childEmitter),
+      } as unknown as ReturnType<typeof spawn>;
+    });
+
+    const controller = new AbortController();
+    const promise = spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 50,
+      killGraceMs: 100,
+      signal: controller.signal,
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+    const assertion = expect(promise).rejects.toThrow('timed out');
+
+    await vi.advanceTimersByTimeAsync(50);
+    expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+
+    // Child responds to SIGTERM and exits before the SIGKILL grace period elapses.
+    closeHandler?.(null, 'SIGTERM');
+    await assertion;
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(killSpy).not.toHaveBeenCalledWith('SIGKILL');
+    vi.useRealTimers();
+  });
+
+  it('clears a pending SIGKILL escalation and abort listener when the child errors during the grace period', async () => {
+    vi.useFakeTimers();
+    const killSpy = vi.fn();
+    let errorHandler: ((err: Error) => void) | undefined;
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const childEmitter = new EventEmitter();
+      const stdout = new EventEmitter();
+      const stderr = new EventEmitter();
+      return {
+        pid: 4242,
+        stdout,
+        stderr,
+        kill: killSpy,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          if (event === 'error') errorHandler = handler as typeof errorHandler;
+          return childEmitter.on(event, handler);
+        },
+        once: childEmitter.once.bind(childEmitter),
+      } as unknown as ReturnType<typeof spawn>;
+    });
+
+    const controller = new AbortController();
+    const promise = spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 50,
+      killGraceMs: 100,
+      signal: controller.signal,
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+    const assertion = expect(promise).rejects.toThrow('timed out');
+
+    await vi.advanceTimersByTimeAsync(50);
+    errorHandler?.(new Error('ESRCH'));
+    await assertion;
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(killSpy).not.toHaveBeenCalledWith('SIGKILL');
+    vi.useRealTimers();
+  });
+
+  it('rejects with a generic Aborted error when signal aborts mid-run and no onAbort is given', async () => {
+    const killSpy = vi.fn();
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const child = fakeChild({ hang: true, pid: 4242 });
+      (child as unknown as { kill: typeof killSpy }).kill = killSpy;
+      return child;
+    });
+
+    const controller = new AbortController();
+    const promise = spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 1000,
+      signal: controller.signal,
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+
+    controller.abort();
+    await expect(promise).rejects.toThrow('Aborted');
+    expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it('escalates to SIGKILL when the child ignores SIGTERM for killGraceMs after a timeout', async () => {
+    vi.useFakeTimers();
+    const killSpy = vi.fn();
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const child = fakeChild({ hang: true, pid: 4242 });
+      (child as unknown as { kill: typeof killSpy }).kill = killSpy;
+      return child;
+    });
+
+    const promise = spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 50,
+      killGraceMs: 100,
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+    const assertion = expect(promise).rejects.toThrow('timed out');
+
+    await vi.advanceTimersByTimeAsync(50);
+    expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+    expect(killSpy).not.toHaveBeenCalledWith('SIGKILL');
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(killSpy).toHaveBeenCalledWith('SIGKILL');
+
+    await assertion;
+    vi.useRealTimers();
+  });
+
+  it('does not escalate to SIGKILL when killGraceMs is not set', async () => {
+    vi.useFakeTimers();
+    const killSpy = vi.fn();
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      const child = fakeChild({ hang: true, pid: 4242 });
+      (child as unknown as { kill: typeof killSpy }).kill = killSpy;
+      return child;
+    });
+
+    const promise = spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 50,
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+    const assertion = expect(promise).rejects.toThrow('timed out');
+
+    await vi.advanceTimersByTimeAsync(50);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(killSpy).toHaveBeenCalledTimes(1);
+    expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+
+    await assertion;
+    vi.useRealTimers();
+  });
+
   it('settles only once when close fires after the timeout has already rejected', async () => {
     vi.spyOn(process, 'kill').mockImplementation(() => true);
     let closeHandler: ((code: number | null, signal: string | null) => void) | undefined;
