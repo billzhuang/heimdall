@@ -189,6 +189,13 @@ describe('cmdEnd', () => {
 describe('cmdStart', () => {
   beforeEach(() => {
     vi.mocked(createSession).mockReturnValue(sampleSession);
+    // Isolate from the ambient environment so assertions on the default
+    // server URL hold regardless of HEIMDALL_SERVER in the test runner.
+    vi.stubEnv('HEIMDALL_SERVER', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('creates a session with no flags, defaulting the server URL', () => {
