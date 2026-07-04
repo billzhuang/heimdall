@@ -11,6 +11,7 @@
  * also rejected as a defence-in-depth measure even though `execFile` already
  * strips the shell.
  */
+import { findNextNonOptionToken } from './tokenizer.ts';
 
 /** Trivy scan types that Heimdall permits. */
 export const ALLOWED_TRIVY_SCAN_TYPES = ['image', 'fs', 'config', 'sbom'] as const;
@@ -62,17 +63,8 @@ export interface TrivyCommandValidationResult {
  * (e.g. `trivy --debug image nginx` → scanType=null).
  */
 function findScanType(parts: string[]): string | null {
-  for (let i = 1; i < parts.length; i++) {
-    const token = parts[i];
-    if (token.startsWith('-')) {
-      if (!token.includes('=') && TRIVY_OPTIONS_WITH_VALUE.has(token.toLowerCase())) {
-        i++; // skip value token
-      }
-      continue;
-    }
-    return token.toLowerCase();
-  }
-  return null;
+  const idx = findNextNonOptionToken(parts, 1, TRIVY_OPTIONS_WITH_VALUE);
+  return idx === -1 ? null : parts[idx].toLowerCase();
 }
 
 /**
