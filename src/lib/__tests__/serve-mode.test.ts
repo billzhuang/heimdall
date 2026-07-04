@@ -5,7 +5,7 @@
  * agent subprocess is spawned. runAgentDiagnose is passed as a mock to
  * createServeApp, keeping tests fast and deterministic.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('../config.ts', () => ({
   loadConfig: () => ({
@@ -379,6 +379,10 @@ describe('createServeApp — API key authentication', () => {
 });
 
 describe('parseServeArgv', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('returns empty result for no args', () => {
     expect(parseServeArgv([])).toEqual({ port: undefined, host: undefined, model: undefined });
   });
