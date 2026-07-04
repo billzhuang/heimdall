@@ -68,7 +68,8 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 /**
  * Datadog range resolution always has a concrete `to` default (the current
  * time), so — unlike the shared `ResolvedTimeRange<T>` — `to` here is never
- * actually null in the success case.
+ * actually null in the success case. The non-null-`defaultTo` overload of
+ * `resolveTimeRange` gives us that guarantee statically.
  */
 type ResolvedRange<T> = { from: T; to: T } | { error: string };
 
@@ -77,16 +78,14 @@ function resolveISORange(
   to: string | null | undefined,
   nowMs: number,
 ): ResolvedRange<string> {
-  const defaultTo = new Date(nowMs).toISOString();
-  const range = resolveTimeRange(
+  return resolveTimeRange(
     from,
     to,
     nowMs,
     resolveTimeISO,
     new Date(nowMs - DEFAULT_LOOKBACK_MS).toISOString(),
-    defaultTo,
+    new Date(nowMs).toISOString(),
   );
-  return 'error' in range ? range : { from: range.from, to: range.to ?? defaultTo };
 }
 
 function resolveSecondsRange(
@@ -94,16 +93,14 @@ function resolveSecondsRange(
   to: string | null | undefined,
   nowMs: number,
 ): ResolvedRange<number> {
-  const defaultTo = Math.floor(nowMs / 1_000);
-  const range = resolveTimeRange(
+  return resolveTimeRange(
     from,
     to,
     nowMs,
     resolveTimeSeconds,
     Math.floor((nowMs - DEFAULT_LOOKBACK_MS) / 1_000),
-    defaultTo,
+    Math.floor(nowMs / 1_000),
   );
-  return 'error' in range ? range : { from: range.from, to: range.to ?? defaultTo };
 }
 
 function buildHeaders(config: DatadogConfig): Record<string, string> {
