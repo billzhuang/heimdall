@@ -22,12 +22,11 @@ import { fileURLToPath } from 'node:url';
 import { parseOneShotOutput } from './lib/format-output.ts';
 import { loadConfig } from './lib/config.ts';
 import { sendSlackNotification } from './lib/slack.ts';
-import { buildTaskHistoryEntry, appendTaskHistoryEntry } from './lib/task-history.ts';
+import { buildTaskHistoryEntry, appendTaskHistoryEntry, resolveTaskHistoryFilePath } from './lib/task-history.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const model = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-sonnet-4-6';
-const TASK_HISTORY_NAME = 'task-history.jsonl';
 
 let raw = '';
 process.stdin.setEncoding('utf-8');
@@ -67,9 +66,7 @@ process.stdin.on('end', () => {
   if (learningEnabled && process.env.HEIMDALL_NO_LEARN !== '1') {
     const prompt = process.env.HEIMDALL_PROMPT ?? '';
     if (prompt) {
-      const logPath = config.learning?.file
-        ? resolve(config.learning.file)
-        : resolve(__dirname, '..', 'scenarios', TASK_HISTORY_NAME);
+      const logPath = resolveTaskHistoryFilePath(config.learning?.file, resolve(__dirname, '..', 'scenarios'));
       const entry = buildTaskHistoryEntry(
         prompt,
         model,

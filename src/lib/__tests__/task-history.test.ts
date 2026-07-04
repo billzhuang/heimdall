@@ -1,14 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   buildTaskHistoryEntry,
   appendTaskHistoryEntry,
   readTaskHistory,
   buildTaskHistoryContext,
+  resolveTaskHistoryFilePath,
   type TaskHistoryEntry,
 } from '../task-history.ts';
+
+// ---------------------------------------------------------------------------
+// resolveTaskHistoryFilePath
+// ---------------------------------------------------------------------------
+describe('resolveTaskHistoryFilePath', () => {
+  it('joins scenariosDir with task-history.jsonl when no file is configured', () => {
+    expect(resolveTaskHistoryFilePath(undefined, '/scenarios')).toBe(join('/scenarios', 'task-history.jsonl'));
+    expect(resolveTaskHistoryFilePath(null, '/scenarios')).toBe(join('/scenarios', 'task-history.jsonl'));
+    expect(resolveTaskHistoryFilePath('', '/scenarios')).toBe(join('/scenarios', 'task-history.jsonl'));
+  });
+
+  it('resolves a configured absolute path as-is, ignoring scenariosDir', () => {
+    expect(resolveTaskHistoryFilePath('/custom/history.jsonl', '/scenarios')).toBe('/custom/history.jsonl');
+  });
+
+  it('resolves a configured relative path against the current working directory, not scenariosDir', () => {
+    expect(resolveTaskHistoryFilePath('custom/history.jsonl', '/scenarios')).toBe(resolve('custom/history.jsonl'));
+  });
+});
 
 // ---------------------------------------------------------------------------
 // buildTaskHistoryEntry
