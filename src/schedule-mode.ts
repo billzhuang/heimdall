@@ -24,7 +24,6 @@
  *   Use `flue run triage --target node` instead of this process.
  *   See src/workflows/triage.ts.
  */
-import { spawn } from 'node:child_process';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
@@ -33,6 +32,7 @@ import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
+import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
@@ -42,74 +42,17 @@ const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTE
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Invoke the Heimdall agent with a prompt, streaming output to stdout. */
-async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
+export async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
   const binPath = resolveBinPath(__dirname);
-
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error('Aborted'));
-      return;
-    }
-
-    let settled = false;
-    const settle = (err?: Error) => {
-      if (!settled) {
-        settled = true;
-        if (err) reject(err);
-        else resolve();
-      }
-    };
-
-    const child = spawn(binPath, ['-p', prompt], {
-      stdio: ['ignore', 'inherit', 'inherit'],
-    });
-
-    let timedOut = false;
-    let aborted = false;
-    let killTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
-      // Escalate to SIGKILL if the child doesn't exit after SIGTERM.
-      killTimer = setTimeout(() => child.kill('SIGKILL'), SIGKILL_GRACE_MS);
-    }, TRIAGE_TIMEOUT_MS);
-
-    const onAbort = () => {
-      aborted = true;
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      child.kill('SIGTERM');
-      killTimer = setTimeout(() => child.kill('SIGKILL'), SIGKILL_GRACE_MS);
-    };
-
-    if (signal) {
-      signal.addEventListener('abort', onAbort, { once: true });
-    }
-
-    child.on('close', (code: number | null, signalName: string | null) => {
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      if (signal) {
-        signal.removeEventListener('abort', onAbort);
-      }
-      if (aborted) {
-        settle(new Error('Aborted'));
-      } else if (timedOut) {
-        settle(new Error('triage timed out after 5 minutes'));
-      } else {
-        settle(interpretChildExit(code, signalName) ?? undefined);
-      }
-    });
-
-    child.on('error', (err: Error) => {
-      clearTimeout(timer);
-      if (killTimer) clearTimeout(killTimer);
-      if (signal) {
-        signal.removeEventListener('abort', onAbort);
-      }
-      settle(err);
-    });
+  await spawnAndCollect(binPath, ['-p', prompt], {
+    env: process.env,
+    timeoutMs: TRIAGE_TIMEOUT_MS,
+    killGraceMs: SIGKILL_GRACE_MS,
+    stdio: 'inherit',
+    signal,
+    onTimeout: () => new Error('triage timed out after 5 minutes'),
+    onAbort: () => new Error('Aborted'),
+    onExit: (code, signalName) => interpretChildExit(code, signalName),
   });
 }
 
