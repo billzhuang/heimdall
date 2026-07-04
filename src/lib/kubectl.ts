@@ -216,6 +216,76 @@ function auditKubectlCall(
   return writeAudit({ ts: startTs, level: 'audit', cmd, ...fields }, audit);
 }
 
+/** Argv, environment, and resolution flags needed to exec kubectl. */
+interface ExecutionContext {
+  argv: string[];
+  env: NodeJS.ProcessEnv;
+  inCluster: boolean;
+  resolvedKubeconfig: string | undefined;
+}
+
+/**
+ * Resolve the argv/env to exec kubectl with, accounting for in-cluster vs.
+ * external kubeconfig execution.
+ *
+ * When running inside a Kubernetes pod, kubectl reads the mounted service
+ * account token automatically. Injecting --context or KUBECONFIG would
+ * override that mechanism, so both are skipped when in-cluster.
+ */
+function resolveExecutionContext(argv: string[], options: RunKubectlOptions): ExecutionContext {
+  const inCluster = isInCluster();
+
+  const context = !inCluster ? options.context : undefined;
+  if (context && !hasContextFlag(argv)) {
+    argv = [`--context=${context}`, ...argv];
+  }
+
+  const resolvedKubeconfig = !inCluster ? options.kubeconfig : undefined;
+
+  const env = { ...process.env };
+  if (inCluster) {
+    // In-cluster: kubectl uses the mounted service account token automatically.
+    // Do not set KUBECONFIG — it would override the in-cluster config.
+    delete env.KUBECONFIG;
+  } else if (resolvedKubeconfig) {
+    env.KUBECONFIG = resolvedKubeconfig;
+  }
+
+  return { argv, env, inCluster, resolvedKubeconfig };
+}
+
+/**
+ * Compute the cache file path for a cacheable `get -o json` call, or null
+ * when the call is not eligible for caching.
+ *
+ * The cache identity must distinguish every input that changes the result:
+ * the exact argv (not a space-joined string, which collides across quoting
+ * variants), the kubeconfig file, and the effective cluster context. When no
+ * --context flag is present the active context comes from the kubeconfig's
+ * current-context, so it is included to avoid serving cluster A's data for
+ * cluster B after a context switch.
+ */
+async function resolveCacheFile(
+  argv: string[],
+  subcommand: string | null,
+  execCtx: ExecutionContext,
+): Promise<string | null> {
+  if (!isCacheEnabled() || subcommand !== 'get' || !isJsonOutput(argv)) return null;
+
+  let effectiveContext = '';
+  if (!hasContextFlag(argv)) {
+    if (execCtx.inCluster) {
+      effectiveContext = IN_CLUSTER_CONTEXT;
+    } else {
+      const cfg = await parseKubeconfig(resolveKubeconfigPath(execCtx.resolvedKubeconfig));
+      effectiveContext = cfg?.currentContext ?? '';
+    }
+  }
+  const identity = JSON.stringify({ argv, kubeconfig: execCtx.env.KUBECONFIG ?? '', effectiveContext });
+  const hash = createHash('sha256').update(identity).digest('hex');
+  return joinPath(getCacheDir(), `${hash}.json`);
+}
+
 /**
  * Validate and run a read-only kubectl command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
@@ -276,51 +346,13 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     }
   }
 
-  // When running inside a Kubernetes pod, kubectl reads the mounted service account
-  // token automatically. Injecting --context or KUBECONFIG would override that
-  // mechanism, so we skip both when in-cluster.
-  const inCluster = isInCluster();
-
-  const context = !inCluster ? options.context : undefined;
-  if (context && !hasContextFlag(argv)) {
-    argv = [`--context=${context}`, ...argv];
-  }
-
-  const resolvedKubeconfig = !inCluster ? options.kubeconfig : undefined;
-
-  const env = { ...process.env };
-  if (inCluster) {
-    // In-cluster: kubectl uses the mounted service account token automatically.
-    // Do not set KUBECONFIG — it would override the in-cluster config.
-    delete env.KUBECONFIG;
-  } else if (resolvedKubeconfig) {
-    env.KUBECONFIG = resolvedKubeconfig;
-  }
+  const execCtx = resolveExecutionContext(argv, options);
+  argv = execCtx.argv;
+  const { env } = execCtx;
 
   // Serve JSON `get` reads from the short-TTL cache when possible.
-  const parsed = validation.subcommand;
-  const cacheable = isCacheEnabled() && parsed === 'get' && isJsonOutput(argv);
-  let cacheFile: string | null = null;
-  if (cacheable) {
-    // The cache identity must distinguish every input that changes the result:
-    // the exact argv (not a space-joined string, which collides across quoting
-    // variants), the kubeconfig file, and the effective cluster context. When
-    // no --context flag is present the active context comes from the
-    // kubeconfig's current-context, so include it to avoid serving cluster A's
-    // data for cluster B after a context switch.
-    let effectiveContext = '';
-    if (!hasContextFlag(argv)) {
-      if (inCluster) {
-        effectiveContext = IN_CLUSTER_CONTEXT;
-      } else {
-        // resolvedKubeconfig was already computed above; reuse it for consistency.
-        const cfg = await parseKubeconfig(resolveKubeconfigPath(resolvedKubeconfig));
-        effectiveContext = cfg?.currentContext ?? '';
-      }
-    }
-    const identity = JSON.stringify({ argv, kubeconfig: env.KUBECONFIG ?? '', effectiveContext });
-    const hash = createHash('sha256').update(identity).digest('hex');
-    cacheFile = joinPath(getCacheDir(), `${hash}.json`);
+  const cacheFile = await resolveCacheFile(argv, validation.subcommand, execCtx);
+  if (cacheFile) {
     const cached = await readFromCache(cacheFile, getCacheTtlSeconds());
     if (cached !== null) {
       // Apply redaction on cache reads too: cache entries written before
