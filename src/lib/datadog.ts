@@ -12,7 +12,7 @@
  */
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { resolveTimeSeconds, resolveTimeISO } from './time-resolution.ts';
+import { resolveTimeSeconds, resolveTimeISO, resolveTimeRange } from './time-resolution.ts';
 import { clampLimit } from './tool-config.ts';
 import { formatHttpErrorMessage, formatQueryError, withTimeout } from './http.ts';
 
@@ -65,41 +65,28 @@ const MAX_LIMIT = 1_000;
 const DEFAULT_LOOKBACK_MS = 3_600_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smaller limit, or more specific query');
 
-type ResolvedRange<T> = { from: T; to: T } | { error: string };
-
 /**
- * Shared shape behind resolveISORange/resolveSecondsRange: resolve `from`/`to`
- * with `resolveFn`, falling back to `defaultFrom`/`defaultTo` (the
- * DEFAULT_LOOKBACK_MS window) when unset, and surface a parse error otherwise.
+ * Datadog range resolution always has a concrete `to` default (the current
+ * time), so — unlike the shared `ResolvedTimeRange<T>` — `to` here is never
+ * actually null in the success case.
  */
-function resolveRange<T>(
-  from: string | null | undefined,
-  to: string | null | undefined,
-  nowMs: number,
-  resolveFn: (value: string, nowMs: number) => T | null,
-  defaultFrom: T,
-  defaultTo: T,
-): ResolvedRange<T> {
-  const resolvedFrom = from ? resolveFn(from, nowMs) : defaultFrom;
-  const resolvedTo = to ? resolveFn(to, nowMs) : defaultTo;
-  if (resolvedFrom === null) return { error: `Error: could not parse "from" time: "${from}".` };
-  if (resolvedTo === null) return { error: `Error: could not parse "to" time: "${to}".` };
-  return { from: resolvedFrom, to: resolvedTo };
-}
+type ResolvedRange<T> = { from: T; to: T } | { error: string };
 
 function resolveISORange(
   from: string | null | undefined,
   to: string | null | undefined,
   nowMs: number,
 ): ResolvedRange<string> {
-  return resolveRange(
+  const defaultTo = new Date(nowMs).toISOString();
+  const range = resolveTimeRange(
     from,
     to,
     nowMs,
     resolveTimeISO,
     new Date(nowMs - DEFAULT_LOOKBACK_MS).toISOString(),
-    new Date(nowMs).toISOString(),
+    defaultTo,
   );
+  return 'error' in range ? range : { from: range.from, to: range.to ?? defaultTo };
 }
 
 function resolveSecondsRange(
@@ -107,14 +94,16 @@ function resolveSecondsRange(
   to: string | null | undefined,
   nowMs: number,
 ): ResolvedRange<number> {
-  return resolveRange(
+  const defaultTo = Math.floor(nowMs / 1_000);
+  const range = resolveTimeRange(
     from,
     to,
     nowMs,
     resolveTimeSeconds,
     Math.floor((nowMs - DEFAULT_LOOKBACK_MS) / 1_000),
-    Math.floor(nowMs / 1_000),
+    defaultTo,
   );
+  return 'error' in range ? range : { from: range.from, to: range.to ?? defaultTo };
 }
 
 function buildHeaders(config: DatadogConfig): Record<string, string> {
