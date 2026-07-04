@@ -15,6 +15,21 @@ import { NO_OUTPUT_MESSAGE, runKubectl } from '../lib/kubectl.ts';
 import { BLOCKED_PREFIX } from '../lib/harness.ts';
 import { buildLockdownNote } from '../lib/tool-config.ts';
 
+/**
+ * Format a labeled, counted list for tool output: "Label (N):\n" followed by
+ * one line per item, `* item (current)` when `isCurrent` matches or `  item`
+ * otherwise. Shared by list_contexts and list_namespaces, which both render
+ * this "count header + marked lines" shape.
+ */
+function formatCountedList(
+  label: string,
+  items: string[],
+  isCurrent?: (item: string) => boolean,
+): string {
+  const lines = items.map((item) => (isCurrent?.(item) ? `* ${item} (current)` : `  ${item}`));
+  return `${label} (${items.length}):\n${lines.join('\n')}`;
+}
+
 export const listContexts = defineTool({
   name: 'list_contexts',
   description:
@@ -24,7 +39,7 @@ export const listContexts = defineTool({
   run: async () => {
     // In-cluster: kubectl reads the pod's service account token automatically.
     if (isInCluster()) {
-      return `Contexts (1):\n* ${IN_CLUSTER_CONTEXT} (current)`;
+      return formatCountedList('Contexts', [IN_CLUSTER_CONTEXT], () => true);
     }
 
     const kubeconfigPath = resolveKubeconfigPath();
@@ -34,10 +49,7 @@ export const listContexts = defineTool({
       return `No kubeconfig contexts found at ${kubeconfigPath}.`;
     }
     const names = getContextNames(config);
-    const lines = names.map((name) =>
-      name === config.currentContext ? `* ${name} (current)` : `  ${name}`,
-    );
-    return `Contexts (${names.length}):\n${lines.join('\n')}`;
+    return formatCountedList('Contexts', names, (name) => name === config.currentContext);
   },
 });
 
@@ -57,7 +69,7 @@ export function makeListNamespaces(lockedNamespace?: string | null) {
       // When lockdown is active, return only the locked namespace without
       // querying the cluster (which would list all namespaces).
       if (lockedNamespace) {
-        return `Namespaces (1):\n  ${lockedNamespace}`;
+        return formatCountedList('Namespaces', [lockedNamespace]);
       }
       const output = (await runKubectl('get namespaces -o jsonpath={.items[*].metadata.name}', { context })).trim();
       // Surface policy/execution errors verbatim rather than parsing them as data.
@@ -72,7 +84,7 @@ export function makeListNamespaces(lockedNamespace?: string | null) {
       if (namespaces.length === 0) {
         return empty;
       }
-      return `Namespaces (${namespaces.length}):\n${namespaces.map((n) => `  ${n}`).join('\n')}`;
+      return formatCountedList('Namespaces', namespaces);
     },
   });
 }
