@@ -9,12 +9,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../session.ts', () => ({
+  createSession: vi.fn(),
   loadSession: vi.fn(),
+  updateSession: vi.fn(),
   deleteSession: vi.fn(),
 }));
 
-import { loadSession, deleteSession } from '../session.ts';
-import { cmdInfo, cmdEnd, formatSession, resolveSessionIdArg } from '../../session-mode.ts';
+const { promptMock } = vi.hoisted(() => ({ promptMock: vi.fn() }));
+vi.mock('@flue/sdk', () => ({
+  createFlueClient: vi.fn(() => ({ agents: { prompt: promptMock } })),
+}));
+
+import { createSession, loadSession, updateSession, deleteSession } from '../session.ts';
+import { createFlueClient } from '@flue/sdk';
+import {
+  cmdInfo,
+  cmdEnd,
+  cmdStart,
+  cmdPrompt,
+  formatSession,
+  resolveSessionIdArg,
+} from '../../session-mode.ts';
 import type { SessionRecord } from '../session.ts';
 
 const sampleSession: SessionRecord = {
@@ -168,5 +183,177 @@ describe('cmdEnd', () => {
     });
     expect(() => cmdEnd(['session-123'])).toThrow('process.exit(1)');
     expect(stderr.join('')).toContain('Session not found: session-123');
+  });
+});
+
+describe('cmdStart', () => {
+  beforeEach(() => {
+    vi.mocked(createSession).mockReturnValue(sampleSession);
+    // Isolate from the ambient environment so assertions on the default
+    // server URL hold regardless of HEIMDALL_SERVER in the test runner.
+    vi.stubEnv('HEIMDALL_SERVER', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('creates a session with no flags, defaulting the server URL', () => {
+    cmdStart([]);
+    expect(createSession).toHaveBeenCalledWith({ name: undefined, serverUrl: 'http://localhost:3583' });
+    expect(stdout.join('')).toContain('Session created:');
+    expect(stdout.join('')).toContain(sampleSession.id);
+  });
+
+  it('resolves --name <label>', () => {
+    cmdStart(['--name', 'prod-incident']);
+    expect(createSession).toHaveBeenCalledWith({ name: 'prod-incident', serverUrl: 'http://localhost:3583' });
+  });
+
+  it('resolves -n <label> shorthand', () => {
+    cmdStart(['-n', 'prod-incident']);
+    expect(createSession).toHaveBeenCalledWith({ name: 'prod-incident', serverUrl: 'http://localhost:3583' });
+  });
+
+  it('resolves --name=<label>', () => {
+    cmdStart(['--name=prod-incident']);
+    expect(createSession).toHaveBeenCalledWith({ name: 'prod-incident', serverUrl: 'http://localhost:3583' });
+  });
+
+  it('accepts an empty --name= value without dying (current lenient behavior)', () => {
+    cmdStart(['--name=']);
+    expect(createSession).toHaveBeenCalledWith({ name: '', serverUrl: 'http://localhost:3583' });
+  });
+
+  it('dies when --name is missing its value', () => {
+    expect(() => cmdStart(['--name'])).toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('--name requires a value');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('resolves --server <url>', () => {
+    cmdStart(['--server', 'http://example.com:4000']);
+    expect(createSession).toHaveBeenCalledWith({ name: undefined, serverUrl: 'http://example.com:4000' });
+  });
+
+  it('resolves --server=<url>', () => {
+    cmdStart(['--server=http://example.com:4000']);
+    expect(createSession).toHaveBeenCalledWith({ name: undefined, serverUrl: 'http://example.com:4000' });
+  });
+
+  it('dies when --server is missing its value', () => {
+    expect(() => cmdStart(['--server'])).toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('--server requires a value');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('dies on an invalid --server URL', () => {
+    expect(() => cmdStart(['--server', 'not-a-url'])).toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('Invalid server URL "not-a-url"');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('dies on an unknown option', () => {
+    expect(() => cmdStart(['--bogus'])).toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('unknown option for session start: --bogus');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('prints help and exits 0 for -h', () => {
+    expect(() => cmdStart(['-h'])).toThrow('process.exit(0)');
+    expect(stdout.join('')).toContain('Usage:');
+    expect(createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe('cmdPrompt', () => {
+  beforeEach(() => {
+    vi.mocked(loadSession).mockReturnValue(sampleSession);
+    vi.mocked(updateSession).mockImplementation(() => {});
+    promptMock.mockReset();
+    promptMock.mockResolvedValue({ result: { text: 'crash-looping due to OOMKilled' } });
+    vi.mocked(createFlueClient).mockClear();
+  });
+
+  it('sends the message to the resolved session and prints the response', async () => {
+    await cmdPrompt(['why is my pod crash-looping?', '--session', 'session-123']);
+    expect(loadSession).toHaveBeenCalledWith('session-123');
+    expect(createFlueClient).toHaveBeenCalledWith({ baseUrl: sampleSession.serverUrl });
+    expect(promptMock).toHaveBeenCalledWith('heimdall', sampleSession.id, {
+      message: 'why is my pod crash-looping?',
+    });
+    expect(stdout.join('')).toContain('crash-looping due to OOMKilled');
+    expect(updateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: sampleSession.id, lastPromptAt: expect.any(String) }),
+    );
+  });
+
+  it('resolves -s <id> shorthand', async () => {
+    await cmdPrompt(['hello', '-s', 'session-123']);
+    expect(loadSession).toHaveBeenCalledWith('session-123');
+  });
+
+  it('resolves --session=<id> form', async () => {
+    await cmdPrompt(['hello', '--session=session-123']);
+    expect(loadSession).toHaveBeenCalledWith('session-123');
+  });
+
+  it('dies when no message is given', async () => {
+    await expect(cmdPrompt(['--session', 'session-123'])).rejects.toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('a message is required');
+    expect(loadSession).not.toHaveBeenCalled();
+  });
+
+  it('dies when --session is missing', async () => {
+    await expect(cmdPrompt(['hello'])).rejects.toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('--session <id> is required');
+    expect(loadSession).not.toHaveBeenCalled();
+  });
+
+  it('dies when --session is missing its value', async () => {
+    await expect(cmdPrompt(['hello', '--session'])).rejects.toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('--session requires a value');
+  });
+
+  it('dies with the underlying error when loadSession throws', async () => {
+    vi.mocked(loadSession).mockImplementation(() => {
+      throw new Error('Session not found: session-123');
+    });
+    await expect(cmdPrompt(['hello', '--session', 'session-123'])).rejects.toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('Session not found: session-123');
+  });
+
+  it('dies on an invalid server URL configured for the session', async () => {
+    vi.mocked(loadSession).mockReturnValue({ ...sampleSession, serverUrl: 'not-a-url' });
+    await expect(cmdPrompt(['hello', '--session', 'session-123'])).rejects.toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('Invalid server URL "not-a-url"');
+  });
+
+  it('dies with a helpful message when the Flue server is unreachable', async () => {
+    promptMock.mockRejectedValue(new Error('fetch failed'));
+    await expect(cmdPrompt(['hello', '--session', 'session-123'])).rejects.toThrow('process.exit(1)');
+    expect(stderr.join('')).toContain('Failed to reach Flue server');
+    expect(stderr.join('')).toContain('fetch failed');
+  });
+
+  it('warns but does not fail the response when updateSession throws', async () => {
+    vi.mocked(updateSession).mockImplementation(() => {
+      throw new Error('disk full');
+    });
+    await cmdPrompt(['hello', '--session', 'session-123']);
+    expect(stdout.join('')).toContain('crash-looping due to OOMKilled');
+    expect(stderr.join('')).toContain('Warning: failed to persist session metadata: disk full');
+  });
+
+  it('dies on an unknown option', async () => {
+    await expect(cmdPrompt(['hello', '--session', 'session-123', '--bogus'])).rejects.toThrow(
+      'process.exit(1)',
+    );
+    expect(stderr.join('')).toContain('unknown option for session prompt: --bogus');
+  });
+
+  it('prints help and exits 0 for -h', async () => {
+    await expect(cmdPrompt(['-h'])).rejects.toThrow('process.exit(0)');
+    expect(stdout.join('')).toContain('Usage:');
   });
 });

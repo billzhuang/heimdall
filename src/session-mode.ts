@@ -44,6 +44,31 @@ function die(msg: string, code = 1): never {
   process.exit(code);
 }
 
+/**
+ * Parse a `--flag <value>` / `--flag=<value>` style option at `args[i]`. Call
+ * only when the caller has already matched `args[i]` against `prefix` (the
+ * `=` form) or one of the flag's own aliases (the space form).
+ *
+ * Note: the `=` form is not validated for emptiness here (matching each
+ * call site's pre-existing behavior) while the space form dies via `die()`
+ * when the following token is absent, same as the hand-rolled blocks this
+ * replaces.
+ */
+function parseFlagValue(
+  args: string[],
+  i: number,
+  prefix: string,
+  requireMsg: string,
+): { value: string; nextIndex: number } {
+  const a = args[i];
+  if (a.startsWith(prefix)) {
+    return { value: a.slice(prefix.length), nextIndex: i };
+  }
+  const value = args[++i];
+  if (!value) die(requireMsg);
+  return { value, nextIndex: i };
+}
+
 /** Resolve a session id from --session/-s, --session=<id>, or the first positional arg. */
 export function resolveSessionIdArg(args: string[]): string | undefined {
   let sessionId: string | undefined = args.find((a) => !a.startsWith('-'));
@@ -93,7 +118,7 @@ Examples:
 
 // ── subcommand implementations ────────────────────────────────────────────────
 
-function cmdStart(args: string[]): void {
+export function cmdStart(args: string[]): void {
   let name: string | undefined;
   // Use || so an empty-string env var falls back to the default.
   let serverUrl: string =
@@ -101,16 +126,10 @@ function cmdStart(args: string[]): void {
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--name' || a === '-n') {
-      name = args[++i];
-      if (!name) die('--name requires a value');
-    } else if (a.startsWith('--name=')) {
-      name = a.slice('--name='.length);
-    } else if (a === '--server') {
-      serverUrl = args[++i];
-      if (!serverUrl) die('--server requires a value');
-    } else if (a.startsWith('--server=')) {
-      serverUrl = a.slice('--server='.length);
+    if (a === '--name' || a === '-n' || a.startsWith('--name=')) {
+      ({ value: name, nextIndex: i } = parseFlagValue(args, i, '--name=', '--name requires a value'));
+    } else if (a === '--server' || a.startsWith('--server=')) {
+      ({ value: serverUrl, nextIndex: i } = parseFlagValue(args, i, '--server=', '--server requires a value'));
     } else if (a === '-h' || a === '--help') {
       showHelp(); process.exit(0);
     } else {
@@ -128,17 +147,14 @@ function cmdStart(args: string[]): void {
   process.stdout.write(`Session created:\n${formatSession(session)}\n\nSession ID: ${session.id}\n`);
 }
 
-async function cmdPrompt(args: string[]): Promise<void> {
+export async function cmdPrompt(args: string[]): Promise<void> {
   let sessionId: string | undefined;
   let message: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--session' || a === '-s') {
-      sessionId = args[++i];
-      if (!sessionId) die('--session requires a value');
-    } else if (a.startsWith('--session=')) {
-      sessionId = a.slice('--session='.length);
+    if (a === '--session' || a === '-s' || a.startsWith('--session=')) {
+      ({ value: sessionId, nextIndex: i } = parseFlagValue(args, i, '--session=', '--session requires a value'));
     } else if (a === '-h' || a === '--help') {
       showHelp(); process.exit(0);
     } else if (!message && !a.startsWith('-')) {
