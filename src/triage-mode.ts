@@ -15,7 +15,6 @@
  * sweep completed (findings may still be present); non-zero means the agent
  * failed or timed out.
  */
-import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
@@ -36,6 +35,7 @@ import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
+import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
@@ -49,47 +49,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  */
 async function runAgent(prompt: string, model?: string): Promise<string> {
   const binPath = resolveBinPath(__dirname);
+  const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
 
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const settle = (err?: Error, output?: string) => {
-      if (!settled) {
-        settled = true;
-        if (err) reject(err);
-        else resolve(output ?? '');
-      }
-    };
-
-    const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
-    const child = spawn(binPath, ['-p', prompt], {
-      // pipe stdout so we can tee it to terminal and capture it for baseline parsing
-      stdio: ['ignore', 'pipe', 'inherit'],
-      env,
-    });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      settle(new Error('triage timed out after 5 minutes'));
-    }, TRIAGE_TIMEOUT_MS);
-
-    let output = '';
-    child.stdout?.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
-      process.stdout.write(text);
-      output += text;
-    });
-
-    child.on('close', (code: number | null, signal: string | null) => {
-      clearTimeout(timer);
-      const err = interpretChildExit(code, signal);
-      if (err) settle(err);
-      else settle(undefined, output);
-    });
-
-    child.on('error', (err: Error) => {
-      clearTimeout(timer);
-      settle(err);
-    });
+  return spawnAndCollect(binPath, ['-p', prompt], {
+    env,
+    timeoutMs: TRIAGE_TIMEOUT_MS,
+    stdio: 'tee',
+    onTimeout: () => new Error('triage timed out after 5 minutes'),
+    onExit: (code, signal) => interpretChildExit(code, signal),
   });
 }
 
