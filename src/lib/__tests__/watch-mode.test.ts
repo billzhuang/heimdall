@@ -75,21 +75,29 @@ describe('parseWatchArgv', () => {
 
   it('prints usage and exits 0 for --help/-h', () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
 
-    parseWatchArgv(['--help']);
+    expect(() => parseWatchArgv(['--help'])).toThrow('process.exit');
     expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: heimdall --watch'));
     expect(exitSpy).toHaveBeenCalledWith(0);
 
-    parseWatchArgv(['-h']);
+    stdoutSpy.mockClear();
+    exitSpy.mockClear();
+
+    expect(() => parseWatchArgv(['-h'])).toThrow('process.exit');
+    expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: heimdall --watch'));
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
   it('exits 1 with an error for an unknown option', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
 
-    parseWatchArgv(['--bogus']);
+    expect(() => parseWatchArgv(['--bogus'])).toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
