@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesCronField, nextFireTime, validateCronExpression, validateCronPart, formatDelay } from '../schedule.ts';
+import { matchesCronField, nextFireTime, validateCronExpression, validateCronPart } from '../schedule.ts';
 
 describe('matchesCronField', () => {
   it('* always matches', () => {
@@ -458,36 +458,5 @@ describe('nextFireTime skip-ahead optimisation', () => {
     const from = new Date('2024-01-01T00:00:00Z');
     const next = nextFireTime('0 9 15 * *', from);
     expect(next.toISOString()).toBe('2024-01-15T09:00:00.000Z');
-  });
-});
-
-describe('formatDelay', () => {
-  it('formats hours and minutes', () => {
-    expect(formatDelay(5 * 3600_000 + 30 * 60_000)).toBe('5h 30m');
-  });
-
-  it('formats seconds only', () => {
-    expect(formatDelay(45_000)).toBe('45s');
-  });
-
-  it('formats just minutes', () => {
-    expect(formatDelay(10 * 60_000)).toBe('10m');
-  });
-
-  it('returns 0s for zero', () => {
-    expect(formatDelay(0)).toBe('0s');
-  });
-
-  it('formats hours only (no minutes or seconds)', () => {
-    expect(formatDelay(2 * 3_600_000)).toBe('2h');
-  });
-
-  it('formats hours and seconds (no minutes)', () => {
-    expect(formatDelay(1 * 3_600_000 + 45_000)).toBe('1h 45s');
-  });
-
-  it('rounds sub-second values to the nearest second', () => {
-    expect(formatDelay(1_500)).toBe('2s');
-    expect(formatDelay(1_499)).toBe('1s');
   });
 });

@@ -27,7 +27,8 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
-import { nextFireTime, formatDelay, validateCronExpression } from './lib/schedule.ts';
+import { nextFireTime, validateCronExpression } from './lib/schedule.ts';
+import { formatDurationMs } from './lib/duration.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
@@ -119,7 +120,7 @@ export async function runScheduleMode(runOnce = false): Promise<void> {
     const delayMs = nextFire.getTime() - Date.now();
 
     process.stderr.write(
-      `[heimdall-schedule] Next triage at ${nextFire.toISOString()} (in ${formatDelay(delayMs)})\n`,
+      `[heimdall-schedule] Next triage at ${nextFire.toISOString()} (in ${formatDurationMs(delayMs)})\n`,
     );
 
     await abortableSleep(delayMs, signal);
