@@ -133,9 +133,9 @@ function printReflectionPrompt(
   process.stdout.write('='.repeat(60) + '\n');
 }
 
-async function main(): Promise<void> {
+export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const { scenarioFilter, reflect, fromLog, cliLogPath, logStdout } =
-    parseSelfImproveArgs(process.argv.slice(2));
+    parseSelfImproveArgs(argv);
 
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const config = loadConfig();
