@@ -181,7 +181,8 @@ implementation (or vice versa) is a compile error.
    with a pure policy function and property-based tests.
 3. Add a key to `ToolsSchema` in `src/lib/config.ts` (default to `false` for
    anything that requires external credentials or binaries).
-4. Add the tool factory to `ALL_TOOLS` in `src/agents/heimdall.ts`.
+4. Add the plugin to `ALL_TOOL_PLUGINS` in `src/tools/index.ts` (the shared
+   list both the agent and the MCP server build their tool registry from).
 5. Add a description line to `buildInstructions()` in `src/lib/instructions.ts`.
 6. Add tests for any new pure logic.
 

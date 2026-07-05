@@ -8,26 +8,15 @@
  * Which tools are enabled is controlled by `heimdall.config.yaml` (or the path
  * in `HEIMDALL_CONFIG`). Each tool is a self-contained ToolPlugin — to add a
  * new tool, export a ToolPlugin from its src/tools/<name>.ts file, add it to
- * TOOL_PLUGINS below, and add a matching key to the config schema in
- * src/lib/config.ts.
+ * ALL_TOOL_PLUGINS in src/tools/index.ts, and add a matching key to the
+ * config schema in src/lib/config.ts.
  */
 import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { initTelemetry, isTelemetryEnabled, recordToolCall, startOtelExport } from '../lib/telemetry.ts';
 import { dirname, resolve } from 'node:path';
-import { kubectlPlugin } from '../tools/kubectl.ts';
-import { listContextsPlugin, listNamespacesPlugin } from '../tools/kubeconfig.ts';
-import { helmReleasePlugin } from '../tools/helm.ts';
-import { prometheusPlugin } from '../tools/prometheus.ts';
-import { awsCliPlugin } from '../tools/aws.ts';
-import { trivyScanPlugin } from '../tools/trivy.ts';
-import { kubecostPlugin } from '../tools/kubecost.ts';
-import { lokiPlugin } from '../tools/loki.ts';
-import { jaegerPlugin } from '../tools/jaeger.ts';
-import { datadogPlugin } from '../tools/datadog.ts';
-import { newRelicPlugin } from '../tools/newrelic.ts';
-import { cdkPlugin } from '../tools/cdk.ts';
-import { buildToolRegistry, type ToolPlugin } from '../lib/plugin.ts';
+import { ALL_TOOL_PLUGINS } from '../tools/index.ts';
+import { buildToolRegistry } from '../lib/plugin.ts';
 import { readJsonlFileSync } from '../lib/jsonl.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
@@ -84,29 +73,7 @@ const baselineContext = (() => {
 
 const lockedNs = config.namespace?.locked;
 
-/**
- * Ordered list of all tool plugins. Each plugin is self-contained: it declares
- * its config key and provides a factory that builds the ToolDefinition.
- * Adding a new tool only requires exporting a ToolPlugin from its module and
- * appending it here (plus a matching key in src/lib/config.ts).
- */
-const TOOL_PLUGINS: ToolPlugin[] = [
-  kubectlPlugin,
-  listContextsPlugin,
-  listNamespacesPlugin,
-  helmReleasePlugin,
-  prometheusPlugin,
-  awsCliPlugin,
-  trivyScanPlugin,
-  kubecostPlugin,
-  lokiPlugin,
-  jaegerPlugin,
-  datadogPlugin,
-  newRelicPlugin,
-  cdkPlugin,
-];
-
-const { allTools: ALL_TOOLS, enabledKeys: enabledToolKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexRedactionRules);
+const { allTools: ALL_TOOLS, enabledKeys: enabledToolKeys } = buildToolRegistry(ALL_TOOL_PLUGINS, config, regexRedactionRules);
 
 const telemetryEnabled = isTelemetryEnabled();
 

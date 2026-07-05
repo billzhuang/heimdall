@@ -42,19 +42,8 @@ import type { ToolDefinition } from '@flue/runtime';
 import { loadConfig } from './lib/config.ts';
 import { compileRules } from './lib/regex-redact.ts';
 import { isMainModule } from './lib/cli-args.ts';
-import { kubectlPlugin } from './tools/kubectl.ts';
-import { listContextsPlugin, listNamespacesPlugin } from './tools/kubeconfig.ts';
-import { helmReleasePlugin } from './tools/helm.ts';
-import { prometheusPlugin } from './tools/prometheus.ts';
-import { awsCliPlugin } from './tools/aws.ts';
-import { trivyScanPlugin } from './tools/trivy.ts';
-import { kubecostPlugin } from './tools/kubecost.ts';
-import { lokiPlugin } from './tools/loki.ts';
-import { jaegerPlugin } from './tools/jaeger.ts';
-import { datadogPlugin } from './tools/datadog.ts';
-import { newRelicPlugin } from './tools/newrelic.ts';
-import { cdkPlugin } from './tools/cdk.ts';
-import { buildToolRegistry, type ToolPlugin } from './lib/plugin.ts';
+import { ALL_TOOL_PLUGINS } from './tools/index.ts';
+import { buildToolRegistry } from './lib/plugin.ts';
 import { getMessage } from './lib/error-utils.ts';
 
 const config = loadConfig();
@@ -62,23 +51,7 @@ const regexRedactionRules = config.redaction?.enabled
   ? compileRules(config.redaction.rules ?? [])
   : [];
 
-const TOOL_PLUGINS: ToolPlugin[] = [
-  kubectlPlugin,
-  listContextsPlugin,
-  listNamespacesPlugin,
-  helmReleasePlugin,
-  prometheusPlugin,
-  awsCliPlugin,
-  trivyScanPlugin,
-  kubecostPlugin,
-  lokiPlugin,
-  jaegerPlugin,
-  datadogPlugin,
-  newRelicPlugin,
-  cdkPlugin,
-];
-
-const { allTools, enabledKeys } = buildToolRegistry(TOOL_PLUGINS, config, regexRedactionRules);
+const { allTools, enabledKeys } = buildToolRegistry(ALL_TOOL_PLUGINS, config, regexRedactionRules);
 
 export const enabledTools: ToolDefinition[] = Array.from(enabledKeys).map((key) => allTools[key]);
 
