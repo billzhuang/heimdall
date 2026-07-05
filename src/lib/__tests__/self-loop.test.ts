@@ -436,6 +436,10 @@ describe('formatScoreChangeLine', () => {
   it('omits the "+" for an unchanged score', () => {
     expect(formatScoreChangeLine(0.5, 0.5, false)).toBe('Score: 50% → 50% (0pp)\n');
   });
+
+  it('normalizes a tiny negative delta that rounds to "-0" to "0pp"', () => {
+    expect(formatScoreChangeLine(0.505, 0.5005, false)).toBe('Score: 51% → 50% (0pp)\n');
+  });
 });
 
 // ---------------------------------------------------------------------------

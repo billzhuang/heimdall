@@ -82,9 +82,13 @@ export function formatDryRunPreview(patches: SelfLoopPatch[]): string {
  * `buildStartupBanner`.
  */
 export function formatScoreChangeLine(currentScore: number, newScore: number, improved: boolean): string {
+  // toFixed(0) on a tiny negative delta (e.g. -0.001) yields the string "-0",
+  // which reads as a genuine negative — normalize it to "0" (see buildSummaryReport).
+  let delta = ((newScore - currentScore) * 100).toFixed(0);
+  if (delta === '-0') delta = '0';
   return (
     `Score: ${formatPct(currentScore)} → ${formatPct(newScore)} ` +
-    `(${improved ? '+' : ''}${((newScore - currentScore) * 100).toFixed(0)}pp)\n`
+    `(${improved ? '+' : ''}${delta}pp)\n`
   );
 }
 
