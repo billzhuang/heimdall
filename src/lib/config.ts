@@ -36,7 +36,10 @@ const ToolsSchema = v.nullish(
     // Disabled by default: requires CDK CLI on PATH and AWS credentials.
     cdkQuery: v.nullish(v.boolean(), false),
   }),
-  { kubectl: true, listContexts: true, listNamespaces: true, helmRelease: true, prometheusQuery: false, awsCli: false, trivyScan: false, kubecostQuery: false, lokiQuery: false, jaegerQuery: false, datadogQuery: false, newRelicQuery: false, cdkQuery: false },
+  // `{}` is enough: valibot re-runs a nullish default through the wrapped object
+  // schema, so each field's own inline default (above) applies. No need to
+  // restate every key/value pair here — that would just be the same facts twice.
+  {},
 );
 
 function makeUrlTimeoutSchema(defaultTimeoutMs = 10_000) {
@@ -99,7 +102,7 @@ const AuditSchema = v.nullish(
     // Omit `file` (or set it to null/empty) to write to stderr.
     file: v.nullish(v.string()),
   }),
-  { enabled: false },
+  {},
 );
 
 // Configurable regex redaction rules — applied to all tool output before the model sees it.
@@ -113,7 +116,7 @@ const RedactionSchema = v.nullish(
     enabled: v.nullish(v.boolean(), false),
     rules: v.nullish(v.array(RedactionRuleSchema), []),
   }),
-  { enabled: false, rules: [] },
+  {},
 );
 
 // SLO definition — each entry configures one Service Level Objective and its
@@ -190,7 +193,7 @@ const AlertPagerDutySchema = v.nullish(
     // Maps PD service.name → "namespace" or "namespace/deployment".
     serviceMap: v.nullish(v.record(v.string(), v.string()), {}),
   }),
-  { enabled: false, serviceMap: {} },
+  {},
 );
 
 const AlertSchema = v.nullish(
@@ -210,7 +213,7 @@ const RagSchema = v.nullish(
     // excluded. Default 0 (return all top-K regardless of score).
     minSimilarity: v.nullish(v.number(), 0),
   }),
-  { enabled: false, topK: 5, minSimilarity: 0 },
+  {},
 );
 
 // Learning config — controls real-task history logging for self-improvement.
@@ -232,7 +235,7 @@ const LearningSchema = v.nullish(
     // RAG-based semantic retrieval over task history (disabled by default).
     rag: RagSchema,
   }),
-  { enabled: true },
+  {},
 );
 
 // Slack notification sink — post investigation findings to a Slack channel.
@@ -248,7 +251,7 @@ const SlackSchema = v.nullish(
     // Request timeout in milliseconds (default 10 000).
     timeoutMs: v.nullish(v.number(), 10_000),
   }),
-  { enabled: false },
+  {},
 );
 
 
@@ -265,7 +268,7 @@ const ScheduleTriageSchema = v.nullish(
     // Sweep all namespaces (-A). Overrides namespace when true.
     allNamespaces: v.nullish(v.boolean(), false),
   }),
-  { enabled: false, cron: '0 */6 * * *', allNamespaces: false },
+  {},
 );
 
 const ScheduleSchema = v.nullish(
@@ -282,7 +285,7 @@ const DriftSchema = v.nullish(
     // Path for the checkpoint JSONL file (alongside task-history.jsonl by default).
     checkpointFile: v.nullish(v.string()),
   }),
-  { enabled: false },
+  {},
 );
 
 // Performance telemetry — disabled by default; auto-enabled by HEIMDALL_TELEMETRY_FILE env var.
@@ -292,7 +295,7 @@ const TelemetrySchema = v.nullish(
     // File path for the JSON output blob. Omit to write to stderr.
     file: v.nullish(v.string()),
   }),
-  { enabled: false },
+  {},
 );
 
 // OpenTelemetry export — push Heimdall metrics to an OTLP/HTTP endpoint.
@@ -316,7 +319,7 @@ const OtelSchema = v.nullish(
     // Also readable from OTEL_SERVICE_NAME.
     serviceName: v.nullish(v.string()),
   }),
-  { enabled: false, headers: {} },
+  {},
 );
 
 // HTTP server config — used by `heimdall serve` mode.
@@ -330,7 +333,7 @@ const ServerSchema = v.nullish(
     // When unset, the server is unauthenticated (safe for loopback-only deployments).
     apiKey: v.nullish(v.string()),
   }),
-  { port: 3000, host: '127.0.0.1' },
+  {},
 );
 
 const HeimdallConfigSchema = v.object({
