@@ -77,15 +77,21 @@ export function formatDryRunPreview(patches: SelfLoopPatch[]): string {
 }
 
 /**
+ * Format a percentage-point delta between two scores, normalizing toFixed(0)'s
+ * "-0" artifact (from tiny negative deltas like -0.001) to "0".
+ */
+function formatDeltaPct(fromScore: number, toScore: number): string {
+  const delta = ((toScore - fromScore) * 100).toFixed(0);
+  return delta === '-0' ? '0' : delta;
+}
+
+/**
  * Format the "Score: X → Y (+Npp)" line printed after re-scoring a patched iteration.
  * Pure string formatting, factored out of `main()` for the same reason as
  * `buildStartupBanner`.
  */
 export function formatScoreChangeLine(currentScore: number, newScore: number, improved: boolean): string {
-  // toFixed(0) on a tiny negative delta (e.g. -0.001) yields the string "-0",
-  // which reads as a genuine negative — normalize it to "0" (see buildSummaryReport).
-  let delta = ((newScore - currentScore) * 100).toFixed(0);
-  if (delta === '-0') delta = '0';
+  const delta = formatDeltaPct(currentScore, newScore);
   return (
     `Score: ${formatPct(currentScore)} → ${formatPct(newScore)} ` +
     `(${improved ? '+' : ''}${delta}pp)\n`
@@ -108,10 +114,7 @@ export function buildSummaryReport(
     parts.push('No iterations were run (all scenarios already passing or LLM unavailable).\n');
   } else {
     for (const r of iterationHistory) {
-      // toFixed(0) on a tiny negative delta (e.g. -0.001) yields the string "-0",
-      // which reads as a genuine negative — normalize it to "0" before the sign check.
-      let delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
-      if (delta === '-0') delta = '0';
+      const delta = formatDeltaPct(r.baselineScore, r.newScore);
       const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
       parts.push(
         `  Iteration ${r.iteration}: ${formatPct(r.baselineScore)} → ${formatPct(r.newScore)}` +
