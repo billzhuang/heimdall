@@ -377,9 +377,13 @@ export function parseServeArgv(argv: string[]): ServeCliArgs {
       }
       portArg = resolvePortArgOrExit(raw, '--port');
     } else if (arg === '--host' || arg.startsWith('--host=')) {
-      ({ value: hostArg, nextIndex: i } = parseFlagValue(argv, i, '--host'));
+      const { value, nextIndex } = parseFlagValue(argv, i, '--host');
+      hostArg = value;
+      i = nextIndex;
     } else if (arg === '--model' || arg.startsWith('--model=')) {
-      ({ value: modelArg, nextIndex: i } = parseFlagValue(argv, i, '--model'));
+      const { value, nextIndex } = parseFlagValue(argv, i, '--model');
+      modelArg = value;
+      i = nextIndex;
     } else if (arg === '-h' || arg === '--help') {
       process.stdout.write(SERVE_HELP_TEXT);
       process.exit(0);
