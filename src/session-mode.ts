@@ -49,7 +49,7 @@ function loadSessionOrDie(id: string): SessionRecord {
   try {
     return loadSession(id);
   } catch (err) {
-    die((err as Error).message);
+    die(getMessage(err));
   }
 }
 
