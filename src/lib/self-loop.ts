@@ -137,12 +137,17 @@ export function parseProposals(llmOutput: string): SelfLoopPatch[] {
   return patches;
 }
 
+const FENCED_SECTION_PATTERNS: Record<'FIND' | 'REPLACE', RegExp> = {
+  FIND: /FIND:\s*```[^\n]*\n([\s\S]*?)```/,
+  REPLACE: /REPLACE:\s*```[^\n]*\n([\s\S]*?)```/,
+};
+
 /**
  * Extract the content of a `LABEL:` fenced code block (e.g. FIND/REPLACE),
  * or null if the block is absent.
  */
 function extractFencedSection(block: string, label: 'FIND' | 'REPLACE'): string | null {
-  const match = block.match(new RegExp(`${label}:\\s*\`\`\`[^\\n]*\\n([\\s\\S]*?)\`\`\``));
+  const match = block.match(FENCED_SECTION_PATTERNS[label]);
   return match ? match[1] : null;
 }
 
