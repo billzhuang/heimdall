@@ -260,6 +260,41 @@ describe('spawnAndCollect', () => {
     ).rejects.toThrow('exited with code 1: ');
   });
 
+  it('buffers stdout without echoing it live when stdio: "capture-stdout"', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ stdoutData: '  hello  \n', stderrData: 'stderr goes elsewhere' }),
+    );
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    const result = await spawnAndCollect('bin', [], {
+      env: {},
+      timeoutMs: 1000,
+      stdio: 'capture-stdout',
+      onTimeout: () => new Error('timed out'),
+      onExit: onExitDefault,
+    });
+
+    expect(spawn).toHaveBeenCalledWith('bin', [], expect.objectContaining({ stdio: ['ignore', 'pipe', 'inherit'] }));
+    expect(writeSpy).not.toHaveBeenCalled();
+    expect(result).toBe('hello');
+  });
+
+  it('does not capture stderr when stdio: "capture-stdout" (it is inherited, not buffered)', async () => {
+    (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() =>
+      fakeChild({ exitCode: 1, stderrData: 'boom' }),
+    );
+
+    await expect(
+      spawnAndCollect('bin', [], {
+        env: {},
+        timeoutMs: 1000,
+        stdio: 'capture-stdout',
+        onTimeout: () => new Error('timed out'),
+        onExit: onExitDefault,
+      }),
+    ).rejects.toThrow('exited with code 1: ');
+  });
+
   it('rejects with onAbort() without spawning when signal is already aborted', async () => {
     const callsBefore = (spawn as ReturnType<typeof vi.fn>).mock.calls.length;
     const controller = new AbortController();

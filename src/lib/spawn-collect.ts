@@ -42,9 +42,13 @@ export interface SpawnAndCollectOptions {
    * empty strings to `onExit`/resolves with `''`. `'tee'` streams stdout to the
    * parent's stdout live while also buffering it for `onExit`/the resolved
    * string (for callers that want to show progress and still parse the
-   * result); stderr is inherited directly and never captured.
+   * result); stderr is inherited directly and never captured. `'capture-stdout'`
+   * buffers stdout for `onExit`/the resolved string without echoing it live,
+   * while stderr is inherited directly and never captured — for callers whose
+   * own stdout carries a different contract (e.g. one JSON line per event)
+   * that a live-echoed child stdout would corrupt.
    */
-  stdio?: 'pipe' | 'inherit' | 'tee';
+  stdio?: 'pipe' | 'inherit' | 'tee' | 'capture-stdout';
   /** Build the Error to reject with when timeoutMs elapses before the child exits. */
   onTimeout: () => Error;
   /**
@@ -99,11 +103,13 @@ export function spawnAndCollect(
     const child = spawn(binPath, args, {
       env,
       stdio:
-        stdio === 'inherit' ? ['ignore', 'inherit', 'inherit'] : stdio === 'tee' ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe'],
+        stdio === 'inherit' ? ['ignore', 'inherit', 'inherit'] :
+        stdio === 'tee' || stdio === 'capture-stdout' ? ['ignore', 'pipe', 'inherit'] :
+        ['ignore', 'pipe', 'pipe'],
       detached,
     });
 
-    if (stdio === 'pipe' || stdio === 'tee') {
+    if (stdio === 'pipe' || stdio === 'tee' || stdio === 'capture-stdout') {
       child.stdout?.on('data', (chunk: Buffer) => {
         outChunks.push(chunk);
         if (stdio === 'tee') process.stdout.write(chunk);

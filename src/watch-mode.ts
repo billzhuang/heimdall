@@ -47,6 +47,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
+import { spawnAndCollect } from './lib/spawn-collect.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
 // Backoff: 1 s → 2 s → 4 s … capped at 30 s, ±30 % jitter.
@@ -56,49 +57,34 @@ const BACKOFF_RESET_THRESHOLD_MS = 60_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Marker error used to distinguish a diagnosis timeout from a spawn failure below. */
+class DiagnosisTimeoutError extends Error {}
+
 /** Invoke the Heimdall agent with a single prompt and return its response. */
-async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
+export async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
   const binPath = resolveBinPath(__dirname);
+  const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
 
-  return new Promise((resolve) => {
-    let settled = false;
-    const settle = (value: string) => {
-      if (!settled) {
-        settled = true;
-        resolve(value);
-      }
-    };
-
-    const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
-    const child = spawn(binPath, ['-p', prompt], {
-      // stderr is inherited so the agent's diagnostic output is visible on the
-      // watch-mode process's stderr alongside our own status messages.  Using
-      // 'pipe' without draining would risk a buffer deadlock if the agent
-      // writes a lot of diagnostic text.
-      stdio: ['ignore', 'pipe', 'inherit'],
+  try {
+    const stdout = await spawnAndCollect(binPath, ['-p', prompt], {
       env,
+      timeoutMs: DIAGNOSIS_TIMEOUT_MS,
+      // stderr is inherited so the agent's diagnostic output is visible on the
+      // watch-mode process's stderr alongside our own status messages; stdout
+      // is captured (not echoed live) since watch-mode's own stdout carries a
+      // one-JSON-line-per-event contract that a live-echoed child stdout
+      // would corrupt.
+      stdio: 'capture-stdout',
+      onTimeout: () => new DiagnosisTimeoutError(),
+      // Exit code/signal are never treated as failure here — only the
+      // captured stdout (or its absence) determines the result.
+      onExit: () => null,
     });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      settle('(diagnosis timed out)');
-    }, DIAGNOSIS_TIMEOUT_MS);
-
-    let output = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      output += chunk.toString();
-    });
-
-    child.on('close', () => {
-      clearTimeout(timer);
-      settle(output.trim() || '(no diagnosis)');
-    });
-
-    child.on('error', (err: Error) => {
-      clearTimeout(timer);
-      settle(`(diagnosis failed: ${err.message})`);
-    });
-  });
+    return stdout || '(no diagnosis)';
+  } catch (err) {
+    if (err instanceof DiagnosisTimeoutError) return '(diagnosis timed out)';
+    return `(diagnosis failed: ${err instanceof Error ? err.message : String(err)})`;
+  }
 }
 
 /**
