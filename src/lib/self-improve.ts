@@ -222,11 +222,10 @@ export function resolveRagOptions(learningConfig: HeimdallConfig['learning']): {
 function selectRelevantHistory(
   entries: LearningEntry[],
   taskHistory: TaskHistoryEntry[],
-  hasFailures: boolean,
   useRag: boolean,
   ragTopK: number,
 ): TaskHistoryEntry[] {
-  if (!useRag || !hasFailures || taskHistory.length === 0) return taskHistory;
+  if (!useRag || entries.length === 0 || taskHistory.length === 0) return taskHistory;
   const combinedQuery = entries.map((e) => e.prompt).join(' ');
   return retrieveSimilarEntries(combinedQuery, taskHistory, ragTopK, 0);
 }
@@ -248,8 +247,8 @@ function buildHistorySection(
 }
 
 /** Build the failure-summary sentence introducing the reflection prompt. */
-function buildFailurePart(entries: LearningEntry[], hasFailures: boolean): string {
-  if (!hasFailures) return `No eval failures this run.`;
+function buildFailurePart(entries: LearningEntry[]): string {
+  if (entries.length === 0) return `No eval failures this run.`;
   return `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
     `For each failure, analyze the root cause and propose the **exact text change** to ` +
     `\`src/lib/instructions.ts\` (or a specific \`SUBAGENT_INSTRUCTIONS\` entry) that would fix it. ` +
@@ -304,14 +303,14 @@ export function buildReflectionPrompt(
   }
 
   const hasFailures = entries.length > 0;
-  const relevantHistory = selectRelevantHistory(entries, taskHistory, hasFailures, useRag, ragTopK);
+  const relevantHistory = selectRelevantHistory(entries, taskHistory, useRag, ragTopK);
   const hasHistory = relevantHistory.length > 0;
 
   const historySection = buildHistorySection(relevantHistory, hasFailures, useRag);
 
   const sections: string[] = buildPromptSections(
     `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` +
-      buildFailurePart(entries, hasFailures),
+      buildFailurePart(entries),
     entries,
     historySection,
   );
