@@ -83,7 +83,7 @@ export async function diagnoseEvent(prompt: string, model?: string): Promise<str
     return stdout || '(no diagnosis)';
   } catch (err) {
     if (err instanceof DiagnosisTimeoutError) return '(diagnosis timed out)';
-    return `(diagnosis failed: ${err instanceof Error ? err.message : String(err)})`;
+    return `(diagnosis failed: ${getMessage(err)})`;
   }
 }
 
