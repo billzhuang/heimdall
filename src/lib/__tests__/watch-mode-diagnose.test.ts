@@ -59,6 +59,7 @@ describe('diagnoseEvent', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it('resolves with trimmed stdout on a clean exit', async () => {
@@ -133,6 +134,9 @@ describe('diagnoseEvent', () => {
       expect.objectContaining({ env: expect.objectContaining({ HEIMDALL_MODEL: 'anthropic/claude-opus-4-8' }) }),
     );
 
+    // Isolate from any HEIMDALL_MODEL already set in the test runner's own
+    // environment, so this assertion holds regardless of where tests run.
+    vi.stubEnv('HEIMDALL_MODEL', undefined as unknown as string);
     (spawn as ReturnType<typeof vi.fn>).mockImplementationOnce(() => fakeChild({ stdoutData: 'ok' }));
     await diagnoseEvent('p');
     const [, , lastOpts] = (spawn as ReturnType<typeof vi.fn>).mock.calls.at(-1)!;
