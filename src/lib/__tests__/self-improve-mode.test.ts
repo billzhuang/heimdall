@@ -275,9 +275,11 @@ describe('main()', () => {
   });
 
   it('reports no entries found for --from-log --reflect when both logs are empty', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
 
-    await main(['--from-log', '--reflect']);
+    await expect(main(['--from-log', '--reflect'])).rejects.toThrow('exit');
 
     expect(stdout()).toContain('No entries found in');
     expect(exitSpy).toHaveBeenCalledWith(0);
