@@ -43,6 +43,52 @@ export function formatPct(fraction: number): string {
 }
 
 /**
+ * Build the startup banner printed at the beginning of a self-loop run.
+ * Pure string formatting, factored out of `main()` so it can be unit tested
+ * without the eval/LLM/file-system side effects that surround it there.
+ */
+export function buildStartupBanner(
+  maxIterations: number,
+  backend: string,
+  scenarioCount: number,
+  dryRun: boolean,
+): string {
+  return (
+    `\nHeimdall Self-Loop (max ${maxIterations} iteration${maxIterations === 1 ? '' : 's'})\n` +
+    `Backend: ${backend} | Scenarios: ${scenarioCount} | Mode: ${dryRun ? 'dry-run' : 'apply'}\n` +
+    '='.repeat(60) + '\n\n'
+  );
+}
+
+/**
+ * Format the dry-run patch preview block printed instead of applying patches.
+ * Pure string formatting, factored out of `main()` for the same reason as
+ * `buildStartupBanner`.
+ */
+export function formatDryRunPreview(patches: SelfLoopPatch[]): string {
+  const lines = ['\n[dry-run] Proposed patches:\n'];
+  patches.forEach((p, i) => {
+    lines.push(
+      `  Patch ${i + 1}:\n    FIND: ${p.find.slice(0, 80).replace(/\n/g, '\\n')}...\n    REPLACE: ${p.replace.slice(0, 80).replace(/\n/g, '\\n')}...\n`,
+    );
+  });
+  lines.push('\n[dry-run] Not applying patches. Stopping.\n');
+  return lines.join('');
+}
+
+/**
+ * Format the "Score: X → Y (+Npp)" line printed after re-scoring a patched iteration.
+ * Pure string formatting, factored out of `main()` for the same reason as
+ * `buildStartupBanner`.
+ */
+export function formatScoreChangeLine(currentScore: number, newScore: number, improved: boolean): string {
+  return (
+    `Score: ${formatPct(currentScore)} → ${formatPct(newScore)} ` +
+    `(${improved ? '+' : ''}${((newScore - currentScore) * 100).toFixed(0)}pp)\n`
+  );
+}
+
+/**
  * Build the human-readable summary report printed at the end of a self-loop run.
  * Pure string formatting, factored out of `main()` so it can be unit tested
  * without the eval/LLM/file-system side effects that surround it there.

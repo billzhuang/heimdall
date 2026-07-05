@@ -37,6 +37,9 @@ import { callCodexCli, isCodexCliAvailable } from './lib/codex-cli-llm.ts';
 import {
   scoreResults,
   formatPct,
+  buildStartupBanner,
+  formatDryRunPreview,
+  formatScoreChangeLine,
   buildSummaryReport,
   buildAutoReflectionPrompt,
   parseProposals,
@@ -211,9 +214,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  process.stdout.write(`\nHeimdall Self-Loop (max ${maxIterations} iteration${maxIterations === 1 ? '' : 's'})\n`);
-  process.stdout.write(`Backend: ${backend} | Scenarios: ${scenarios.length} | Mode: ${dryRun ? 'dry-run' : 'apply'}\n`);
-  process.stdout.write('='.repeat(60) + '\n\n');
+  process.stdout.write(buildStartupBanner(maxIterations, backend, scenarios.length, dryRun));
 
   const iterationHistory: IterationResult[] = [];
 
@@ -297,11 +298,7 @@ async function main(): Promise<void> {
     }
 
     if (dryRun) {
-      process.stdout.write('\n[dry-run] Proposed patches:\n');
-      patches.forEach((p, i) => {
-        process.stdout.write(`  Patch ${i + 1}:\n    FIND: ${p.find.slice(0, 80).replace(/\n/g, '\\n')}...\n    REPLACE: ${p.replace.slice(0, 80).replace(/\n/g, '\\n')}...\n`);
-      });
-      process.stdout.write('\n[dry-run] Not applying patches. Stopping.\n');
+      process.stdout.write(formatDryRunPreview(patches));
       break;
     }
 
@@ -333,10 +330,7 @@ async function main(): Promise<void> {
       break;
     }
 
-    process.stdout.write(
-      `Score: ${formatPct(currentScore)} → ${formatPct(newScore)} ` +
-      `(${improved ? '+' : ''}${((newScore - currentScore) * 100).toFixed(0)}pp)\n`,
-    );
+    process.stdout.write(formatScoreChangeLine(currentScore, newScore, improved));
 
     iterationHistory.push({
       iteration,

@@ -14,6 +14,9 @@ beforeEach(() => {
 import {
   scoreResults,
   formatPct,
+  buildStartupBanner,
+  formatDryRunPreview,
+  formatScoreChangeLine,
   buildSummaryReport,
   parseProposals,
   buildAutoReflectionPrompt,
@@ -348,6 +351,90 @@ describe('formatPct', () => {
     expect(formatPct(1)).toBe('100%');
     expect(formatPct(0.5)).toBe('50%');
     expect(formatPct(2 / 3)).toBe('67%');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildStartupBanner
+// ---------------------------------------------------------------------------
+
+describe('buildStartupBanner', () => {
+  it('pluralizes "iterations" when maxIterations is not 1', () => {
+    const banner = buildStartupBanner(3, 'claude-cli', 5, false);
+    expect(banner).toBe(
+      '\nHeimdall Self-Loop (max 3 iterations)\n' +
+      'Backend: claude-cli | Scenarios: 5 | Mode: apply\n' +
+      '='.repeat(60) + '\n\n',
+    );
+  });
+
+  it('uses singular "iteration" when maxIterations is 1', () => {
+    const banner = buildStartupBanner(1, 'codex-cli', 2, true);
+    expect(banner).toContain('max 1 iteration)');
+    expect(banner).not.toContain('iterations)');
+  });
+
+  it('shows dry-run mode label when dryRun is true', () => {
+    expect(buildStartupBanner(3, 'claude-cli', 5, true)).toContain('Mode: dry-run\n');
+  });
+
+  it('shows apply mode label when dryRun is false', () => {
+    expect(buildStartupBanner(3, 'claude-cli', 5, false)).toContain('Mode: apply\n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatDryRunPreview
+// ---------------------------------------------------------------------------
+
+describe('formatDryRunPreview', () => {
+  it('formats a single patch with truncated FIND/REPLACE previews', () => {
+    const preview = formatDryRunPreview([{ find: 'old text', replace: 'new text' }]);
+    expect(preview).toBe(
+      '\n[dry-run] Proposed patches:\n' +
+      '  Patch 1:\n    FIND: old text...\n    REPLACE: new text...\n' +
+      '\n[dry-run] Not applying patches. Stopping.\n',
+    );
+  });
+
+  it('numbers multiple patches sequentially starting at 1', () => {
+    const preview = formatDryRunPreview([
+      { find: 'a', replace: 'A' },
+      { find: 'b', replace: 'B' },
+    ]);
+    expect(preview).toContain('  Patch 1:\n    FIND: a...\n    REPLACE: A...\n');
+    expect(preview).toContain('  Patch 2:\n    FIND: b...\n    REPLACE: B...\n');
+  });
+
+  it('truncates FIND/REPLACE text longer than 80 characters', () => {
+    const long = 'x'.repeat(100);
+    const preview = formatDryRunPreview([{ find: long, replace: long }]);
+    expect(preview).toContain(`FIND: ${'x'.repeat(80)}...\n`);
+    expect(preview).toContain(`REPLACE: ${'x'.repeat(80)}...\n`);
+  });
+
+  it('escapes embedded newlines as literal \\n', () => {
+    const preview = formatDryRunPreview([{ find: 'line1\nline2', replace: 'r1\nr2' }]);
+    expect(preview).toContain('FIND: line1\\nline2...\n');
+    expect(preview).toContain('REPLACE: r1\\nr2...\n');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatScoreChangeLine
+// ---------------------------------------------------------------------------
+
+describe('formatScoreChangeLine', () => {
+  it('prefixes a "+" for an improving score', () => {
+    expect(formatScoreChangeLine(0.5, 0.75, true)).toBe('Score: 50% → 75% (+25pp)\n');
+  });
+
+  it('omits the "+" for a non-improving score', () => {
+    expect(formatScoreChangeLine(0.75, 0.5, false)).toBe('Score: 75% → 50% (-25pp)\n');
+  });
+
+  it('omits the "+" for an unchanged score', () => {
+    expect(formatScoreChangeLine(0.5, 0.5, false)).toBe('Score: 50% → 50% (0pp)\n');
   });
 });
 
