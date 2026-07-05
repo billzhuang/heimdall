@@ -5,10 +5,11 @@
  * importing watch-mode.ts in-process (it spawns kubectl and can block
  * indefinitely once fully started).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseWatchArgv } from '../../watch-mode.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const TSX = resolve(ROOT, 'node_modules/.bin/tsx');
@@ -48,5 +49,48 @@ describe('heimdall watch CLI', () => {
     const { status, stderr } = watchMode('--model');
     expect(status).toBe(1);
     expect(stderr).toContain('--model requires a value');
+  });
+});
+
+describe('parseWatchArgv', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns modelFlag: undefined for no args', () => {
+    expect(parseWatchArgv([])).toEqual({ modelFlag: undefined });
+  });
+
+  it('parses --model <value>', () => {
+    expect(parseWatchArgv(['--model', 'anthropic/claude-sonnet-4-6'])).toEqual({
+      modelFlag: 'anthropic/claude-sonnet-4-6',
+    });
+  });
+
+  it('parses --model=<value>', () => {
+    expect(parseWatchArgv(['--model=anthropic/claude-sonnet-4-6'])).toEqual({
+      modelFlag: 'anthropic/claude-sonnet-4-6',
+    });
+  });
+
+  it('prints usage and exits 0 for --help/-h', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+
+    parseWatchArgv(['--help']);
+    expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: heimdall --watch'));
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    parseWatchArgv(['-h']);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('exits 1 with an error for an unknown option', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+
+    parseWatchArgv(['--bogus']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

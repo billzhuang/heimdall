@@ -297,25 +297,40 @@ export async function runWatchMode(model?: string): Promise<void> {
   cleanup();
 }
 
-// --- CLI arg parsing when run directly ---
-if (isMainModule(import.meta.url)) {
-  const watchArgs = process.argv.slice(2);
-  let watchModelFlag: string | undefined;
+const WATCH_HELP_TEXT = `Usage: heimdall --watch [--model <provider/model>]\n\nOptions:\n  --model <provider/model>  Override the LLM model\n  -h, --help                Show this help\n`;
 
-  for (let i = 0; i < watchArgs.length; i++) {
-    const arg = watchArgs[i];
+export interface WatchCliArgs {
+  modelFlag: string | undefined;
+}
+
+/**
+ * Parse `heimdall --watch` CLI flags. Exits the process directly for
+ * --help and unknown options, matching this mode's historical behavior.
+ */
+export function parseWatchArgv(argv: string[]): WatchCliArgs {
+  let modelFlag: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
     if (arg === '--model' || arg.startsWith('--model=')) {
-      const parsed = parseModelFlag(watchArgs, i);
-      watchModelFlag = parsed.value;
+      const parsed = parseModelFlag(argv, i);
+      modelFlag = parsed.value;
       i = parsed.nextIndex;
     } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(`Usage: heimdall --watch [--model <provider/model>]\n\nOptions:\n  --model <provider/model>  Override the LLM model\n  -h, --help                Show this help\n`);
+      process.stdout.write(WATCH_HELP_TEXT);
       process.exit(0);
     } else {
       process.stderr.write(`Error: unknown option: ${arg}\n`);
       process.exit(1);
     }
   }
+
+  return { modelFlag };
+}
+
+// --- CLI arg parsing when run directly ---
+if (isMainModule(import.meta.url)) {
+  const { modelFlag: watchModelFlag } = parseWatchArgv(process.argv.slice(2));
 
   let resolvedWatchModel: string;
   try {
