@@ -7,7 +7,7 @@
  * adding a new tool only requires:
  *   1. Implementing the factory in src/tools/<name>.ts
  *   2. Exporting a ToolPlugin from that file
- *   3. Adding it to TOOL_PLUGINS in src/agents/heimdall.ts
+ *   3. Adding it to ALL_TOOL_PLUGINS in src/tools/index.ts
  *
  * The tool registration loop in heimdall.ts replaces the manual ALL_TOOLS map.
  */
