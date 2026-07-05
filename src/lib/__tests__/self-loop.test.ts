@@ -415,6 +415,18 @@ describe('buildSummaryReport', () => {
     expect(report).toContain('  Iteration 1: 50% → 50% (+0pp) | 0 patches | NO_CHANGE\n');
   });
 
+  it('normalizes a tiny negative delta that rounds to "-0" instead of showing "+-0pp"', () => {
+    const history = [
+      result({ iteration: 1, baselineScore: 0.505, newScore: 0.5005, improved: false, reverted: true }),
+    ];
+
+    const report = buildSummaryReport(history, 0.505, '/fake/learning-log.jsonl');
+
+    expect(report).toContain('(+0pp)');
+    expect(report).not.toContain('+-0pp');
+    expect(report).not.toContain('(-0pp)');
+  });
+
   it('always includes the proposals and learning-log footer lines', () => {
     const report = buildSummaryReport([result({})], 0.5, '/some/path/log.jsonl');
 

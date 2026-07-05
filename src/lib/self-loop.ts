@@ -58,11 +58,14 @@ export function buildSummaryReport(
     parts.push('No iterations were run (all scenarios already passing or LLM unavailable).\n');
   } else {
     for (const r of iterationHistory) {
-      const delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
+      // toFixed(0) on a tiny negative delta (e.g. -0.001) yields the string "-0",
+      // which reads as a genuine negative — normalize it to "0" before the sign check.
+      let delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
+      if (delta === '-0') delta = '0';
       const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
       parts.push(
         `  Iteration ${r.iteration}: ${formatPct(r.baselineScore)} → ${formatPct(r.newScore)}` +
-          ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
+          ` (${delta.startsWith('-') ? '' : '+'}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
       );
     }
     parts.push(`\nFinal score: ${formatPct(currentScore)}\n`);
