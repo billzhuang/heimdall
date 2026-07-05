@@ -32,7 +32,7 @@ vi.mock('../../lib/config.ts', () => ({
     newRelic: null,
     slos: [],
     runbooks: [],
-    learning: null,
+    learning: { enabled: false },
     telemetry: { enabled: false },
     otel: { enabled: false },
   }),
