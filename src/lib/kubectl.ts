@@ -183,6 +183,23 @@ export function matchMock(mocks: Record<string, string>, argv: string[]): string
   return bestKey !== null ? mocks[bestKey] : null;
 }
 
+/**
+ * Compute the exec timeout for a kubectl invocation.
+ *
+ * For `kubectl wait`, extend the timeout to match its own `--timeout` so Node
+ * doesn't kill the process before kubectl can exit cleanly. Add a buffer for
+ * the process to flush output and exit; fall back to EXEC_TIMEOUT_MS for all
+ * other subcommands (or when no --timeout is present).
+ * Exported so tests can cover it without spawning kubectl.
+ */
+export function computeExecTimeoutMs(subcommand: string | null, argv: string[]): number {
+  if (subcommand === 'wait') {
+    const waitMs = getWaitTimeoutMs(argv);
+    if (waitMs) return Math.max(EXEC_TIMEOUT_MS, waitMs + EXEC_TIMEOUT_BUFFER_MS);
+  }
+  return EXEC_TIMEOUT_MS;
+}
+
 /** Return the cached contents if the file exists and is younger than the TTL, else null. */
 async function readFromCache(cacheFile: string, ttlSeconds: number): Promise<string | null> {
   try {
@@ -366,17 +383,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     recordCacheMiss();
   }
 
-  // For `kubectl wait`, extend the exec timeout to match --timeout so Node
-  // doesn't kill the process before kubectl can exit cleanly. Add a 5 s buffer
-  // for the process to flush output and exit; fall back to EXEC_TIMEOUT_MS for
-  // all other subcommands (or when no --timeout is present).
-  const execTimeoutMs = (() => {
-    if (validation.subcommand === 'wait') {
-      const waitMs = getWaitTimeoutMs(argv);
-      if (waitMs) return Math.max(EXEC_TIMEOUT_MS, waitMs + EXEC_TIMEOUT_BUFFER_MS);
-    }
-    return EXEC_TIMEOUT_MS;
-  })();
+  const execTimeoutMs = computeExecTimeoutMs(validation.subcommand, argv);
 
   try {
     const { stdout, stderr } = await execFileAsync('kubectl', argv, {

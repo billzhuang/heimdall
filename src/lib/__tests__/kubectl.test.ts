@@ -18,6 +18,7 @@ import { readFile, mkdtemp, rm, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  computeExecTimeoutMs,
   isJsonOutput,
   matchMock,
   NO_OUTPUT_MESSAGE,
@@ -180,6 +181,25 @@ describe('getWaitTimeoutMs', () => {
 
   it('extracts a compound --timeout=1h30m value', () => {
     expect(getWaitTimeoutMs(['wait', '--for=condition=Ready', 'pod/web', '--timeout=1h30m'])).toBe(5_400_000);
+  });
+});
+
+describe('computeExecTimeoutMs', () => {
+  it('extends the timeout for a wait --timeout longer than the default', () => {
+    expect(computeExecTimeoutMs('wait', ['wait', '--for=condition=Ready', 'pod/web', '--timeout=120s'])).toBe(125_000);
+  });
+
+  it('floors to the default for a wait --timeout shorter than the default', () => {
+    expect(computeExecTimeoutMs('wait', ['wait', '--for=condition=Ready', 'pod/web', '--timeout=5s'])).toBe(30_000);
+  });
+
+  it('uses the default when wait has no --timeout flag', () => {
+    expect(computeExecTimeoutMs('wait', ['wait', '--for=condition=Ready', 'pod/web'])).toBe(30_000);
+  });
+
+  it('uses the default for non-wait subcommands', () => {
+    expect(computeExecTimeoutMs('get', ['get', 'pods'])).toBe(30_000);
+    expect(computeExecTimeoutMs(null, ['get', 'pods'])).toBe(30_000);
   });
 });
 
