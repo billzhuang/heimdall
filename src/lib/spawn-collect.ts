@@ -39,9 +39,12 @@ export interface SpawnAndCollectOptions {
    * to `onExit`/resolves with stdout. `'inherit'` streams the child's stdout
    * and stderr directly to the parent's — for callers that want the agent's
    * output visible live and don't need it as a string — and always passes
-   * empty strings to `onExit`/resolves with `''`.
+   * empty strings to `onExit`/resolves with `''`. `'tee'` streams stdout to the
+   * parent's stdout live while also buffering it for `onExit`/the resolved
+   * string (for callers that want to show progress and still parse the
+   * result); stderr is inherited directly and never captured.
    */
-  stdio?: 'pipe' | 'inherit';
+  stdio?: 'pipe' | 'inherit' | 'tee';
   /** Build the Error to reject with when timeoutMs elapses before the child exits. */
   onTimeout: () => Error;
   /**
@@ -95,12 +98,18 @@ export function spawnAndCollect(
 
     const child = spawn(binPath, args, {
       env,
-      stdio: stdio === 'inherit' ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe'],
+      stdio:
+        stdio === 'inherit' ? ['ignore', 'inherit', 'inherit'] : stdio === 'tee' ? ['ignore', 'pipe', 'inherit'] : ['ignore', 'pipe', 'pipe'],
       detached,
     });
 
-    if (stdio !== 'inherit') {
-      child.stdout?.on('data', (chunk: Buffer) => outChunks.push(chunk));
+    if (stdio === 'pipe' || stdio === 'tee') {
+      child.stdout?.on('data', (chunk: Buffer) => {
+        outChunks.push(chunk);
+        if (stdio === 'tee') process.stdout.write(chunk);
+      });
+    }
+    if (stdio === 'pipe') {
       child.stderr?.on('data', (chunk: Buffer) => errChunks.push(chunk));
     }
 
