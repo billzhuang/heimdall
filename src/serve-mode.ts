@@ -36,7 +36,7 @@ import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { isMainModule } from './lib/cli-args.ts';
+import { isMainModule, parseFlagValue } from './lib/cli-args.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -367,25 +367,19 @@ export function parseServeArgv(argv: string[]): ServeCliArgs {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--port') {
-      const raw = argv[++i];
+    if (arg === '--port' || arg.startsWith('--port=')) {
+      const { value: raw, nextIndex } = parseFlagValue(argv, i, '--port');
+      i = nextIndex;
       if (!raw) {
         process.stderr.write('Error: --port requires a value\n');
         process.exit(1);
         return { port: portArg, host: hostArg, model: modelArg };
       }
       portArg = resolvePortArgOrExit(raw, '--port');
-    } else if (arg.startsWith('--port=')) {
-      const raw = arg.slice('--port='.length);
-      portArg = resolvePortArgOrExit(raw, '--port');
-    } else if (arg === '--host') {
-      hostArg = argv[++i];
-    } else if (arg.startsWith('--host=')) {
-      hostArg = arg.slice('--host='.length);
-    } else if (arg === '--model') {
-      modelArg = argv[++i];
-    } else if (arg.startsWith('--model=')) {
-      modelArg = arg.slice('--model='.length);
+    } else if (arg === '--host' || arg.startsWith('--host=')) {
+      ({ value: hostArg, nextIndex: i } = parseFlagValue(argv, i, '--host'));
+    } else if (arg === '--model' || arg.startsWith('--model=')) {
+      ({ value: modelArg, nextIndex: i } = parseFlagValue(argv, i, '--model'));
     } else if (arg === '-h' || arg === '--help') {
       process.stdout.write(SERVE_HELP_TEXT);
       process.exit(0);

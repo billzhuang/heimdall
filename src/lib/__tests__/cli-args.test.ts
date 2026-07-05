@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule } from '../cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseFlagValue, parseModelFlag, isMainModule } from '../cli-args.ts';
 
 describe('requireNextArg', () => {
   afterEach(() => {
@@ -83,6 +83,37 @@ describe('parseCommaSeparatedList', () => {
     parseCommaSeparatedList(' , ,', '--contexts value produced an empty list after parsing');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --contexts value produced an empty list after parsing\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('parseFlagValue', () => {
+  it('parses "--name <value>" and advances the index past the value', () => {
+    expect(parseFlagValue(['--host', '0.0.0.0'], 0, '--host')).toEqual({
+      value: '0.0.0.0',
+      nextIndex: 1,
+    });
+  });
+
+  it('parses "--name=<value>" without advancing the index', () => {
+    expect(parseFlagValue(['--host=0.0.0.0'], 0, '--host')).toEqual({
+      value: '0.0.0.0',
+      nextIndex: 0,
+    });
+  });
+
+  it('returns an empty string for "--name=" with nothing after the equals sign', () => {
+    expect(parseFlagValue(['--host='], 0, '--host')).toEqual({ value: '', nextIndex: 0 });
+  });
+
+  it('resolves to undefined (not an exit) when the value is missing, unlike parseModelFlag', () => {
+    expect(parseFlagValue(['--host'], 0, '--host')).toEqual({ value: undefined, nextIndex: 1 });
+  });
+
+  it('resolves to a flag-like next token instead of rejecting it, unlike parseModelFlag', () => {
+    expect(parseFlagValue(['--host', '--model'], 0, '--host')).toEqual({
+      value: '--model',
+      nextIndex: 1,
+    });
   });
 });
 

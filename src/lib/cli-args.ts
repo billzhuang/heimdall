@@ -44,6 +44,26 @@ export function parseCommaSeparatedList(raw: string, emptyMsg: string): string[]
 }
 
 /**
+ * Parse a `--name <value>` / `--name=<value>` style flag at `args[i]`, with no
+ * value validation — a missing or flag-like value simply resolves to
+ * `undefined` rather than exiting. Call only when the caller has already
+ * matched `args[i]` against `name` or the `${name}=` prefix.
+ *
+ * Returns the raw value and the loop index to resume from (`i` unchanged for
+ * the `=` form, `i + 1` after consuming the following token) — mirrors
+ * `parseModelFlag`'s indexing but without the exit-on-missing behavior, for
+ * flags whose historical CLI contract leaves them undefined instead.
+ */
+export function parseFlagValue(
+  args: string[],
+  i: number,
+  name: string,
+): { value: string | undefined; nextIndex: number } {
+  if (args[i] === name) return { value: args[i + 1], nextIndex: i + 1 };
+  return { value: args[i].slice(name.length + 1), nextIndex: i };
+}
+
+/**
  * Parse a `--model <value>` / `-m <value>` / `--model=<value>` style flag at
  * `args[i]`. Call only when the caller has already matched `args[i]` against
  * one of `aliases` or the `--model=` prefix. Writes an error to stderr and
