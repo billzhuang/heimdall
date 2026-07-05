@@ -210,6 +210,37 @@ async function queryEvents(
   return result.ok ? result.text : result.error;
 }
 
+/**
+ * Client-side status filter for the monitors endpoint: keep only monitors
+ * whose overall_state matches one of the comma-separated monitorStatus
+ * values (case-insensitive). Datadog's API has no server-side status filter,
+ * so this always runs against the full response text.
+ *
+ * Returns `text` unchanged when monitorStatus is blank, the response isn't a
+ * JSON array, or the text isn't valid JSON — letting truncation/redaction
+ * apply to the raw response in those cases.
+ */
+export function filterMonitorsByStatus(text: string, monitorStatus: string | null | undefined): string {
+  if (!monitorStatus?.trim()) return text;
+
+  const allowedStates = new Set(
+    monitorStatus.split(',').map((s) => s.trim().toLowerCase()),
+  );
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (!Array.isArray(parsed)) return text;
+    const filtered = parsed.filter((m: unknown) => {
+      if (m !== null && typeof m === 'object' && 'overall_state' in m) {
+        return allowedStates.has(String((m as Record<string, unknown>)['overall_state']).toLowerCase());
+      }
+      return false;
+    });
+    return JSON.stringify(filtered);
+  } catch {
+    return text;
+  }
+}
+
 async function queryMonitors(
   params: DatadogQueryParams,
   config: DatadogConfig,
@@ -228,31 +259,7 @@ async function queryMonitors(
 
   const result = await fetchDatadog(url, config, signal, 'monitors');
   if (!result.ok) return result.error;
-  const text = result.text;
-
-  // Client-side status filter: when monitorStatus is specified, keep only monitors
-  // whose overall_state matches one of the requested states (case-insensitive).
-  if (params.monitorStatus?.trim()) {
-    const allowedStates = new Set(
-      params.monitorStatus.split(',').map((s) => s.trim().toLowerCase()),
-    );
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        const filtered = parsed.filter((m: unknown) => {
-          if (m !== null && typeof m === 'object' && 'overall_state' in m) {
-            return allowedStates.has(String((m as Record<string, unknown>)['overall_state']).toLowerCase());
-          }
-          return false;
-        });
-        return JSON.stringify(filtered);
-      }
-    } catch {
-      // JSON parse failed — return the raw text and let truncation/redaction apply
-    }
-  }
-
-  return text;
+  return filterMonitorsByStatus(result.text, params.monitorStatus);
 }
 
 /**

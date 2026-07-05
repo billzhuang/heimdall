@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { runDatadogQuery } from '../datadog.ts';
+import { runDatadogQuery, filterMonitorsByStatus } from '../datadog.ts';
 import { resolveTimeSeconds, resolveTimeISO } from '../time-resolution.ts';
 import type { DatadogConfig } from '../datadog.ts';
 import { mockFetch } from './test-helpers.ts';
@@ -807,6 +807,70 @@ describe('runDatadogQuery — monitors monitorStatus edge cases', () => {
       BASE_CONFIG,
     );
     expect(result).toBe(payload);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterMonitorsByStatus
+// ---------------------------------------------------------------------------
+
+describe('filterMonitorsByStatus', () => {
+  const monitors = [
+    { id: 1, name: 'Monitor A', overall_state: 'Alert' },
+    { id: 2, name: 'Monitor B', overall_state: 'OK' },
+    { id: 3, name: 'Monitor C', overall_state: 'Warn' },
+  ];
+
+  it('returns text unchanged when monitorStatus is undefined', () => {
+    const text = JSON.stringify(monitors);
+    expect(filterMonitorsByStatus(text, undefined)).toBe(text);
+  });
+
+  it('returns text unchanged when monitorStatus is null', () => {
+    const text = JSON.stringify(monitors);
+    expect(filterMonitorsByStatus(text, null)).toBe(text);
+  });
+
+  it('returns text unchanged when monitorStatus is blank/whitespace', () => {
+    const text = JSON.stringify(monitors);
+    expect(filterMonitorsByStatus(text, '   ')).toBe(text);
+  });
+
+  it('filters to monitors whose overall_state matches, case-insensitively', () => {
+    const result = filterMonitorsByStatus(JSON.stringify(monitors), 'alert');
+    expect(JSON.parse(result)).toEqual([monitors[0]]);
+  });
+
+  it('accepts multiple comma-separated states with surrounding whitespace', () => {
+    const result = filterMonitorsByStatus(JSON.stringify(monitors), ' Alert , Warn ');
+    expect(JSON.parse(result)).toEqual([monitors[0], monitors[2]]);
+  });
+
+  it('excludes array entries missing overall_state', () => {
+    const withGap = [...monitors, { id: 4, name: 'Monitor D' }];
+    const result = filterMonitorsByStatus(JSON.stringify(withGap), 'Alert');
+    expect(JSON.parse(result)).toEqual([monitors[0]]);
+  });
+
+  it('excludes null and non-object array entries', () => {
+    const withJunk = [...monitors, null, 'not-an-object', 42];
+    const result = filterMonitorsByStatus(JSON.stringify(withJunk), 'Alert');
+    expect(JSON.parse(result)).toEqual([monitors[0]]);
+  });
+
+  it('returns text unchanged when the parsed JSON is not an array', () => {
+    const text = JSON.stringify({ status: 'ok' });
+    expect(filterMonitorsByStatus(text, 'Alert')).toBe(text);
+  });
+
+  it('returns text unchanged when the text is invalid JSON', () => {
+    const text = 'not json at all';
+    expect(filterMonitorsByStatus(text, 'Alert')).toBe(text);
+  });
+
+  it('returns an empty JSON array when no monitors match', () => {
+    const result = filterMonitorsByStatus(JSON.stringify(monitors), 'NoData');
+    expect(JSON.parse(result)).toEqual([]);
   });
 });
 
