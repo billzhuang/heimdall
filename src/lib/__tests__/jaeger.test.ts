@@ -1,73 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runJaegerQuery, resolveJaegerTimeUs } from '../jaeger.ts';
+import { runJaegerQuery } from '../jaeger.ts';
 import type { JaegerConfig } from '../jaeger.ts';
 import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: JaegerConfig = { url: 'http://jaeger:16686', timeoutMs: 5_000 };
 
 restoreGlobalsAfterEach();
-
-// ---------------------------------------------------------------------------
-// resolveJaegerTimeUs
-// ---------------------------------------------------------------------------
-
-describe('resolveJaegerTimeUs', () => {
-  const NOW_MS = new Date('2024-06-01T12:00:00Z').getTime();
-
-  it('converts relative "-1h" to microseconds from now', () => {
-    const result = resolveJaegerTimeUs('-1h', NOW_MS);
-    const expectedMs = NOW_MS - 3_600_000;
-    expect(result).toBe(expectedMs * 1_000);
-  });
-
-  it('converts relative "-30m" to microseconds', () => {
-    const result = resolveJaegerTimeUs('-30m', NOW_MS);
-    const expectedMs = NOW_MS - 30 * 60_000;
-    expect(result).toBe(expectedMs * 1_000);
-  });
-
-  it('converts ISO8601 to microseconds', () => {
-    const iso = '2024-06-01T11:00:00.000Z';
-    const result = resolveJaegerTimeUs(iso, NOW_MS);
-    expect(result).toBe(new Date(iso).getTime() * 1_000);
-  });
-
-  it('converts bare Unix second epoch to microseconds', () => {
-    // 1717243200 = 2024-06-01T12:00:00Z (10 digits)
-    const result = resolveJaegerTimeUs('1717243200', NOW_MS);
-    expect(result).toBe(1717243200 * 1_000_000);
-  });
-
-  it('converts 13-digit Unix millisecond epoch to microseconds (not seconds)', () => {
-    // 1717243200000 = 2024-06-01T12:00:00Z in milliseconds (13 digits)
-    // Multiplying by 1_000_000 (treating as seconds) would give year ~56385 — wrong.
-    const result = resolveJaegerTimeUs('1717243200000', NOW_MS);
-    expect(result).toBe(1717243200000 * 1_000);
-    // Sanity-check: result should match the 10-digit seconds version
-    expect(result).toBe(1717243200 * 1_000_000);
-  });
-
-  it('converts 11-digit Unix millisecond epoch to microseconds', () => {
-    // 11-digit ms timestamp, e.g. 10000000000 = 2286-11-20 (still ms range)
-    const result = resolveJaegerTimeUs('10000000000', NOW_MS);
-    expect(result).toBe(10000000000 * 1_000);
-  });
-
-  it('returns null for an unrecognised expression', () => {
-    expect(resolveJaegerTimeUs('yesterday', NOW_MS)).toBeNull();
-  });
-
-  it('returns null for a malformed relative duration', () => {
-    expect(resolveJaegerTimeUs('-5y', NOW_MS)).toBeNull();
-  });
-
-  it('returns null when the computed timestamp is not finite (overflow)', () => {
-    // A 401-digit number makes parseFloat return Infinity, so ts = nowMs - Infinity = -Infinity.
-    const hugeNum = '1' + '0'.repeat(400);
-    const result = resolveJaegerTimeUs(`-${hugeNum}d`, NOW_MS);
-    expect(result).toBeNull();
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Successful queries
@@ -145,7 +83,7 @@ describe('runJaegerQuery — success', () => {
     expect(url).not.toContain('end=-30m');
   });
 
-  it('omits start param when resolveJaegerTimeUs returns null (unrecognised format)', async () => {
+  it('omits start param when the time expression is unrecognised', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -155,7 +93,7 @@ describe('runJaegerQuery — success', () => {
     expect(url).not.toContain('start=');
   });
 
-  it('omits end param when resolveJaegerTimeUs returns null (unrecognised format)', async () => {
+  it('omits end param when the time expression is unrecognised', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
     vi.stubGlobal('fetch', fetchMock);
 
