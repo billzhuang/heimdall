@@ -44,6 +44,15 @@ function die(msg: string, code = 1): never {
   process.exit(code);
 }
 
+/** Load a session by id, or die with the underlying error message on failure. */
+function loadSessionOrDie(id: string): SessionRecord {
+  try {
+    return loadSession(id);
+  } catch (err) {
+    die(getMessage(err));
+  }
+}
+
 /**
  * Parse a `--flag <value>` / `--flag=<value>` style option at `args[i]`. Call
  * only when the caller has already matched `args[i]` against `prefix` (the
@@ -167,12 +176,7 @@ export async function cmdPrompt(args: string[]): Promise<void> {
   if (!message) die('a message is required — e.g. heimdall session prompt "Why is my pod crash-looping?" --session <id>');
   if (!sessionId) die('--session <id> is required');
 
-  let session: SessionRecord;
-  try {
-    session = loadSession(sessionId);
-  } catch (err) {
-    die((err as Error).message);
-  }
+  const session = loadSessionOrDie(sessionId);
 
   try {
     new URL(session.serverUrl);
@@ -221,12 +225,7 @@ export function cmdInfo(args: string[]): void {
   const sessionId = resolveSessionIdArg(args);
   if (!sessionId) die('session id is required — heimdall session info <id>');
 
-  let session: SessionRecord;
-  try {
-    session = loadSession(sessionId);
-  } catch (err) {
-    die((err as Error).message);
-  }
+  const session = loadSessionOrDie(sessionId);
   process.stdout.write(`${formatSession(session)}\n`);
 }
 
