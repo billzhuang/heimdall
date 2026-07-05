@@ -154,13 +154,15 @@ export function buildSweepStartupMessages(opts: TriageOptions): string[] {
   return messages;
 }
 
+type LoadedConfig = ReturnType<typeof loadConfig>;
+
 /**
  * Load the previous checkpoint, capture current cluster state, save it, and
  * return a drift preamble to prepend to the triage prompt (or '' when drift
  * detection is disabled, unavailable, or there is no previous checkpoint to
  * diff against).
  */
-async function performDriftDetection(config: ReturnType<typeof loadConfig>): Promise<string> {
+async function performDriftDetection(config: LoadedConfig): Promise<string> {
   if (!(config.drift?.enabled ?? false)) return '';
 
   const checkpointFile = config.drift?.checkpointFile ?? DEFAULT_CHECKPOINT_FILE;
@@ -196,7 +198,7 @@ async function performDriftDetection(config: ReturnType<typeof loadConfig>): Pro
 }
 
 /** Write a baseline entry for each critical/warning finding in the agent's output, when learning is enabled. */
-async function recordBaselines(config: ReturnType<typeof loadConfig>, output: string): Promise<void> {
+async function recordBaselines(config: LoadedConfig, output: string): Promise<void> {
   if (config.learning?.enabled === false || !output) return;
 
   const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
