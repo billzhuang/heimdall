@@ -66,18 +66,18 @@ export function nrqlUntilClause(until: string | null): string {
 }
 
 
-type NrqlTimeRange = { since: string; until: string | null } | { error: string };
+type NrqlWindow = { since: string; until: string | null; limit: number } | { error: string };
 
 /**
- * Resolve a `from`/`to` time range for NRQL SINCE/UNTIL clauses.
+ * Resolve a `from`/`to`/`limit` window for NRQL SINCE/UNTIL/LIMIT clauses.
  * Falls back to `defaultLookbackMs` before now when `params.from` is absent.
- * Returns `{ error }` when either value fails to parse.
+ * Returns `{ error }` when either time value fails to parse.
  */
-function resolveNrqlTimeRange(
-  params: Pick<NewRelicQueryParams, 'from' | 'to'>,
+function resolveNrqlWindow(
+  params: Pick<NewRelicQueryParams, 'from' | 'to' | 'limit'>,
   nowMs: number,
   defaultLookbackMs: number,
-): NrqlTimeRange {
+): NrqlWindow {
   const range = resolveTimeRange(
     params.from,
     params.to,
@@ -86,7 +86,8 @@ function resolveNrqlTimeRange(
     new Date(nowMs - defaultLookbackMs).toISOString(),
     null,
   );
-  return 'error' in range ? range : { since: range.from, until: range.to };
+  if ('error' in range) return range;
+  return { since: range.from, until: range.to, limit: effectiveNrqlLimit(params.limit) };
 }
 
 /** Execute a NerdGraph GraphQL query and return the raw JSON response text. */
@@ -183,16 +184,14 @@ async function queryApm(
   config: NewRelicConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  const nowMs = Date.now();
-  const range = resolveNrqlTimeRange(params, nowMs, 3_600_000);
-  if ('error' in range) return range.error;
-  const { since, until } = range;
+  const window = resolveNrqlWindow(params, Date.now(), 3_600_000);
+  if ('error' in window) return window.error;
+  const { since, until, limit } = window;
 
   const qApm = params.query?.trim() ?? '';
   const whereClause = qApm ? `WHERE ${qApm} ` : '';
-  const lim = effectiveNrqlLimit(params.limit);
 
-  const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${nrqlUntilClause(until)} FACET appName LIMIT ${lim}`;
+  const nrql = `SELECT count(*) AS throughput, average(duration) AS avgDuration, percentage(count(*), WHERE error IS true) AS errorRate FROM Transaction ${whereClause}SINCE '${since}'${nrqlUntilClause(until)} FACET appName LIMIT ${limit}`;
 
   return queryNrql(nrql, 'facets timeWindow { begin end }', config, signal);
 }
@@ -202,19 +201,17 @@ async function queryAlerts(
   config: NewRelicConfig,
   signal: AbortSignal,
 ): Promise<string> {
-  const nowMs = Date.now();
-  const range = resolveNrqlTimeRange(params, nowMs, 86_400_000);
-  if ('error' in range) return range.error;
-  const { since, until } = range;
+  const window = resolveNrqlWindow(params, Date.now(), 86_400_000);
+  if ('error' in window) return window.error;
+  const { since, until, limit } = window;
 
   // Wrap in parentheses so OR in the filter doesn't escape the event='open' predicate.
   const qAlerts = params.query?.trim() ?? '';
   const extraWhere = qAlerts ? ` AND (${qAlerts})` : '';
-  const lim = effectiveNrqlLimit(params.limit);
 
   // NrAiIncident captures New Relic AI (applied intelligence) incidents.
   // Filtering event = 'open' surfaces currently active violations.
-  const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${nrqlUntilClause(until)} LIMIT ${lim}`;
+  const nrql = `SELECT title, priority, state, accumulations.policyName, accumulations.conditionName, accumulations.entityName, createdAt FROM NrAiIncident WHERE event = 'open'${extraWhere} SINCE '${since}'${nrqlUntilClause(until)} LIMIT ${limit}`;
 
   return queryNrql(nrql, 'timeWindow { begin end }', config, signal);
 }
