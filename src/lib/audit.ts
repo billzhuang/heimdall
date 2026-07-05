@@ -1,5 +1,4 @@
-import { appendFile } from 'node:fs/promises';
-import { withMkdirRetry } from './fs-retry.ts';
+import { appendJsonlLine } from './jsonl.ts';
 
 export interface AuditConfig {
   enabled: boolean;
@@ -18,23 +17,18 @@ export interface AuditEntry {
   outcome: 'ok' | 'blocked' | 'error';
 }
 
-/** Append `line` to `file`, creating its parent directory on ENOENT and retrying once. */
-async function appendAuditLine(file: string, line: string): Promise<boolean> {
-  try {
-    await withMkdirRetry(file, () => appendFile(file, line, 'utf8'));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export async function writeAudit(entry: AuditEntry, audit: AuditConfig | null | undefined): Promise<void> {
   try {
     if (!audit?.enabled) return;
-    const line = JSON.stringify(entry) + '\n';
-    if (!audit.file || !(await appendAuditLine(audit.file, line))) {
-      process.stderr.write(line);
+    if (audit.file) {
+      try {
+        await appendJsonlLine(entry, audit.file);
+        return;
+      } catch {
+        // Falls through to the stderr sink below.
+      }
     }
+    process.stderr.write(JSON.stringify(entry) + '\n');
   } catch {
     // Audit failures must never disrupt the main execution path.
   }
