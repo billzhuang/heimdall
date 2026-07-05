@@ -45,7 +45,7 @@ import {
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { parseModelFlag } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
@@ -298,33 +298,35 @@ export async function runWatchMode(model?: string): Promise<void> {
 }
 
 // --- CLI arg parsing when run directly ---
-const watchArgs = process.argv.slice(2);
-let watchModelFlag: string | undefined;
+if (isMainModule(import.meta.url)) {
+  const watchArgs = process.argv.slice(2);
+  let watchModelFlag: string | undefined;
 
-for (let i = 0; i < watchArgs.length; i++) {
-  const arg = watchArgs[i];
-  if (arg === '--model' || arg.startsWith('--model=')) {
-    const parsed = parseModelFlag(watchArgs, i);
-    watchModelFlag = parsed.value;
-    i = parsed.nextIndex;
-  } else if (arg === '-h' || arg === '--help') {
-    process.stdout.write(`Usage: heimdall --watch [--model <provider/model>]\n\nOptions:\n  --model <provider/model>  Override the LLM model\n  -h, --help                Show this help\n`);
-    process.exit(0);
-  } else {
-    process.stderr.write(`Error: unknown option: ${arg}\n`);
+  for (let i = 0; i < watchArgs.length; i++) {
+    const arg = watchArgs[i];
+    if (arg === '--model' || arg.startsWith('--model=')) {
+      const parsed = parseModelFlag(watchArgs, i);
+      watchModelFlag = parsed.value;
+      i = parsed.nextIndex;
+    } else if (arg === '-h' || arg === '--help') {
+      process.stdout.write(`Usage: heimdall --watch [--model <provider/model>]\n\nOptions:\n  --model <provider/model>  Override the LLM model\n  -h, --help                Show this help\n`);
+      process.exit(0);
+    } else {
+      process.stderr.write(`Error: unknown option: ${arg}\n`);
+      process.exit(1);
+    }
+  }
+
+  let resolvedWatchModel: string;
+  try {
+    resolvedWatchModel = resolveModel(watchModelFlag);
+  } catch (err) {
+    process.stderr.write(`Error: ${getMessage(err)}\n`);
     process.exit(1);
   }
-}
 
-let resolvedWatchModel: string;
-try {
-  resolvedWatchModel = resolveModel(watchModelFlag);
-} catch (err) {
-  process.stderr.write(`Error: ${getMessage(err)}\n`);
-  process.exit(1);
+  runWatchMode(resolvedWatchModel).catch((err: unknown) => {
+    process.stderr.write(`[heimdall-watch] Fatal error: ${getStackOrMessage(err)}\n`);
+    process.exit(1);
+  });
 }
-
-runWatchMode(resolvedWatchModel).catch((err: unknown) => {
-  process.stderr.write(`[heimdall-watch] Fatal error: ${getStackOrMessage(err)}\n`);
-  process.exit(1);
-});
