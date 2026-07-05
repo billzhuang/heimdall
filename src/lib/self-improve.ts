@@ -213,6 +213,70 @@ export function resolveRagOptions(learningConfig: HeimdallConfig['learning']): {
 }
 
 /**
+ * Select task history entries relevant to a reflection prompt.
+ *
+ * When RAG is enabled and there are failures to reflect on, retrieves task
+ * history entries that are semantically similar to the failed scenario
+ * prompts, rather than taking the last N entries.
+ */
+function selectRelevantHistory(
+  entries: LearningEntry[],
+  taskHistory: TaskHistoryEntry[],
+  hasFailures: boolean,
+  useRag: boolean,
+  ragTopK: number,
+): TaskHistoryEntry[] {
+  if (!useRag || !hasFailures || taskHistory.length === 0) return taskHistory;
+  const combinedQuery = entries.map((e) => e.prompt).join(' ');
+  return retrieveSimilarEntries(combinedQuery, taskHistory, ragTopK, 0);
+}
+
+/** Build the "Real-World Investigations" section, or '' when there's no relevant history. */
+function buildHistorySection(
+  relevantHistory: TaskHistoryEntry[],
+  hasFailures: boolean,
+  useRag: boolean,
+): string {
+  if (relevantHistory.length === 0) return '';
+  const historyLabel = useRag && hasFailures
+    ? 'semantically similar to the failing scenario prompts'
+    : 'most recent';
+  return `## Real-World Investigations (${historyLabel})\n\n` +
+    `The following are real prompts the agent handled. Review them for ` +
+    `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n` +
+    buildTaskHistoryContext(relevantHistory);
+}
+
+/** Build the failure-summary sentence introducing the reflection prompt. */
+function buildFailurePart(entries: LearningEntry[], hasFailures: boolean): string {
+  if (!hasFailures) return `No eval failures this run.`;
+  return `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
+    `For each failure, analyze the root cause and propose the **exact text change** to ` +
+    `\`src/lib/instructions.ts\` (or a specific \`SUBAGENT_INSTRUCTIONS\` entry) that would fix it. ` +
+    `Be specific: quote the line(s) to change and what to replace them with.`;
+}
+
+/** Build the "Your task" checklist, scaled to which sections (failures/history) are present. */
+function buildTaskItemsSection(hasFailures: boolean, hasHistory: boolean): string {
+  const taskItems: string[] = [];
+  if (hasFailures) {
+    taskItems.push(
+      `For each eval failure, provide:\n` +
+      `1. **Root cause** — why did the agent fail this assertion?\n` +
+      `2. **Instruction fix** — which exact text in \`src/lib/instructions.ts\` should change, and how?`,
+    );
+  }
+  if (hasHistory) {
+    taskItems.push(
+      `For the task history, identify:\n` +
+      `3. **Coverage gaps** — are there prompt patterns that don't match any specialist subagent?\n` +
+      `4. **Severity calibration** — do any findings seem over- or under-triaged?`,
+    );
+  }
+  return `## Your task\n\n` + taskItems.join('\n\n');
+}
+
+/**
  * Build a meta-prompt that can be fed to any LLM to propose specific changes
  * to src/lib/instructions.ts based on recurring eval failures and real-task
  * history.
@@ -240,56 +304,19 @@ export function buildReflectionPrompt(
   }
 
   const hasFailures = entries.length > 0;
-
-  // When RAG is enabled, retrieve task history entries that are semantically
-  // similar to the failed scenario prompts, rather than taking the last N entries.
-  let relevantHistory = taskHistory;
-  if (useRag && hasFailures && taskHistory.length > 0) {
-    const combinedQuery = entries.map((e) => e.prompt).join(' ');
-    relevantHistory = retrieveSimilarEntries(combinedQuery, taskHistory, ragTopK, 0);
-  }
-
+  const relevantHistory = selectRelevantHistory(entries, taskHistory, hasFailures, useRag, ragTopK);
   const hasHistory = relevantHistory.length > 0;
 
-  const historyLabel = useRag && hasFailures
-    ? 'semantically similar to the failing scenario prompts'
-    : 'most recent';
-  const historySection = hasHistory
-    ? `## Real-World Investigations (${historyLabel})\n\n` +
-      `The following are real prompts the agent handled. Review them for ` +
-      `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n` +
-      buildTaskHistoryContext(relevantHistory)
-    : '';
-
-  const failurePart = hasFailures
-    ? `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
-      `For each failure, analyze the root cause and propose the **exact text change** to ` +
-      `\`src/lib/instructions.ts\` (or a specific \`SUBAGENT_INSTRUCTIONS\` entry) that would fix it. ` +
-      `Be specific: quote the line(s) to change and what to replace them with.`
-    : `No eval failures this run.`;
+  const historySection = buildHistorySection(relevantHistory, hasFailures, useRag);
 
   const sections: string[] = buildPromptSections(
-    `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` + failurePart,
+    `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` +
+      buildFailurePart(entries, hasFailures),
     entries,
     historySection,
   );
 
-  const taskItems: string[] = [];
-  if (hasFailures) {
-    taskItems.push(
-      `For each eval failure, provide:\n` +
-      `1. **Root cause** — why did the agent fail this assertion?\n` +
-      `2. **Instruction fix** — which exact text in \`src/lib/instructions.ts\` should change, and how?`,
-    );
-  }
-  if (hasHistory) {
-    taskItems.push(
-      `For the task history, identify:\n` +
-      `3. **Coverage gaps** — are there prompt patterns that don't match any specialist subagent?\n` +
-      `4. **Severity calibration** — do any findings seem over- or under-triaged?`,
-    );
-  }
-  sections.push(`## Your task\n\n` + taskItems.join('\n\n'));
+  sections.push(buildTaskItemsSection(hasFailures, hasHistory));
   sections.push(`Focus on changes with the highest impact-to-risk ratio. Prefer small, targeted edits over broad rewrites.`);
 
   return joinSections(sections);
