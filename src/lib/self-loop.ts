@@ -37,6 +37,46 @@ export function scoreResults(results: Array<{ passed: boolean }>): number {
   return results.filter(r => r.passed).length / results.length;
 }
 
+/** Format a 0–1 score fraction as a whole-percent string, e.g. 0.667 -> "67%". */
+export function formatPct(fraction: number): string {
+  return `${(fraction * 100).toFixed(0)}%`;
+}
+
+/**
+ * Build the human-readable summary report printed at the end of a self-loop run.
+ * Pure string formatting, factored out of `main()` so it can be unit tested
+ * without the eval/LLM/file-system side effects that surround it there.
+ */
+export function buildSummaryReport(
+  iterationHistory: IterationResult[],
+  currentScore: number,
+  logPath: string,
+): string {
+  const parts: string[] = ['='.repeat(60) + '\n', 'Self-Loop Summary\n', '='.repeat(60) + '\n'];
+
+  if (iterationHistory.length === 0) {
+    parts.push('No iterations were run (all scenarios already passing or LLM unavailable).\n');
+  } else {
+    for (const r of iterationHistory) {
+      const delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
+      const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
+      parts.push(
+        `  Iteration ${r.iteration}: ${formatPct(r.baselineScore)} → ${formatPct(r.newScore)}` +
+          ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
+      );
+    }
+    parts.push(`\nFinal score: ${formatPct(currentScore)}\n`);
+    if (iterationHistory.some((r) => r.improved)) {
+      parts.push('instructions.ts was updated. Review changes with: git diff src/lib/instructions.ts\n');
+    }
+  }
+
+  parts.push('\nProposals saved to: scenarios/self-loop-proposals/\n');
+  parts.push('Learning entries saved to: ' + logPath + '\n');
+
+  return parts.join('');
+}
+
 /**
  * Build a structured reflection prompt that explicitly asks the LLM to
  * output machine-parseable FIND/REPLACE patches for instructions.ts.

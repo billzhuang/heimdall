@@ -13,12 +13,15 @@ beforeEach(() => {
 
 import {
   scoreResults,
+  formatPct,
+  buildSummaryReport,
   parseProposals,
   buildAutoReflectionPrompt,
   extractInstructionsSnippet,
   applyProposals,
   revertToSnapshot,
   snapshotInstructions,
+  type IterationResult,
 } from '../self-loop.ts';
 
 describe('scoreResults', () => {
@@ -332,5 +335,90 @@ describe('snapshotInstructions', () => {
 
     expect(result).toBe('snapshot content');
     expect(vi.mocked(readFile)).toHaveBeenCalledWith(PATH, 'utf8');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatPct
+// ---------------------------------------------------------------------------
+
+describe('formatPct', () => {
+  it('formats a 0-1 fraction as a whole-percent string', () => {
+    expect(formatPct(0)).toBe('0%');
+    expect(formatPct(1)).toBe('100%');
+    expect(formatPct(0.5)).toBe('50%');
+    expect(formatPct(2 / 3)).toBe('67%');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildSummaryReport
+// ---------------------------------------------------------------------------
+
+describe('buildSummaryReport', () => {
+  function result(overrides: Partial<IterationResult>): IterationResult {
+    return {
+      iteration: 1,
+      baselineScore: 0.5,
+      newScore: 0.5,
+      proposalCount: 1,
+      appliedCount: 1,
+      improved: false,
+      reverted: false,
+      ...overrides,
+    };
+  }
+
+  it('reports "no iterations" when the history is empty', () => {
+    const report = buildSummaryReport([], 0.5, '/fake/learning-log.jsonl');
+
+    expect(report).toBe(
+      '='.repeat(60) + '\n' +
+      'Self-Loop Summary\n' +
+      '='.repeat(60) + '\n' +
+      'No iterations were run (all scenarios already passing or LLM unavailable).\n' +
+      '\nProposals saved to: scenarios/self-loop-proposals/\n' +
+      'Learning entries saved to: /fake/learning-log.jsonl\n',
+    );
+  });
+
+  it('formats a kept, improving iteration with a "+" delta and singular "patch"', () => {
+    const history = [
+      result({ iteration: 1, baselineScore: 0.5, newScore: 0.75, appliedCount: 1, improved: true, reverted: false }),
+    ];
+
+    const report = buildSummaryReport(history, 0.75, '/fake/learning-log.jsonl');
+
+    expect(report).toContain('  Iteration 1: 50% → 75% (+25pp) | 1 patch | KEPT\n');
+    expect(report).toContain('\nFinal score: 75%\n');
+    expect(report).toContain('instructions.ts was updated. Review changes with: git diff src/lib/instructions.ts\n');
+  });
+
+  it('formats a reverted, non-improving iteration with no "+" and plural "patches"', () => {
+    const history = [
+      result({ iteration: 2, baselineScore: 0.75, newScore: 0.5, appliedCount: 2, improved: false, reverted: true }),
+    ];
+
+    const report = buildSummaryReport(history, 0.75, '/fake/learning-log.jsonl');
+
+    expect(report).toContain('  Iteration 2: 75% → 50% (-25pp) | 2 patches | REVERTED\n');
+    expect(report).not.toContain('instructions.ts was updated');
+  });
+
+  it('reports NO_CHANGE for an unimproved, non-reverted iteration (e.g. zero patches parsed)', () => {
+    const history = [
+      result({ iteration: 1, baselineScore: 0.5, newScore: 0.5, proposalCount: 0, appliedCount: 0, improved: false, reverted: false }),
+    ];
+
+    const report = buildSummaryReport(history, 0.5, '/fake/learning-log.jsonl');
+
+    expect(report).toContain('  Iteration 1: 50% → 50% (+0pp) | 0 patches | NO_CHANGE\n');
+  });
+
+  it('always includes the proposals and learning-log footer lines', () => {
+    const report = buildSummaryReport([result({})], 0.5, '/some/path/log.jsonl');
+
+    expect(report).toContain('\nProposals saved to: scenarios/self-loop-proposals/\n');
+    expect(report).toContain('Learning entries saved to: /some/path/log.jsonl\n');
   });
 });
