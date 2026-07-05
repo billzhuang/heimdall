@@ -36,6 +36,8 @@ import { callClaudeCli, isClaudeCliAvailable } from './lib/claude-cli-llm.ts';
 import { callCodexCli, isCodexCliAvailable } from './lib/codex-cli-llm.ts';
 import {
   scoreResults,
+  formatPct,
+  buildSummaryReport,
   buildAutoReflectionPrompt,
   parseProposals,
   applyProposals,
@@ -235,7 +237,7 @@ async function main(): Promise<void> {
   // Baseline run.
   let currentResults = await runAndPrint('Baseline evaluation...');
   let currentScore = scoreResults(currentResults);
-  process.stdout.write(`Baseline score: ${(currentScore * 100).toFixed(0)}% (${currentResults.filter(r => r.passed).length}/${currentResults.length} passed)\n\n`);
+  process.stdout.write(`Baseline score: ${formatPct(currentScore)} (${currentResults.filter(r => r.passed).length}/${currentResults.length} passed)\n\n`);
 
   if (currentScore === 1) {
     process.stdout.write('All scenarios already pass. Nothing to improve.\n');
@@ -332,7 +334,7 @@ async function main(): Promise<void> {
     }
 
     process.stdout.write(
-      `Score: ${(currentScore * 100).toFixed(0)}% → ${(newScore * 100).toFixed(0)}% ` +
+      `Score: ${formatPct(currentScore)} → ${formatPct(newScore)} ` +
       `(${improved ? '+' : ''}${((newScore - currentScore) * 100).toFixed(0)}pp)\n`,
     );
 
@@ -362,31 +364,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Summary report.
-  process.stdout.write('='.repeat(60) + '\n');
-  process.stdout.write('Self-Loop Summary\n');
-  process.stdout.write('='.repeat(60) + '\n');
-
-  if (iterationHistory.length === 0) {
-    process.stdout.write('No iterations were run (all scenarios already passing or LLM unavailable).\n');
-  } else {
-    for (const r of iterationHistory) {
-      const delta = ((r.newScore - r.baselineScore) * 100).toFixed(0);
-      const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
-      process.stdout.write(
-        `  Iteration ${r.iteration}: ${(r.baselineScore * 100).toFixed(0)}% → ${(r.newScore * 100).toFixed(0)}%` +
-        ` (${parseInt(delta, 10) >= 0 ? '+' : ''}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
-      );
-    }
-    process.stdout.write(`\nFinal score: ${(currentScore * 100).toFixed(0)}%\n`);
-
-    if (iterationHistory.some(r => r.improved)) {
-      process.stdout.write('instructions.ts was updated. Review changes with: git diff src/lib/instructions.ts\n');
-    }
-  }
-
-  process.stdout.write('\nProposals saved to: scenarios/self-loop-proposals/\n');
-  process.stdout.write('Learning entries saved to: ' + logPath + '\n');
+  process.stdout.write(buildSummaryReport(iterationHistory, currentScore, logPath));
 }
 
 if (isMainModule(import.meta.url)) {
