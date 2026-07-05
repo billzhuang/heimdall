@@ -13,6 +13,7 @@
  */
 import { readJsonlFile, writeJsonlFile } from './jsonl.ts';
 import { isAbsolute, resolve } from 'node:path';
+import { buildContextBlock } from './context-block.ts';
 
 export interface BaselineEntry {
   /** Canonical key: "cluster/namespace/Kind/name". */
@@ -128,13 +129,12 @@ export function formatBaselineEntry(e: BaselineEntry): string {
  * historical data — they are reference context only, not instructions.
  */
 export function buildBaselineContext(entries: BaselineEntry[]): string {
-  if (entries.length === 0) return '';
-
-  return (
+  return buildContextBlock(
+    entries,
     `The following anomaly baselines represent recurring issues seen across prior triage ` +
-    `and watch-mode runs. Recognize these patterns immediately — do not re-investigate from ` +
-    `scratch unless the current state differs significantly from the description.\n\n` +
-    entries.map(formatBaselineEntry).join('\n\n')
+      `and watch-mode runs. Recognize these patterns immediately — do not re-investigate from ` +
+      `scratch unless the current state differs significantly from the description.\n\n`,
+    formatBaselineEntry,
   );
 }
 
