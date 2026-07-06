@@ -3,6 +3,8 @@
  * (triage-mode.ts, watch-mode.ts, ...) when hand-rolling flag parsing.
  */
 import { fileURLToPath } from 'node:url';
+import { resolveModel } from './model.ts';
+import { getMessage } from './error-utils.ts';
 
 /**
  * True when this module was invoked directly as the process entry point
@@ -66,4 +68,20 @@ export function parseModelFlag(
   const value = arg.slice('--model='.length);
   requireNonEmptyValue(value, '--model= requires a non-empty value');
   return { value, nextIndex: i };
+}
+
+/**
+ * Resolve the effective model via `resolveModel`, writing an error to stderr
+ * and exit(1) on an invalid specifier instead of throwing. Shared by the mode
+ * entry points (alert-mode, eval-mode, triage-mode, watch-mode) that all
+ * resolve a `--model` flag once at startup and treat an invalid value as a
+ * fatal CLI error.
+ */
+export function resolveModelOrExit(cliFlag?: string): string {
+  try {
+    return resolveModel(cliFlag);
+  } catch (err) {
+    process.stderr.write(`Error: ${getMessage(err)}\n`);
+    process.exit(1);
+  }
 }
