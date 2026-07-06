@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesCronField, nextFireTime, validateCronExpression, validateCronPart } from '../schedule.ts';
+import { matchesCronField, nextFireTime, validateCronExpression, validateCronPart, validateCronPartAst } from '../schedule.ts';
 
 describe('matchesCronField', () => {
   it('* always matches', () => {
@@ -52,6 +52,10 @@ describe('matchesCronField', () => {
     expect(matchesCronField(0, '*/0')).toBe(false);
     expect(matchesCronField(1, '*/0')).toBe(false);
     expect(matchesCronField(60, '*/0')).toBe(false);
+  });
+
+  it('returns false for an unparseable field', () => {
+    expect(matchesCronField(0, 'abc')).toBe(false);
   });
 
   it('comma list mixing exact and step patterns', () => {
@@ -423,6 +427,26 @@ describe('validateCronPart', () => {
     const err = validateCronPart('99', 'hour', '99', 0, 23);
     expect(err).toContain('hour');
     expect(err).toContain('"99"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateCronPartAst — direct tests of the AST-level helper
+//
+// validateCronPart's string-level guard for "*" / "*/n" means parseCronPart
+// can never actually hand it a 'wildcard' or 'step' AST — so those switch
+// cases are only reachable by calling validateCronPartAst directly with a
+// synthetic AST, as done below.
+// ---------------------------------------------------------------------------
+
+describe('validateCronPartAst', () => {
+  it('returns undefined for a wildcard AST', () => {
+    expect(validateCronPartAst({ kind: 'wildcard' }, 'minute', '*', 0, 59)).toBeUndefined();
+  });
+
+  it('returns undefined for a step AST regardless of step value', () => {
+    expect(validateCronPartAst({ kind: 'step', step: 0 }, 'minute', '*/0', 0, 59)).toBeUndefined();
+    expect(validateCronPartAst({ kind: 'step', step: 5 }, 'minute', '*/5', 0, 59)).toBeUndefined();
   });
 });
 

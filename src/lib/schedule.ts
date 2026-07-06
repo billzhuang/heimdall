@@ -20,7 +20,7 @@ export interface ScheduledTriageConfig {
 }
 
 /** Structural form of a single non-comma cron sub-expression (see {@link parseCronPart}). */
-type CronPartAst =
+export type CronPartAst =
   | { readonly kind: 'wildcard' }
   | { readonly kind: 'step'; readonly step: number }
   | { readonly kind: 'range'; readonly lo: number; readonly hi: number }
@@ -120,6 +120,46 @@ function stepZeroError(name: string, field: string): string {
 }
 
 /**
+ * Bounds-check an already-parsed cron sub-expression AST against [lo, hi].
+ * Exported for direct unit testing: the 'wildcard'/'step' kinds can only be
+ * exercised by calling this function directly with a synthetic AST, since
+ * validateCronPart's string-level guard for a bare wildcard or a wildcard
+ * with a step suffix always short-circuits before parseCronPart can produce
+ * them.
+ *
+ * @param ast   The parsed sub-expression (see {@link parseCronPart}).
+ * @param name  Human-readable field name used in error messages.
+ * @param field The full original field string (used in error messages).
+ * @param lo    Inclusive lower bound of the field's valid range.
+ * @param hi    Inclusive upper bound of the field's valid range.
+ */
+export function validateCronPartAst(
+  ast: CronPartAst,
+  name: string,
+  field: string,
+  lo: number,
+  hi: number,
+): string | undefined {
+  switch (ast.kind) {
+    // Wildcard and step forms are never bounds-checked (even */0 passes here —
+    // validateCronExpression's separate hasMatch scan is what rejects */0).
+    case 'wildcard':
+    case 'step':
+      return undefined;
+    case 'rangeStep':
+      if (ast.lo > ast.hi || ast.lo < lo || ast.hi > hi) return outOfRangeError(name, field, lo, hi);
+      return ast.step === 0 ? stepZeroError(name, field) : undefined;
+    case 'range':
+      return ast.lo > ast.hi || ast.lo < lo || ast.hi > hi ? outOfRangeError(name, field, lo, hi) : undefined;
+    case 'startStep':
+      if (ast.start < lo || ast.start > hi) return outOfRangeError(name, field, lo, hi);
+      return ast.step === 0 ? stepZeroError(name, field) : undefined;
+    case 'exact':
+      return ast.value < lo || ast.value > hi ? outOfRangeError(name, field, lo, hi) : undefined;
+  }
+}
+
+/**
  * Validate a single non-comma token from a cron field against the allowed range.
  * Exported for direct unit testing.
  * Returns an error string on violation, or undefined when valid.
@@ -137,31 +177,12 @@ export function validateCronPart(
   lo: number,
   hi: number,
 ): string | undefined {
-  // Wildcard and step forms are never bounds-checked (even */0 passes here —
-  // validateCronExpression's separate hasMatch scan is what rejects */0).
-  // The 'wildcard'/'step' switch cases below are unreachable in practice but
-  // kept for exhaustiveness; don't add step>0 validation there believing it
-  // will run.
   if (part === '*' || part.startsWith('*/')) return undefined;
 
   const ast = parseCronPart(part);
   if (!ast) return outOfRangeError(name, field, lo, hi);
 
-  switch (ast.kind) {
-    case 'wildcard':
-    case 'step':
-      return undefined;
-    case 'rangeStep':
-      if (ast.lo > ast.hi || ast.lo < lo || ast.hi > hi) return outOfRangeError(name, field, lo, hi);
-      return ast.step === 0 ? stepZeroError(name, field) : undefined;
-    case 'range':
-      return ast.lo > ast.hi || ast.lo < lo || ast.hi > hi ? outOfRangeError(name, field, lo, hi) : undefined;
-    case 'startStep':
-      if (ast.start < lo || ast.start > hi) return outOfRangeError(name, field, lo, hi);
-      return ast.step === 0 ? stepZeroError(name, field) : undefined;
-    case 'exact':
-      return ast.value < lo || ast.value > hi ? outOfRangeError(name, field, lo, hi) : undefined;
-  }
+  return validateCronPartAst(ast, name, field, lo, hi);
 }
 
 /** Per-field metadata for cron validation. day-of-week upper bound is 7 (Sunday alias). */
