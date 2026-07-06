@@ -12,6 +12,9 @@ import { getExecErrorDetail } from './error-utils.ts';
 
 const execFileAsync = promisify(execFile);
 
+/** Sentinel returned when a command succeeds but produces no stdout/stderr. */
+export const DEFAULT_NO_OUTPUT_MESSAGE = '(command produced no output)';
+
 export interface ExecAndReportParams {
   /** Binary to execute; also used in the "<bin> exited with an error" message. */
   bin: string;

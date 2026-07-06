@@ -11,7 +11,7 @@
  * metacharacters.
  */
 import { makeTruncate } from './output-truncation.ts';
-import { execAndReport } from './cli-exec.ts';
+import { execAndReport, DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
 
 const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -93,7 +93,7 @@ export async function runHelm(action: HelmAction, options: RunHelmOptions = {}):
     startTs,
     startMs,
     execOptions: { timeout: EXEC_TIMEOUT_MS, maxBuffer: MAX_BUFFER_BYTES },
-    noOutputMessage: '(command produced no output)',
+    noOutputMessage: DEFAULT_NO_OUTPUT_MESSAGE,
     truncate,
   });
 }

@@ -28,6 +28,7 @@ import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
 import { writeAudit, type AuditConfig, type AuditEntry } from './audit.ts';
 import { getExecErrorDetail } from './error-utils.ts';
+import { DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
 export type { AuditConfig } from './audit.ts';
 
 const execFileAsync = promisify(execFile);
@@ -44,7 +45,7 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with a selecto
 const evalMockCache = new Map<string, Record<string, string>>();
 
 /** Sentinel returned when a command succeeds but produces no stdout/stderr. */
-export const NO_OUTPUT_MESSAGE = '(command produced no output)';
+export const NO_OUTPUT_MESSAGE = DEFAULT_NO_OUTPUT_MESSAGE;
 
 
 export interface RunKubectlOptions {
