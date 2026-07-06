@@ -40,7 +40,7 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
         ),
       ),
       getType: v.pipe(
-        v.optional(v.picklist(ALLOWED_HELM_GET_TYPES)),
+        v.nullish(v.picklist(ALLOWED_HELM_GET_TYPES)),
         v.description('What to retrieve for the get action: "values", "manifest", or "notes".'),
       ),
       allNamespaces: v.pipe(
@@ -49,6 +49,9 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
       ),
     }),
     run: async ({ input: { action, release, namespace, getType, allNamespaces } }) => {
+      // getType is nullish (LLM providers may send an explicit `null` for an
+      // omitted optional field); normalize to undefined for RunHelmOptions.
+      const resolvedGetType = getType ?? undefined;
       if (lockedNamespace) {
         if (allNamespaces) {
           return `${BLOCKED_PREFIX}namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`;
@@ -56,9 +59,14 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
         if (namespace && namespace !== lockedNamespace) {
           return `${BLOCKED_PREFIX}namespace lockdown is active — only '${lockedNamespace}' is accessible; '${namespace}' is not allowed`;
         }
-        return runHelm(action, { release, namespace: namespace ?? lockedNamespace, getType, allNamespaces: false });
+        return runHelm(action, {
+          release,
+          namespace: namespace ?? lockedNamespace,
+          getType: resolvedGetType,
+          allNamespaces: false,
+        });
       }
-      return runHelm(action, { release, namespace, getType, allNamespaces });
+      return runHelm(action, { release, namespace, getType: resolvedGetType, allNamespaces });
     },
   });
 }

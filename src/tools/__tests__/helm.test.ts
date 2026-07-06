@@ -8,6 +8,7 @@ vi.mock('../../lib/helm.ts', async (importOriginal) => ({
 }));
 
 import { makeHelmRelease, helmRelease, helmReleasePlugin } from '../helm.ts';
+import { ALLOWED_HELM_ACTIONS, ALLOWED_HELM_GET_TYPES } from '../../lib/helm.ts';
 import type { HeimdallConfig } from '../../lib/config.ts';
 
 beforeEach(() => runHelm.mockReset());
@@ -27,6 +28,13 @@ describe('makeHelmRelease', () => {
     const result = await tool.run({ input: { action: 'list' } });
     expect(result).toContain('NAME');
     expect(runHelm).toHaveBeenCalledWith('list', expect.objectContaining({ allNamespaces: undefined }));
+  });
+
+  it('normalizes a null getType to undefined before calling runHelm', async () => {
+    runHelm.mockResolvedValue('ok');
+    const tool = makeHelmRelease();
+    await tool.run({ input: { action: 'get', release: 'my-release', getType: null } });
+    expect(runHelm).toHaveBeenCalledWith('get', expect.objectContaining({ getType: undefined }));
   });
 });
 
@@ -81,17 +89,18 @@ describe('makeHelmRelease — namespace lockdown', () => {
 });
 
 describe('makeHelmRelease — input schema picklists', () => {
-  it('action accepts exactly list/status/get', () => {
-    for (const action of ['list', 'status', 'get']) {
+  it('action accepts exactly the allowed helm actions', () => {
+    for (const action of ALLOWED_HELM_ACTIONS) {
       expect(v.safeParse(helmRelease.input, { action }).success).toBe(true);
     }
     expect(v.safeParse(helmRelease.input, { action: 'uninstall' }).success).toBe(false);
   });
 
-  it('getType accepts exactly values/manifest/notes', () => {
-    for (const getType of ['values', 'manifest', 'notes']) {
+  it('getType accepts exactly the allowed helm get types, plus null', () => {
+    for (const getType of ALLOWED_HELM_GET_TYPES) {
       expect(v.safeParse(helmRelease.input, { action: 'get', getType }).success).toBe(true);
     }
+    expect(v.safeParse(helmRelease.input, { action: 'get', getType: null }).success).toBe(true);
     expect(v.safeParse(helmRelease.input, { action: 'get', getType: 'crds' }).success).toBe(false);
   });
 });
