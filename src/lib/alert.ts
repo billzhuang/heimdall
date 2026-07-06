@@ -160,12 +160,22 @@ function pdUrgencyToSeverity(urgency?: string): string | undefined {
   return urgency;
 }
 
+/**
+ * Resolve the alert's deployment field from a serviceMap lookup.
+ * Falls back to the raw PagerDuty service name only when the service wasn't
+ * found in serviceMap at all — a mapped entry with no deployment (namespace
+ * only) deliberately leaves deployment unset rather than falling back.
+ */
+function resolveDeploymentFallback(
+  mapped: { namespace?: string; deployment?: string },
+  serviceName: string | undefined,
+): string | undefined {
+  return mapped.deployment ?? (mapped.namespace !== undefined ? undefined : serviceName);
+}
+
 function buildPdAlert(incident: PdIncidentRef, serviceMap: PagerDutyServiceMap): ParsedAlert {
   const { title, id, status, urgency, serviceName, runbookUrl } = incident;
   const mapped = resolveServiceTarget(serviceName, serviceMap);
-  // If resolveServiceTarget found a namespace the serviceMap had a meaningful entry;
-  // suppress the serviceName fallback so the mapping intent is preserved.
-  // For absent or empty-string entries, mapped.namespace is undefined and we fall back.
   const labels: Record<string, string> = {};
   if (id) labels['incident_id'] = id;
   if (status) labels['status'] = status;
@@ -174,7 +184,7 @@ function buildPdAlert(incident: PdIncidentRef, serviceMap: PagerDutyServiceMap):
   return {
     alertname: title ?? id ?? 'PagerDuty Incident',
     namespace: mapped.namespace,
-    deployment: mapped.deployment ?? (mapped.namespace !== undefined ? undefined : serviceName),
+    deployment: resolveDeploymentFallback(mapped, serviceName),
     severity: pdUrgencyToSeverity(urgency),
     labels,
   };
