@@ -19,7 +19,7 @@ import { writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  loadScenarios,
+  loadScenariosOrExit,
   runAllScenarios,
   type EvalResult,
   type RunCallbacks,
@@ -350,18 +350,7 @@ async function main(): Promise<void> {
   const instructionsPath = resolve(__dirname, '..', 'src', 'lib', 'instructions.ts');
   const binPath = resolveBinPath(__dirname);
 
-  let scenarios: Awaited<ReturnType<typeof loadScenarios>>;
-  try {
-    scenarios = await loadScenarios(scenariosDir, scenarioFilter);
-  } catch (err) {
-    process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
-    process.exit(1);
-  }
-
-  if (scenarios.length === 0) {
-    process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
-    process.exit(1);
-  }
+  const scenarios = await loadScenariosOrExit(scenariosDir, scenarioFilter);
 
   process.stdout.write(buildStartupBanner(maxIterations, backend, scenarios.length, dryRun));
 

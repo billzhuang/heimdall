@@ -187,6 +187,31 @@ export async function loadScenarios(
   );
 }
 
+/**
+ * Load scenarios for a CLI entry point, printing the same error and exiting(1)
+ * on a load failure or an empty result — shared by eval-mode, self-improve-mode,
+ * and self-loop-mode so the three don't drift out of sync.
+ */
+export async function loadScenariosOrExit(
+  scenariosDir: string,
+  filter?: string,
+): Promise<Array<{ path: string; scenario: EvalScenario }>> {
+  let scenarios: Array<{ path: string; scenario: EvalScenario }>;
+  try {
+    scenarios = await loadScenarios(scenariosDir, filter);
+  } catch (err) {
+    process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
+    process.exit(1);
+  }
+
+  if (scenarios.length === 0) {
+    process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
+    process.exit(1);
+  }
+
+  return scenarios;
+}
+
 export interface RunCallbacks {
   onBefore?: (scenarioName: string) => void;
   onResult?: (result: EvalResult) => void;

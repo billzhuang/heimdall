@@ -14,13 +14,13 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  loadScenarios,
-  runScenario,
+  loadScenariosOrExit,
+  runAllScenarios,
   type EvalScenario,
   type EvalResult,
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { getStackOrMessage } from './lib/error-utils.ts';
 import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 export type { EvalScenario, EvalResult };
@@ -85,37 +85,23 @@ async function main(): Promise<void> {
   const resolvedModel = resolveModelOrExit(modelFlag);
   process.env.HEIMDALL_MODEL = resolvedModel;
 
-  let scenarios: Array<{ path: string; scenario: EvalScenario }>;
-  try {
-    scenarios = await loadScenarios(scenariosDir, scenarioFilter);
-  } catch (err) {
-    process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
-    process.exit(1);
-  }
-
-  if (scenarios.length === 0) {
-    process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
-    process.exit(1);
-  }
+  const scenarios = await loadScenariosOrExit(scenariosDir, scenarioFilter);
 
   process.stdout.write(`\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'}...\n\n`);
 
-  const results: EvalResult[] = [];
-  for (const { scenario } of scenarios) {
-    const name = scenario.description;
-    process.stdout.write(`  Running: ${name}\n`);
-    const result = await runScenario(binPath, scenario);
-    results.push(result);
-
-    if (result.passed) {
-      process.stdout.write(`  ✓ PASS  ${name}\n`);
-    } else {
-      process.stdout.write(`  ✗ FAIL  ${name}\n`);
-      for (const failure of result.failures) {
-        process.stdout.write(`         - ${failure}\n`);
+  const results = await runAllScenarios(binPath, scenarios, {
+    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
+        for (const failure of result.failures) {
+          process.stdout.write(`         - ${failure}\n`);
+        }
       }
-    }
-  }
+    },
+  });
 
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;

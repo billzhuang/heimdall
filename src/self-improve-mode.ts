@@ -17,9 +17,8 @@
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  loadScenarios,
-  runScenario,
-  type EvalResult,
+  loadScenariosOrExit,
+  runAllScenarios,
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import {
@@ -33,7 +32,7 @@ import {
 } from './lib/self-improve.ts';
 import { readTaskHistory, resolveTaskHistoryFilePath, type TaskHistoryEntry } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { getStackOrMessage } from './lib/error-utils.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -170,41 +169,26 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   }
 
   // Normal flow: run eval scenarios and record any failures.
-  let scenarios: Awaited<ReturnType<typeof loadScenarios>>;
-  try {
-    scenarios = await loadScenarios(scenariosDir, scenarioFilter);
-  } catch (err) {
-    process.stderr.write(
-      `Error loading scenarios: ${getMessage(err)}\n`,
-    );
-    process.exit(1);
-  }
-
-  if (scenarios.length === 0) {
-    process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
-    process.exit(1);
-  }
+  const scenarios = await loadScenariosOrExit(scenariosDir, scenarioFilter);
 
   process.stdout.write(
     `\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'} (self-improve mode)...\n\n`,
   );
 
   const binPath = resolveBinPath(__dirname);
-  const results: EvalResult[] = [];
-  for (const { scenario } of scenarios) {
-    process.stdout.write(`  Running: ${scenario.description}\n`);
-    const result = await runScenario(binPath, scenario);
-    results.push(result);
-
-    if (result.passed) {
-      process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
-    } else {
-      process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
-      for (const failure of result.failures) {
-        process.stdout.write(`         - ${failure}\n`);
+  const results = await runAllScenarios(binPath, scenarios, {
+    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
+        for (const failure of result.failures) {
+          process.stdout.write(`         - ${failure}\n`);
+        }
       }
-    }
-  }
+    },
+  });
 
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;
