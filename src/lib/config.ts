@@ -375,44 +375,36 @@ const HeimdallConfigSchema = v.object({
 
 export type HeimdallConfig = v.InferOutput<typeof HeimdallConfigSchema>;
 
+// Canonical tool config keys mapped to the snake_case alias operators may use
+// instead (matching the tool name the model sees, e.g. `list_contexts`).
 // Typed against the schema so TypeScript enforces this map stays in sync when
-// new tool keys are added to ToolsSchema — missing a key here is a compile error.
-const KNOWN_TOOL_KEYS_MAP: Record<keyof NonNullable<HeimdallConfig['tools']>, true> = {
-  kubectl: true,
-  listContexts: true,
-  listNamespaces: true,
-  helmRelease: true,
-  prometheusQuery: true,
-  awsCli: true,
-  trivyScan: true,
-  kubecostQuery: true,
-  lokiQuery: true,
-  jaegerQuery: true,
-  datadogQuery: true,
-  newRelicQuery: true,
-  cdkQuery: true,
+// new tool keys are added to ToolsSchema — missing a key here is a compile
+// error. KNOWN_TOOL_KEYS and SNAKE_CASE_ALIASES below are both derived from
+// this single source so the two can never drift out of sync with each other.
+const TOOL_KEY_TO_SNAKE_ALIAS: Record<keyof NonNullable<HeimdallConfig['tools']>, string> = {
+  kubectl: 'kubectl',
+  listContexts: 'list_contexts',
+  listNamespaces: 'list_namespaces',
+  helmRelease: 'helm_release',
+  prometheusQuery: 'prometheus_query',
+  awsCli: 'aws_cli',
+  trivyScan: 'trivy_scan',
+  kubecostQuery: 'kubecost_query',
+  lokiQuery: 'loki_query',
+  jaegerQuery: 'jaeger_query',
+  datadogQuery: 'datadog_query',
+  newRelicQuery: 'new_relic_query',
+  cdkQuery: 'cdk_query',
 };
 
-const KNOWN_TOOL_KEYS = new Set(Object.keys(KNOWN_TOOL_KEYS_MAP));
+const KNOWN_TOOL_KEYS = new Set(Object.keys(TOOL_KEY_TO_SNAKE_ALIAS));
 
 // Accepted snake_case aliases → canonical camelCase key.
 // Operators often copy the tool name the model sees (e.g. `list_contexts`)
 // instead of the camelCase config key; accept both and convert silently.
-// Typed against the schema key union so TypeScript enforces valid alias targets.
-const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools']>> = {
-  list_contexts: 'listContexts',
-  list_namespaces: 'listNamespaces',
-  helm_release: 'helmRelease',
-  prometheus_query: 'prometheusQuery',
-  aws_cli: 'awsCli',
-  trivy_scan: 'trivyScan',
-  kubecost_query: 'kubecostQuery',
-  loki_query: 'lokiQuery',
-  jaeger_query: 'jaegerQuery',
-  datadog_query: 'datadogQuery',
-  new_relic_query: 'newRelicQuery',
-  cdk_query: 'cdkQuery',
-};
+const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools']>> = Object.fromEntries(
+  Object.entries(TOOL_KEY_TO_SNAKE_ALIAS).map(([camel, snake]) => [snake, camel]),
+) as Record<string, keyof NonNullable<HeimdallConfig['tools']>>;
 
 /**
  * Normalise and validate the raw tools block before schema validation:
