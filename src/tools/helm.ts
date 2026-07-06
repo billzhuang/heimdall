@@ -3,7 +3,7 @@
  */
 import { defineTool } from '@flue/runtime';
 import * as v from 'valibot';
-import { runHelm } from '../lib/helm.ts';
+import { runHelm, ALLOWED_HELM_ACTIONS, ALLOWED_HELM_GET_TYPES } from '../lib/helm.ts';
 import { BLOCKED_PREFIX } from '../lib/harness.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
 import { buildLockdownNote } from '../lib/tool-config.ts';
@@ -24,7 +24,7 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
       lockdownNote,
     input: v.object({
       action: v.pipe(
-        v.picklist(['list', 'status', 'get']),
+        v.picklist(ALLOWED_HELM_ACTIONS),
         v.description(
           'Action to perform: "list" (enumerate releases), "status" (release health), or "get" (retrieve values/manifest/notes).',
         ),
@@ -40,7 +40,7 @@ export function makeHelmRelease(lockedNamespace?: string | null) {
         ),
       ),
       getType: v.pipe(
-        v.optional(v.picklist(['values', 'manifest', 'notes'])),
+        v.optional(v.picklist(ALLOWED_HELM_GET_TYPES)),
         v.description('What to retrieve for the get action: "values", "manifest", or "notes".'),
       ),
       allNamespaces: v.pipe(

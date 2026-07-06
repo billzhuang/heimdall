@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import * as v from 'valibot';
 
 const { runHelm } = vi.hoisted(() => ({ runHelm: vi.fn() }));
-vi.mock('../../lib/helm.ts', () => ({ runHelm }));
+vi.mock('../../lib/helm.ts', async (importOriginal) => ({
+  ...(await importOriginal()),
+  runHelm,
+}));
 
 import { makeHelmRelease, helmRelease, helmReleasePlugin } from '../helm.ts';
 import type { HeimdallConfig } from '../../lib/config.ts';
@@ -73,6 +77,22 @@ describe('makeHelmRelease — namespace lockdown', () => {
   it('description has no lockdown note when no lock is set', () => {
     const tool = makeHelmRelease();
     expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
+  });
+});
+
+describe('makeHelmRelease — input schema picklists', () => {
+  it('action accepts exactly list/status/get', () => {
+    for (const action of ['list', 'status', 'get']) {
+      expect(v.safeParse(helmRelease.input, { action }).success).toBe(true);
+    }
+    expect(v.safeParse(helmRelease.input, { action: 'uninstall' }).success).toBe(false);
+  });
+
+  it('getType accepts exactly values/manifest/notes', () => {
+    for (const getType of ['values', 'manifest', 'notes']) {
+      expect(v.safeParse(helmRelease.input, { action: 'get', getType }).success).toBe(true);
+    }
+    expect(v.safeParse(helmRelease.input, { action: 'get', getType: 'crds' }).success).toBe(false);
   });
 });
 
