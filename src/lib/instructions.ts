@@ -54,21 +54,9 @@ function optionalLines(lines: string[]): string {
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
 export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery' | 'newRelicQuery' | 'cdkQuery';
 
-/**
- * Build the top-level Heimdall instructions.
- *
- * @param enabledTools    - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
- *   When omitted, all tools are assumed enabled (backwards-compatible default).
- * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
- * @param runbookContext  - pre-loaded runbook text to inject as a context section (before Tools).
- * @param ragContext      - formatted past-incident context from the RAG layer (injected after runbooks).
- * @param slos            - SLO definitions from config; when non-empty, a SLO context section is injected.
- * @param baselineContext - formatted recurring anomaly baselines (injected after past incidents).
- */
-export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string, slos?: SloDefinition[], baselineContext?: string): string {
-  const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
-
-  const connectionLines = [
+/** Config-gated connection/discovery notes (namespace lockdown, context/namespace discovery). */
+function buildConnectionLines(has: (key: ToolConfigKey) => boolean, lockedNamespace?: string | null): string[] {
+  return [
     lockedNamespace &&
       `- NAMESPACE LOCKDOWN: this instance is restricted to namespace '${lockedNamespace}'. All kubectl queries are automatically scoped to this namespace; '-A'/--all-namespaces and other namespaces are blocked in code.`,
     has('listContexts') &&
@@ -76,8 +64,11 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
     !lockedNamespace && has('listNamespaces') &&
       '- No namespace is pinned. Use `list_namespaces` when you need to discover them; scope queries with `-n <namespace>` or `-A` for all namespaces.',
   ].filter(Boolean) as string[];
+}
 
-  const toolLines = [
+/** Per-tool description lines for the `## Tools` section, gated by which tools are enabled. */
+function buildToolLines(has: (key: ToolConfigKey) => boolean): string[] {
+  return [
     has('kubectl') &&
       '- `kubectl`: run a single READ-ONLY kubectl command. Pass everything after `kubectl`\n  as the `args` string (e.g. "get pods -n kube-system -o json"). No shell pipes —\n  prefer label selectors, field selectors, and jsonpath to narrow output.',
     has('listContexts') && '- `list_contexts`: list available cluster contexts from the kubeconfig.',
@@ -120,50 +111,22 @@ export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNames
       '  and detect drift between deployed and local stack state.\n' +
       '  For diff/synth/metadata the CDK app must be in the working directory or specified via --app.',
   ].filter(Boolean) as string[];
+}
 
-  const sections: string[] = [
-    `You are Heimdall, an expert Kubernetes assistant and SRE agent. You help engineers
-diagnose cluster issues quickly by combining kubectl with disciplined reasoning.`,
-  ];
+/** The `## Configured SLOs` section, or undefined when no SLOs are configured. */
+function buildSloSection(slos?: SloDefinition[]): string | undefined {
+  if (!slos || slos.length === 0) return undefined;
+  const sloTable = [
+    '| Name | Target | Budget | Window | Metric (PromQL) |',
+    '|------|--------|--------|--------|-----------------|',
+    ...slos.map((s) => `| ${s.name.replace(/\|/g, '\\|')} | ${s.target} | ${s.budget} | ${s.window} | \`${s.metric.replace(/\|/g, '\\|')}\` |`),
+  ].join('\n');
+  return `## Configured SLOs\nThe following Service Level Objectives are defined for this cluster.\nUse the \`slo-evaluator\` subagent to query each metric, compute burn rates, and report breaching SLOs.\n\n${sloTable}`;
+}
 
-  if (connectionLines.length > 0) {
-    sections.push(`## Connection\n${connectionLines.join('\n')}`);
-  }
-
-  if (runbookContext) {
-    sections.push(`## Runbook context\nThe following runbooks describe team-specific investigation playbooks. Refer to them when diagnosing issues that match their domain.\n\n${runbookContext}`);
-  }
-
-  if (ragContext) {
-    sections.push(`## Past incident precedents\n${ragContext}`);
-  }
-
-  if (baselineContext) {
-    sections.push(`## Recurring anomaly baselines\n${baselineContext}`);
-  }
-
-  if (slos && slos.length > 0) {
-    const sloTable = [
-      '| Name | Target | Budget | Window | Metric (PromQL) |',
-      '|------|--------|--------|--------|-----------------|',
-      ...slos.map((s) => `| ${s.name.replace(/\|/g, '\\|')} | ${s.target} | ${s.budget} | ${s.window} | \`${s.metric.replace(/\|/g, '\\|')}\` |`),
-    ].join('\n');
-    sections.push(`## Configured SLOs\nThe following Service Level Objectives are defined for this cluster.\nUse the \`slo-evaluator\` subagent to query each metric, compute burn rates, and report breaching SLOs.\n\n${sloTable}`);
-  }
-
-  sections.push(
-    `## Tools\n${toolLines.length > 0 ? toolLines.join('\n') : 'No cluster tools are enabled.'}`,
-  );
-
-  sections.push(`## Working principles
-- Answer ONLY the specific question asked. Do not run a broad health check unless asked.
-- Be efficient: run the minimum number of commands needed to reach a conclusion.
-- Prefer targeted reads (describe a specific resource, get with a selector) over dumping everything.
-- Delegate deep, focused investigations to a specialist subagent when it clearly helps.`);
-
-  sections.push(READ_ONLY_POLICY);
-
-  const conditionalSubagentGroups: Array<{ enabled: boolean; lines: string[] }> = [
+/** Tool-gated specialist subagent groups appended to the `## Specialist subagents` section. */
+function buildConditionalSubagentGroups(has: (key: ToolConfigKey) => boolean): Array<{ enabled: boolean; lines: string[] }> {
+  return [
     {
       enabled: has('awsCli'),
       lines: [
@@ -193,6 +156,64 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
       lines: ['- cdk-investigator — CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.'],
     },
   ];
+}
+
+/**
+ * Build the top-level Heimdall instructions.
+ *
+ * @param enabledTools    - set of enabled tool config keys (e.g. from the loaded HeimdallConfig).
+ *   When omitted, all tools are assumed enabled (backwards-compatible default).
+ * @param lockedNamespace - when set, all kubectl calls are restricted to this namespace (code-enforced).
+ * @param runbookContext  - pre-loaded runbook text to inject as a context section (before Tools).
+ * @param ragContext      - formatted past-incident context from the RAG layer (injected after runbooks).
+ * @param slos            - SLO definitions from config; when non-empty, a SLO context section is injected.
+ * @param baselineContext - formatted recurring anomaly baselines (injected after past incidents).
+ */
+export function buildInstructions(enabledTools?: Set<ToolConfigKey>, lockedNamespace?: string | null, runbookContext?: string, ragContext?: string, slos?: SloDefinition[], baselineContext?: string): string {
+  const has = (key: ToolConfigKey) => !enabledTools || enabledTools.has(key);
+
+  const connectionLines = buildConnectionLines(has, lockedNamespace);
+  const toolLines = buildToolLines(has);
+
+  const sections: string[] = [
+    `You are Heimdall, an expert Kubernetes assistant and SRE agent. You help engineers
+diagnose cluster issues quickly by combining kubectl with disciplined reasoning.`,
+  ];
+
+  if (connectionLines.length > 0) {
+    sections.push(`## Connection\n${connectionLines.join('\n')}`);
+  }
+
+  if (runbookContext) {
+    sections.push(`## Runbook context\nThe following runbooks describe team-specific investigation playbooks. Refer to them when diagnosing issues that match their domain.\n\n${runbookContext}`);
+  }
+
+  if (ragContext) {
+    sections.push(`## Past incident precedents\n${ragContext}`);
+  }
+
+  if (baselineContext) {
+    sections.push(`## Recurring anomaly baselines\n${baselineContext}`);
+  }
+
+  const sloSection = buildSloSection(slos);
+  if (sloSection) {
+    sections.push(sloSection);
+  }
+
+  sections.push(
+    `## Tools\n${toolLines.length > 0 ? toolLines.join('\n') : 'No cluster tools are enabled.'}`,
+  );
+
+  sections.push(`## Working principles
+- Answer ONLY the specific question asked. Do not run a broad health check unless asked.
+- Be efficient: run the minimum number of commands needed to reach a conclusion.
+- Prefer targeted reads (describe a specific resource, get with a selector) over dumping everything.
+- Delegate deep, focused investigations to a specialist subagent when it clearly helps.`);
+
+  sections.push(READ_ONLY_POLICY);
+
+  const conditionalSubagentGroups = buildConditionalSubagentGroups(has);
 
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
