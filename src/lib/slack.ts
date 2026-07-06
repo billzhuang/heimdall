@@ -10,7 +10,7 @@
  */
 import type { OneShotFinding } from './format-output.ts';
 import { withTimeout } from './http.ts';
-import { getMessage } from './error-utils.ts';
+import { getMessage, isAbortError } from './error-utils.ts';
 
 export interface SlackConfig {
   webhookUrl: string;
@@ -118,7 +118,7 @@ export async function sendSlackNotification(
       }
     });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    if (isAbortError(err)) {
       process.stderr.write(
         `[heimdall] Slack notification timed out after ${config.timeoutMs}ms.\n`,
       );
