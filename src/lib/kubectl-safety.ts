@@ -73,14 +73,6 @@ export const NESTED_ALLOWED_VERBS: Record<string, readonly string[]> = {
   rollout: ['status', 'history'],
 };
 
-/**
- * Mutating nested verbs for command families in NESTED_ALLOWED_VERBS.
- * Used by isDestructiveCommand to identify state-mutating nested commands.
- */
-export const NESTED_DESTRUCTIVE_VERBS: Record<string, readonly string[]> = {
-  rollout: ['restart', 'undo', 'pause', 'resume'],
-};
-
 export type DestructiveCommand = (typeof DESTRUCTIVE_KUBECTL_COMMANDS)[number];
 export type AllowedCommand = (typeof ALLOWED_KUBECTL_COMMANDS)[number];
 
@@ -168,23 +160,6 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
   }
 
   return result;
-}
-
-/** True when the command is a kubectl invocation that mutates cluster state. */
-export function isDestructiveCommand(command: string): boolean {
-  const parsed = parseKubectlCommand(command);
-  if (!parsed.isKubectl || !parsed.subcommand) {
-    return false;
-  }
-  if (DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand)) {
-    return true;
-  }
-  const nestedDestructive = NESTED_DESTRUCTIVE_VERBS[parsed.subcommand];
-  if (nestedDestructive) {
-    const verb = parsed.args[0]?.toLowerCase() ?? '';
-    return nestedDestructive.includes(verb);
-  }
-  return false;
 }
 
 /** Result of applying namespace lockdown to a tokenized argv. */

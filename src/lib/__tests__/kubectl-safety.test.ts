@@ -3,7 +3,6 @@ import {
   ALLOWED_KUBECTL_COMMANDS,
   DESTRUCTIVE_KUBECTL_COMMANDS,
   applyNamespaceLockdown,
-  isDestructiveCommand,
   parseKubectlCommand,
   validateCommand,
 } from '../kubectl-safety.ts';
@@ -31,7 +30,7 @@ describe('parseKubectlCommand', () => {
   it('does not let a value-taking flag hide a destructive subcommand', () => {
     // `--v 5` consumes "5", so "delete" is still recognized as the subcommand.
     expect(parseKubectlCommand('kubectl --v 5 delete pods').subcommand).toBe('delete');
-    expect(isDestructiveCommand('kubectl --v 5 delete pods')).toBe(true);
+    expect(validateCommand('kubectl --v 5 delete pods').allowed).toBe(false);
   });
 
   it('lowercases the subcommand', () => {
@@ -185,24 +184,6 @@ describe('parseKubectlCommand — edge cases', () => {
   it('does not set skipNext for flags not in OPTIONS_WITH_VALUE before subcommand', () => {
     const result = parseKubectlCommand('kubectl --dry-run get pods');
     expect(result.subcommand).toBe('get');
-  });
-});
-
-describe('isDestructiveCommand', () => {
-  it('is false for read-only and non-kubectl commands', () => {
-    expect(isDestructiveCommand('kubectl get pods')).toBe(false);
-    expect(isDestructiveCommand('ls -la')).toBe(false);
-    expect(isDestructiveCommand('kubectl')).toBe(false);
-  });
-
-  it('is true for destructive subcommands, even behind flags', () => {
-    expect(isDestructiveCommand('kubectl scale deployment api --replicas=3')).toBe(true);
-    expect(isDestructiveCommand('kubectl --context=prod rollout restart deploy/api')).toBe(true);
-    expect(validateCommand('kubectl --context=prod rollout restart deploy/api').allowed).toBe(false);
-  });
-
-  it('returns false for rollout with no following verb (args[0] is undefined)', () => {
-    expect(isDestructiveCommand('kubectl rollout')).toBe(false);
   });
 });
 
