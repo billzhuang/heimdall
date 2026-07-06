@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   createSession,
   deleteSession,
+  isValidSessionRecord,
   listSessions,
   loadSession,
   sessionDir,
@@ -20,6 +21,46 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env['HEIMDALL_SESSION_DIR'];
   rmSync(tmpDir, { recursive: true, force: true });
+});
+
+describe('isValidSessionRecord', () => {
+  const base = {
+    id: 'abc',
+    createdAt: '2026-06-24T12:00:00.000Z',
+    serverUrl: 'http://localhost:3583',
+    lastPromptAt: null,
+  };
+
+  it('accepts a minimal valid record', () => {
+    expect(isValidSessionRecord(base)).toBe(true);
+  });
+
+  it('accepts a valid record with a string lastPromptAt and name', () => {
+    expect(
+      isValidSessionRecord({ ...base, lastPromptAt: '2026-06-24T12:00:00.000Z', name: 'x' }),
+    ).toBe(true);
+  });
+
+  it.each([null, undefined, 'string', 42, []])('rejects non-object input: %p', (value) => {
+    expect(isValidSessionRecord(value)).toBe(false);
+  });
+
+  it.each(['id', 'createdAt', 'serverUrl'] as const)('rejects when %s is missing', (key) => {
+    const { [key]: _omit, ...rest } = base;
+    expect(isValidSessionRecord(rest)).toBe(false);
+  });
+
+  it.each(['id', 'createdAt', 'serverUrl'] as const)('rejects when %s is not a string', (key) => {
+    expect(isValidSessionRecord({ ...base, [key]: 42 })).toBe(false);
+  });
+
+  it('rejects when lastPromptAt is neither null nor a string', () => {
+    expect(isValidSessionRecord({ ...base, lastPromptAt: 42 })).toBe(false);
+  });
+
+  it('rejects when name is present but not a string', () => {
+    expect(isValidSessionRecord({ ...base, name: 42 })).toBe(false);
+  });
 });
 
 describe('sessionDir', () => {
