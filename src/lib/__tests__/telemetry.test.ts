@@ -702,6 +702,57 @@ describe('startOtelExport / stopOtelExport', () => {
     // Only one interval at 5s cadence, not two intervals
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
+
+  it('defaults the export interval to 60000ms when neither config nor env var set it', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
+    vi.stubGlobal('fetch', mockFetch);
+
+    startOtelExport({ enabled: true, endpoint: 'http://otel:4318' });
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the export interval from OTEL_METRIC_EXPORT_INTERVAL env var', async () => {
+    process.env['OTEL_METRIC_EXPORT_INTERVAL'] = '2000';
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
+    vi.stubGlobal('fetch', mockFetch);
+
+    startOtelExport({ enabled: true, endpoint: 'http://otel:4318' });
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the 60000ms default when exportIntervalMs is negative', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
+    vi.stubGlobal('fetch', mockFetch);
+
+    startOtelExport({ enabled: true, endpoint: 'http://otel:4318', exportIntervalMs: -5 });
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the 60000ms default when OTEL_METRIC_EXPORT_INTERVAL is not a number', async () => {
+    process.env['OTEL_METRIC_EXPORT_INTERVAL'] = 'not-a-number';
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue('') });
+    vi.stubGlobal('fetch', mockFetch);
+
+    startOtelExport({ enabled: true, endpoint: 'http://otel:4318' });
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ─── exit handler ───────────────────────────────────────────────────────────
