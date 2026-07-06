@@ -7,6 +7,7 @@ import {
   appendTaskHistoryEntry,
   readTaskHistory,
   buildTaskHistoryContext,
+  formatTaskHistoryEntry,
   resolveTaskHistoryFilePath,
   type TaskHistoryEntry,
 } from '../task-history.ts';
@@ -130,6 +131,32 @@ describe('appendTaskHistoryEntry / readTaskHistory', () => {
 
   it('rethrows non-ENOENT errors from readFile', async () => {
     await expect(readTaskHistory('/dev/null/impossible/path')).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatTaskHistoryEntry
+// ---------------------------------------------------------------------------
+describe('formatTaskHistoryEntry', () => {
+  const entry: TaskHistoryEntry = {
+    id: 'test-id',
+    timestamp: '2026-06-19T10:00:00.000Z',
+    prompt: 'why is the service slow?',
+    model: 'test-model',
+    severity: 'warning',
+    summary: 'High CPU utilization detected on api-deployment',
+  };
+
+  it('formats a numbered Markdown block with all expected fields', () => {
+    const out = formatTaskHistoryEntry(entry, 0);
+    expect(out).toContain('### 1. "why is the service slow?"');
+    expect(out).toContain('**Date**: 2026-06-19T10:00:00.000Z');
+    expect(out).toContain('**Severity**: warning');
+    expect(out).toContain('**Summary**: High CPU utilization detected on api-deployment');
+  });
+
+  it('numbers using index + 1', () => {
+    expect(formatTaskHistoryEntry(entry, 4)).toContain('### 5.');
   });
 });
 

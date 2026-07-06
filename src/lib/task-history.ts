@@ -10,6 +10,7 @@
  */
 import { resolve, join } from 'node:path';
 import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
+import { buildContextBlock } from './context-block.ts';
 
 export interface TaskHistoryEntry {
   /** Unique entry ID (timestamp + random suffix). */
@@ -63,22 +64,23 @@ export function readTaskHistory(logPath: string): Promise<TaskHistoryEntry[]> {
   });
 }
 
+/** Format a single task history entry as a numbered Markdown block. */
+export function formatTaskHistoryEntry(entry: TaskHistoryEntry, index: number): string {
+  return (
+    `### ${index + 1}. "${entry.prompt}"\n` +
+    `**Date**: ${entry.timestamp} | **Severity**: ${entry.severity}\n` +
+    `**Summary**: ${entry.summary}`
+  );
+}
+
 /**
  * Format the most recent task history entries as context text for a
  * reflection prompt. Caps at maxEntries (default 20) to keep prompts
  * from growing unbounded.
  */
 export function buildTaskHistoryContext(entries: TaskHistoryEntry[], maxEntries = 20): string {
-  if (entries.length === 0) return 'No task history entries yet.';
   // entries.slice(-0) === entries.slice(0) (full array), so guard explicitly.
   const recent = maxEntries > 0 ? entries.slice(-maxEntries) : [];
   if (recent.length === 0) return 'No task history entries yet.';
-  return recent
-    .map(
-      (e, i) =>
-        `### ${i + 1}. "${e.prompt}"\n` +
-        `**Date**: ${e.timestamp} | **Severity**: ${e.severity}\n` +
-        `**Summary**: ${e.summary}`,
-    )
-    .join('\n\n');
+  return buildContextBlock(recent, '', formatTaskHistoryEntry);
 }
