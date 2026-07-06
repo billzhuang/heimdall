@@ -403,7 +403,9 @@ const KNOWN_TOOL_KEYS = new Set(Object.keys(TOOL_KEY_TO_SNAKE_ALIAS));
 // Operators often copy the tool name the model sees (e.g. `list_contexts`)
 // instead of the camelCase config key; accept both and convert silently.
 const SNAKE_CASE_ALIASES: Record<string, keyof NonNullable<HeimdallConfig['tools']>> = Object.fromEntries(
-  Object.entries(TOOL_KEY_TO_SNAKE_ALIAS).map(([camel, snake]) => [snake, camel]),
+  Object.entries(TOOL_KEY_TO_SNAKE_ALIAS)
+    .filter(([camel, snake]) => camel !== snake)
+    .map(([camel, snake]) => [snake, camel]),
 ) as Record<string, keyof NonNullable<HeimdallConfig['tools']>>;
 
 /**
