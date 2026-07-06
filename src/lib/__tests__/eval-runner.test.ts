@@ -18,6 +18,7 @@ import {
   checkFinding,
   loadScenario,
   loadScenarios,
+  loadScenariosOrExit,
   runAllScenarios,
   runScenario,
   type EvalResult,
@@ -341,6 +342,51 @@ describe('loadScenarios', () => {
     await writeScenario('crash.yaml', 'crash-test');
     const results = await loadScenarios(tmpDir);
     expect(results[0].path).toContain('crash.yaml');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadScenariosOrExit
+// ---------------------------------------------------------------------------
+
+describe('loadScenariosOrExit', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns the loaded scenarios without exiting', async () => {
+    await writeFile(join(tmpDir, 'oom.yaml'), 'description: "oom-test"\nprompt: "check oom"\n');
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+
+    const results = await loadScenariosOrExit(tmpDir);
+
+    expect(results).toHaveLength(1);
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('writes an error and exits(1) when loading throws', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+    await writeFile(join(tmpDir, 'oom.yaml'), 'description: "oom-test"\nprompt: "check oom"\n');
+
+    await expect(loadScenariosOrExit(tmpDir, 'missing-pattern')).rejects.toThrow('exit');
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Error loading scenarios:'));
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes a no-scenarios error and exits(1) when the directory has no matches', async () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('exit');
+    }) as never);
+
+    await expect(loadScenariosOrExit(tmpDir)).rejects.toThrow('exit');
+
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining(`No scenario files found in ${tmpDir}`));
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
 

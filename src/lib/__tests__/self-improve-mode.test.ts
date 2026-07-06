@@ -3,12 +3,20 @@ import { spawnSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseSelfImproveArgs, main } from '../../self-improve-mode.ts';
-import { loadScenarios, runScenario } from '../eval-runner.ts';
+import { loadScenarios, runScenario, loadScenariosOrExit, runAllScenarios } from '../eval-runner.ts';
 import { appendLearningEntry, readLearningLog } from '../self-improve.ts';
 import { readTaskHistory } from '../task-history.ts';
 import { loadConfig } from '../config.ts';
 import { resolveBinPath } from '../bin-path.ts';
+import { getMessage } from '../error-utils.ts';
 
+// eval-runner.ts is auto-mocked wholesale. self-improve-mode.ts's `main()` only
+// calls loadScenariosOrExit/runAllScenarios directly, so those two are given
+// thin bridging implementations that forward to the (also mocked) loadScenarios/
+// runScenario — the same functions each test configures below. This mirrors the
+// real implementations in eval-runner.ts; it's necessary because vi.mock cannot
+// intercept a same-module call (loadScenariosOrExit calling loadScenarios), only
+// calls that cross a module boundary.
 vi.mock('../eval-runner.ts');
 vi.mock('../bin-path.ts');
 vi.mock('../config.ts');
@@ -146,6 +154,30 @@ describe('main()', () => {
     vi.mocked(readTaskHistory).mockResolvedValue([]);
     vi.mocked(readLearningLog).mockResolvedValue([]);
     vi.mocked(appendLearningEntry).mockResolvedValue(undefined);
+
+    vi.mocked(loadScenariosOrExit).mockImplementation(async (scenariosDir, filter) => {
+      try {
+        const scenarios = await loadScenarios(scenariosDir, filter);
+        if (scenarios.length === 0) {
+          process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
+          return process.exit(1);
+        }
+        return scenarios;
+      } catch (err) {
+        process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
+        return process.exit(1);
+      }
+    });
+    vi.mocked(runAllScenarios).mockImplementation(async (binPath, scenarios, callbacks) => {
+      const results = [];
+      for (const { scenario } of scenarios) {
+        callbacks?.onBefore?.(scenario.description);
+        const result = await runScenario(binPath, scenario);
+        results.push(result);
+        callbacks?.onResult?.(result);
+      }
+      return results;
+    });
   });
 
   afterEach(() => {
