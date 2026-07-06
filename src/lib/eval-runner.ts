@@ -196,20 +196,17 @@ export async function loadScenariosOrExit(
   scenariosDir: string,
   filter?: string,
 ): Promise<Array<{ path: string; scenario: EvalScenario }>> {
-  let scenarios: Array<{ path: string; scenario: EvalScenario }>;
   try {
-    scenarios = await loadScenarios(scenariosDir, filter);
+    const scenarios = await loadScenarios(scenariosDir, filter);
+    if (scenarios.length === 0) {
+      process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
+      process.exit(1);
+    }
+    return scenarios;
   } catch (err) {
     process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
     process.exit(1);
   }
-
-  if (scenarios.length === 0) {
-    process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
-    process.exit(1);
-  }
-
-  return scenarios;
 }
 
 export interface RunCallbacks {

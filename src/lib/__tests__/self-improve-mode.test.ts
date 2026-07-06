@@ -156,18 +156,17 @@ describe('main()', () => {
     vi.mocked(appendLearningEntry).mockResolvedValue(undefined);
 
     vi.mocked(loadScenariosOrExit).mockImplementation(async (scenariosDir, filter) => {
-      let scenarios;
       try {
-        scenarios = await loadScenarios(scenariosDir, filter);
+        const scenarios = await loadScenarios(scenariosDir, filter);
+        if (scenarios.length === 0) {
+          process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
+          return process.exit(1);
+        }
+        return scenarios;
       } catch (err) {
         process.stderr.write(`Error loading scenarios: ${getMessage(err)}\n`);
         return process.exit(1);
       }
-      if (scenarios.length === 0) {
-        process.stderr.write(`No scenario files found in ${scenariosDir}\n`);
-        return process.exit(1);
-      }
-      return scenarios;
     });
     vi.mocked(runAllScenarios).mockImplementation(async (binPath, scenarios, callbacks) => {
       const results = [];
