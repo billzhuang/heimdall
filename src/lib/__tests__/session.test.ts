@@ -45,6 +45,11 @@ describe('isValidSessionRecord', () => {
     expect(isValidSessionRecord(value)).toBe(false);
   });
 
+  it('rejects an array even when it carries matching custom properties', () => {
+    const arr = Object.assign([], base);
+    expect(isValidSessionRecord(arr)).toBe(false);
+  });
+
   it.each(['id', 'createdAt', 'serverUrl'] as const)('rejects when %s is missing', (key) => {
     const { [key]: _omit, ...rest } = base;
     expect(isValidSessionRecord(rest)).toBe(false);

@@ -62,7 +62,7 @@ function writeSessionRecord(dir: string, record: SessionRecord): void {
 
 /** Type guard for the on-disk SessionRecord shape. Exported for direct unit testing. */
 export function isValidSessionRecord(parsed: unknown): parsed is SessionRecord {
-  if (!parsed || typeof parsed !== 'object') return false;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
   const rec = parsed as Record<string, unknown>;
   return (
     typeof rec['id'] === 'string' &&
