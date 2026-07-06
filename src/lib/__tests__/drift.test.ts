@@ -12,7 +12,6 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   };
 });
 import {
-  buildEmptyCheckpoint,
   saveCheckpoint,
   loadCheckpoint,
   detectDrift,
@@ -23,19 +22,6 @@ import {
   type ClusterCheckpoint,
   type DriftFinding,
 } from '../drift.ts';
-
-// ---------------------------------------------------------------------------
-// buildEmptyCheckpoint
-// ---------------------------------------------------------------------------
-describe('buildEmptyCheckpoint', () => {
-  it('returns a checkpoint with empty arrays', () => {
-    const cp = buildEmptyCheckpoint('2026-01-01T00:00:00.000Z');
-    expect(cp.timestamp).toBe('2026-01-01T00:00:00.000Z');
-    expect(cp.namespaces).toEqual([]);
-    expect(cp.workloads).toEqual([]);
-    expect(cp.nodes).toEqual([]);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // saveCheckpoint / loadCheckpoint

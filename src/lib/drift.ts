@@ -47,11 +47,6 @@ export interface DriftFinding {
   message: string;
 }
 
-/** Build a blank checkpoint (used when bootstrapping the first baseline). */
-export function buildEmptyCheckpoint(timestamp: string): ClusterCheckpoint {
-  return { timestamp, namespaces: [], workloads: [], nodes: [] };
-}
-
 /** Append a checkpoint snapshot as a JSONL line (creates the file and parent dirs if absent). */
 export async function saveCheckpoint(checkpoint: ClusterCheckpoint, filePath: string): Promise<void> {
   await appendJsonlLine(checkpoint, filePath);
