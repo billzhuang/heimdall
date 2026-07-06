@@ -7,6 +7,7 @@
  */
 import * as yaml from 'js-yaml';
 import { OPTIONS_WITH_VALUE } from './kubectl-safety.ts';
+import { findNextNonOptionToken } from './tokenizer.ts';
 
 export const REDACTED_FORMAT_MESSAGE =
   'Secret values cannot be safely extracted in this output format. ' +
@@ -64,29 +65,11 @@ export function isSecretResource(token: string): boolean {
  */
 export function isGetSecretCommand(argv: string[]): boolean {
   // Scan past any leading global flags to find the 'get' subcommand.
-  let getIndex = -1;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === 'get') {
-      getIndex = i;
-      break;
-    }
-    if (!arg.startsWith('-')) return false; // Non-flag before 'get' → not a get command.
-    if (!arg.includes('=') && FLAGS_CONSUMING_NEXT.has(arg)) i++; // skip flag value token
-  }
-  if (getIndex === -1) return false;
+  const getIndex = findNextNonOptionToken(argv, 0, FLAGS_CONSUMING_NEXT);
+  if (getIndex === -1 || argv[getIndex] !== 'get') return false;
 
-  let i = getIndex + 1;
-  while (i < argv.length) {
-    const a = argv[i];
-    if (a.startsWith('-')) {
-      if (!a.includes('=') && FLAGS_CONSUMING_NEXT.has(a)) i++;
-      i++;
-      continue;
-    }
-    return isSecretResource(a);
-  }
-  return false;
+  const resourceIndex = findNextNonOptionToken(argv, getIndex + 1, FLAGS_CONSUMING_NEXT);
+  return resourceIndex !== -1 && isSecretResource(argv[resourceIndex]);
 }
 
 /**
