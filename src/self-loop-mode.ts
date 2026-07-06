@@ -269,6 +269,29 @@ Examples:
 `;
 
 /**
+ * Match `args[i]` against a flag's long name, optional short alias, and optional
+ * `--flag=value` prefix. Returns null when nothing matches — including a
+ * space-separated form whose value is missing — so the caller falls through to
+ * the next flag check (eventually reaching the "unknown option" branch).
+ */
+function matchFlag(
+  args: string[],
+  i: number,
+  longFlag: string,
+  shortAlias: string | null,
+  equalsPrefix: string | null,
+): { value: string; nextIndex: number } | null {
+  const a = args[i];
+  if (equalsPrefix && a.startsWith(equalsPrefix)) {
+    return { value: a.slice(equalsPrefix.length), nextIndex: i };
+  }
+  if ((a === longFlag || a === shortAlias) && args[i + 1]) {
+    return { value: args[i + 1], nextIndex: i + 1 };
+  }
+  return null;
+}
+
+/**
  * Parse `heimdall self-loop` CLI flags.
  * Exits the process (via requirePositiveInt, --help, or an unrecognized flag)
  * rather than returning when the arguments are invalid.
@@ -282,39 +305,57 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
   let reflectionTimeoutMs = 180_000;
 
   for (let i = 0; i < args.length; i++) {
-    if ((args[i] === '--max-iterations' || args[i] === '-n') && args[i + 1]) {
-      maxIterations = parseInt(args[++i], 10);
+    const maxIter = matchFlag(args, i, '--max-iterations', '-n', '--max-iterations=');
+    if (maxIter) {
+      maxIterations = parseInt(maxIter.value, 10);
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
-    } else if (args[i].startsWith('--max-iterations=')) {
-      maxIterations = parseInt(args[i].slice('--max-iterations='.length), 10);
-      requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
-    } else if (args[i] === '--dry-run') {
+      i = maxIter.nextIndex;
+      continue;
+    }
+
+    if (args[i] === '--dry-run') {
       dryRun = true;
-    } else if ((args[i] === '--backend' || args[i] === '-b') && args[i + 1]) {
-      backend = args[++i];
-    } else if (args[i].startsWith('--backend=')) {
-      backend = args[i].slice('--backend='.length);
-    } else if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
-      scenarioFilter = args[++i];
-    } else if (args[i].startsWith('--scenario=')) {
-      scenarioFilter = args[i].slice('--scenario='.length);
-    } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
-      cliLogPath = args[++i];
-    } else if (args[i] === '--timeout' && args[i + 1]) {
-      const secs = parseInt(args[++i], 10);
+      continue;
+    }
+
+    const backendMatch = matchFlag(args, i, '--backend', '-b', '--backend=');
+    if (backendMatch) {
+      backend = backendMatch.value;
+      i = backendMatch.nextIndex;
+      continue;
+    }
+
+    const scenarioMatch = matchFlag(args, i, '--scenario', '-s', '--scenario=');
+    if (scenarioMatch) {
+      scenarioFilter = scenarioMatch.value;
+      i = scenarioMatch.nextIndex;
+      continue;
+    }
+
+    const logPathMatch = matchFlag(args, i, '--log-path', '-l', null);
+    if (logPathMatch) {
+      cliLogPath = logPathMatch.value;
+      i = logPathMatch.nextIndex;
+      continue;
+    }
+
+    const timeoutMatch = matchFlag(args, i, '--timeout', null, '--timeout=');
+    if (timeoutMatch) {
+      const secs = parseInt(timeoutMatch.value, 10);
       requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
       reflectionTimeoutMs = secs * 1000;
-    } else if (args[i].startsWith('--timeout=')) {
-      const secs = parseInt(args[i].slice('--timeout='.length), 10);
-      requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
-      reflectionTimeoutMs = secs * 1000;
-    } else if (args[i] === '-h' || args[i] === '--help') {
+      i = timeoutMatch.nextIndex;
+      continue;
+    }
+
+    if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(HELP_TEXT);
       process.exit(0);
-    } else {
-      process.stderr.write(`Error: unknown option '${args[i]}'\nRun with --help for usage.\n`);
-      process.exit(1);
+      continue;
     }
+
+    process.stderr.write(`Error: unknown option '${args[i]}'\nRun with --help for usage.\n`);
+    process.exit(1);
   }
 
   return { maxIterations, dryRun, backend, scenarioFilter, cliLogPath, reflectionTimeoutMs };
