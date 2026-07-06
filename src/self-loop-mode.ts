@@ -50,7 +50,7 @@ import {
   type IterationResult,
 } from './lib/self-loop.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { isMainModule } from './lib/cli-args.ts';
+import { isMainModule, parseAliasedFlag } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -282,6 +282,8 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
   let reflectionTimeoutMs = 180_000;
 
   for (let i = 0; i < args.length; i++) {
+    const backendFlag = parseAliasedFlag(args, i, '--backend', '-b');
+    const scenarioFlag = parseAliasedFlag(args, i, '--scenario', '-s');
     if ((args[i] === '--max-iterations' || args[i] === '-n') && args[i + 1]) {
       maxIterations = parseInt(args[++i], 10);
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
@@ -290,14 +292,12 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
     } else if (args[i] === '--dry-run') {
       dryRun = true;
-    } else if ((args[i] === '--backend' || args[i] === '-b') && args[i + 1]) {
-      backend = args[++i];
-    } else if (args[i].startsWith('--backend=')) {
-      backend = args[i].slice('--backend='.length);
-    } else if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
-      scenarioFilter = args[++i];
-    } else if (args[i].startsWith('--scenario=')) {
-      scenarioFilter = args[i].slice('--scenario='.length);
+    } else if (backendFlag) {
+      backend = backendFlag.value;
+      i = backendFlag.nextIndex;
+    } else if (scenarioFlag) {
+      scenarioFilter = scenarioFlag.value;
+      i = scenarioFlag.nextIndex;
     } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
       cliLogPath = args[++i];
     } else if (args[i] === '--timeout' && args[i + 1]) {
