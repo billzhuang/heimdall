@@ -83,6 +83,155 @@ async function saveProposal(
   await writeFile(file, llmResponse, 'utf8');
 }
 
+/** Paths and callbacks a single self-loop iteration needs, threaded through from `main()`. */
+export interface IterationContext {
+  backend: string;
+  reflectionTimeoutMs: number;
+  dryRun: boolean;
+  logPath: string;
+  taskHistoryPath: string;
+  instructionsPath: string;
+  proposalsDir: string;
+  /** Runs the eval suite and prints progress; injected so tests can avoid spawning real evals. */
+  runAndPrint: (label: string) => Promise<EvalResult[]>;
+  /** Calls the reflection LLM; injected so tests can avoid spawning a real CLI backend. */
+  callLlmFn: (prompt: string, backend: string, timeoutMs: number) => Promise<string>;
+}
+
+export interface IterationOutcome {
+  /** Whether the self-loop should stop after this iteration. */
+  stop: boolean;
+  /** The IterationResult to record, when this iteration reached a scored outcome. */
+  pushResult?: IterationResult;
+  currentResults: EvalResult[];
+  currentScore: number;
+}
+
+/**
+ * Run one self-loop iteration: build a reflection prompt from current failures,
+ * send it to the LLM, parse and apply proposed patches, re-score, and decide
+ * whether to keep or revert. Extracted from `main()` so it is unit-testable
+ * independent of CLI arg parsing and process-lifecycle concerns.
+ */
+export async function runIteration(
+  iteration: number,
+  currentResults: EvalResult[],
+  currentScore: number,
+  ctx: IterationContext,
+): Promise<IterationOutcome> {
+  // Build learning entries from failures.
+  const failedResults = currentResults.filter(r => !r.passed);
+  const learningEntries = failedResults.map(r => buildLearningEntry(r.scenario, r.prompt, r.failures));
+
+  // Persist learning entries.
+  for (const entry of learningEntries) {
+    await appendLearningEntry(entry, ctx.logPath);
+  }
+
+  // Read task history for context.
+  const taskHistory = await readTaskHistory(ctx.taskHistoryPath);
+
+  // Build and send reflection prompt.
+  const instructionsContent = await snapshotInstructions(ctx.instructionsPath);
+  const snippet = extractInstructionsSnippet(instructionsContent);
+  const reflectionPrompt = buildAutoReflectionPrompt(learningEntries, taskHistory, snippet);
+
+  process.stdout.write(`Sending reflection prompt to ${ctx.backend}...\n`);
+  let llmResponse: string;
+  try {
+    llmResponse = await ctx.callLlmFn(reflectionPrompt, ctx.backend, ctx.reflectionTimeoutMs);
+  } catch (err) {
+    process.stderr.write(`LLM call failed: ${getMessage(err)}\n`);
+    process.stdout.write('Stopping self-loop due to LLM error.\n');
+    return { stop: true, currentResults, currentScore };
+  }
+
+  // Save proposal for review.
+  await saveProposal(ctx.proposalsDir, iteration, llmResponse);
+  process.stdout.write(`Proposal saved to scenarios/self-loop-proposals/\n`);
+
+  // Parse patches.
+  const patches = parseProposals(llmResponse);
+  process.stdout.write(`Parsed ${patches.length} patch${patches.length === 1 ? '' : 'es'}\n`);
+
+  if (patches.length === 0) {
+    process.stdout.write('LLM proposed no changes. Stopping self-loop.\n');
+    return {
+      stop: true,
+      pushResult: {
+        iteration,
+        baselineScore: currentScore,
+        newScore: currentScore,
+        proposalCount: 0,
+        appliedCount: 0,
+        improved: false,
+        reverted: false,
+      },
+      currentResults,
+      currentScore,
+    };
+  }
+
+  if (ctx.dryRun) {
+    process.stdout.write(formatDryRunPreview(patches));
+    return { stop: true, currentResults, currentScore };
+  }
+
+  // Take snapshot before applying.
+  const snapshot = instructionsContent;
+
+  // Apply patches, reverting to snapshot on any unexpected error.
+  let appliedCount = 0;
+  let newResults: EvalResult[];
+  let newScore: number;
+  let improved: boolean;
+  try {
+    appliedCount = await applyProposals(patches, ctx.instructionsPath);
+    process.stdout.write(`Applied ${appliedCount}/${patches.length} patches to instructions.ts\n`);
+
+    if (appliedCount === 0) {
+      process.stdout.write('No patches matched current content. Stopping self-loop.\n');
+      return { stop: true, currentResults, currentScore };
+    }
+
+    // Re-score.
+    newResults = await ctx.runAndPrint('Re-running evals after patch...');
+    newScore = scoreResults(newResults);
+    improved = newScore > currentScore;
+  } catch (err) {
+    process.stderr.write(`Error during patch/eval: ${getMessage(err)}\n`);
+    process.stdout.write('Reverting patches due to error.\n');
+    await revertToSnapshot(snapshot, ctx.instructionsPath);
+    return { stop: true, currentResults, currentScore };
+  }
+
+  process.stdout.write(formatScoreChangeLine(currentScore, newScore, improved));
+
+  const result: IterationResult = {
+    iteration,
+    baselineScore: currentScore,
+    newScore,
+    proposalCount: patches.length,
+    appliedCount,
+    improved,
+    reverted: !improved,
+  };
+
+  if (improved) {
+    process.stdout.write('Score improved — keeping patches.\n\n');
+    const allDone = newScore === 1;
+    if (allDone) {
+      process.stdout.write('All scenarios now pass! Self-loop complete.\n\n');
+    }
+    return { stop: allDone, pushResult: result, currentResults: newResults, currentScore: newScore };
+  }
+
+  process.stdout.write('Score did not improve — reverting patches.\n\n');
+  await revertToSnapshot(snapshot, ctx.instructionsPath);
+  // Stop after a non-improving iteration to avoid thrashing.
+  return { stop: true, pushResult: result, currentResults, currentScore };
+}
+
 export interface SelfLoopCliArgs {
   maxIterations: number;
   dryRun: boolean;
@@ -245,117 +394,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  const iterationCtx: IterationContext = {
+    backend,
+    reflectionTimeoutMs,
+    dryRun,
+    logPath,
+    taskHistoryPath,
+    instructionsPath,
+    proposalsDir,
+    runAndPrint,
+    callLlmFn: callLlm,
+  };
+
   for (let iteration = 1; iteration <= maxIterations; iteration++) {
     process.stdout.write(`--- Iteration ${iteration}/${maxIterations} ---\n`);
 
-    // Build learning entries from failures.
-    const failedResults = currentResults.filter(r => !r.passed);
-    const learningEntries = failedResults.map(r => buildLearningEntry(r.scenario, r.prompt, r.failures));
-
-    // Persist learning entries.
-    for (const entry of learningEntries) {
-      await appendLearningEntry(entry, logPath);
-    }
-
-    // Read task history for context.
-    const taskHistory = await readTaskHistory(taskHistoryPath);
-
-    // Build and send reflection prompt.
-    const instructionsContent = await snapshotInstructions(instructionsPath);
-    const snippet = extractInstructionsSnippet(instructionsContent);
-    const reflectionPrompt = buildAutoReflectionPrompt(learningEntries, taskHistory, snippet);
-
-    process.stdout.write(`Sending reflection prompt to ${backend}...\n`);
-    let llmResponse: string;
-    try {
-      llmResponse = await callLlm(reflectionPrompt, backend, reflectionTimeoutMs);
-    } catch (err) {
-      process.stderr.write(`LLM call failed: ${getMessage(err)}\n`);
-      process.stdout.write('Stopping self-loop due to LLM error.\n');
-      break;
-    }
-
-    // Save proposal for review.
-    await saveProposal(proposalsDir, iteration, llmResponse);
-    process.stdout.write(`Proposal saved to scenarios/self-loop-proposals/\n`);
-
-    // Parse patches.
-    const patches = parseProposals(llmResponse);
-    process.stdout.write(`Parsed ${patches.length} patch${patches.length === 1 ? '' : 'es'}\n`);
-
-    if (patches.length === 0) {
-      process.stdout.write('LLM proposed no changes. Stopping self-loop.\n');
-      iterationHistory.push({
-        iteration,
-        baselineScore: currentScore,
-        newScore: currentScore,
-        proposalCount: 0,
-        appliedCount: 0,
-        improved: false,
-        reverted: false,
-      });
-      break;
-    }
-
-    if (dryRun) {
-      process.stdout.write(formatDryRunPreview(patches));
-      break;
-    }
-
-    // Take snapshot before applying.
-    const snapshot = instructionsContent;
-
-    // Apply patches, reverting to snapshot on any unexpected error.
-    let appliedCount = 0;
-    let newResults: EvalResult[];
-    let newScore: number;
-    let improved: boolean;
-    try {
-      appliedCount = await applyProposals(patches, instructionsPath);
-      process.stdout.write(`Applied ${appliedCount}/${patches.length} patches to instructions.ts\n`);
-
-      if (appliedCount === 0) {
-        process.stdout.write('No patches matched current content. Stopping self-loop.\n');
-        break;
-      }
-
-      // Re-score.
-      newResults = await runAndPrint('Re-running evals after patch...');
-      newScore = scoreResults(newResults);
-      improved = newScore > currentScore;
-    } catch (err) {
-      process.stderr.write(`Error during patch/eval: ${getMessage(err)}\n`);
-      process.stdout.write('Reverting patches due to error.\n');
-      await revertToSnapshot(snapshot, instructionsPath);
-      break;
-    }
-
-    process.stdout.write(formatScoreChangeLine(currentScore, newScore, improved));
-
-    iterationHistory.push({
-      iteration,
-      baselineScore: currentScore,
-      newScore,
-      proposalCount: patches.length,
-      appliedCount,
-      improved,
-      reverted: !improved,
-    });
-
-    if (improved) {
-      process.stdout.write('Score improved — keeping patches.\n\n');
-      currentResults = newResults;
-      currentScore = newScore;
-      if (currentScore === 1) {
-        process.stdout.write('All scenarios now pass! Self-loop complete.\n\n');
-        break;
-      }
-    } else {
-      process.stdout.write('Score did not improve — reverting patches.\n\n');
-      await revertToSnapshot(snapshot, instructionsPath);
-      // Stop after a non-improving iteration to avoid thrashing.
-      break;
-    }
+    const outcome = await runIteration(iteration, currentResults, currentScore, iterationCtx);
+    if (outcome.pushResult) iterationHistory.push(outcome.pushResult);
+    currentResults = outcome.currentResults;
+    currentScore = outcome.currentScore;
+    if (outcome.stop) break;
   }
 
   process.stdout.write(buildSummaryReport(iterationHistory, currentScore, logPath));

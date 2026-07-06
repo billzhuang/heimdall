@@ -1,8 +1,16 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { requirePositiveInt, parseSelfLoopArgs } from '../../self-loop-mode.ts';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import {
+  requirePositiveInt,
+  parseSelfLoopArgs,
+  runIteration,
+  type IterationContext,
+} from '../../self-loop-mode.ts';
+import type { EvalResult } from '../eval-runner.ts';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const TSX = resolve(ROOT, 'node_modules/.bin/tsx');
@@ -189,5 +197,174 @@ describe('requirePositiveInt', () => {
     requirePositiveInt(NaN, '--timeout must be a positive integer (seconds)');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --timeout must be a positive integer (seconds)\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('runIteration', () => {
+  const INITIAL_CONTENT = 'BEFORE_TEXT marker line\nsecond line\n';
+  const PATCHED_CONTENT = 'AFTER_TEXT marker line\nsecond line\n';
+
+  const PATCH_RESPONSE = [
+    '## Change 1',
+    'FIND:',
+    '```',
+    'BEFORE_TEXT marker line',
+    '```',
+    'REPLACE:',
+    '```',
+    'AFTER_TEXT marker line',
+    '```',
+  ].join('\n');
+
+  const NON_MATCHING_PATCH_RESPONSE = [
+    '## Change 1',
+    'FIND:',
+    '```',
+    'TEXT NOT IN FILE',
+    '```',
+    'REPLACE:',
+    '```',
+    'X',
+    '```',
+  ].join('\n');
+
+  const PASSING_RESULT: EvalResult = { scenario: 's1', prompt: 'p1', passed: true, failures: [] };
+  const FAILING_RESULT: EvalResult = { scenario: 's1', prompt: 'p1', passed: false, failures: ['boom'] };
+
+  let tmpDir: string;
+  let instructionsPath: string;
+  let logPath: string;
+  let taskHistoryPath: string;
+  let proposalsDir: string;
+
+  beforeEach(async () => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    tmpDir = await mkdtemp(join(tmpdir(), 'heimdall-self-loop-test-'));
+    instructionsPath = join(tmpDir, 'instructions.ts');
+    logPath = join(tmpDir, 'learning-log.jsonl');
+    taskHistoryPath = join(tmpDir, 'task-history.jsonl');
+    proposalsDir = join(tmpDir, 'proposals');
+    await writeFile(instructionsPath, INITIAL_CONTENT, 'utf8');
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  function baseCtx(overrides: Partial<IterationContext> = {}): IterationContext {
+    return {
+      backend: 'claude-cli',
+      reflectionTimeoutMs: 5_000,
+      dryRun: false,
+      logPath,
+      taskHistoryPath,
+      instructionsPath,
+      proposalsDir,
+      runAndPrint: vi.fn().mockResolvedValue([PASSING_RESULT]),
+      callLlmFn: vi.fn().mockResolvedValue(PATCH_RESPONSE),
+      ...overrides,
+    };
+  }
+
+  it('stops with no pushResult when the LLM call fails', async () => {
+    const ctx = baseCtx({ callLlmFn: vi.fn().mockRejectedValue(new Error('cli crashed')) });
+    const outcome = await runIteration(1, [FAILING_RESULT], 0.5, ctx);
+    expect(outcome).toEqual({ stop: true, currentResults: [FAILING_RESULT], currentScore: 0.5 });
+    expect(await readFile(instructionsPath, 'utf8')).toBe(INITIAL_CONTENT);
+  });
+
+  it('stops with a zero-patch pushResult when the LLM proposes no changes', async () => {
+    const ctx = baseCtx({ callLlmFn: vi.fn().mockResolvedValue('NO_CHANGES_NEEDED') });
+    const outcome = await runIteration(2, [FAILING_RESULT], 0.5, ctx);
+    expect(outcome.stop).toBe(true);
+    expect(outcome.pushResult).toEqual({
+      iteration: 2,
+      baselineScore: 0.5,
+      newScore: 0.5,
+      proposalCount: 0,
+      appliedCount: 0,
+      improved: false,
+      reverted: false,
+    });
+    expect(outcome.currentResults).toEqual([FAILING_RESULT]);
+    expect(outcome.currentScore).toBe(0.5);
+  });
+
+  it('previews and stops without touching instructions.ts in dry-run mode', async () => {
+    const ctx = baseCtx({ dryRun: true });
+    const outcome = await runIteration(1, [FAILING_RESULT], 0.5, ctx);
+    expect(outcome).toEqual({ stop: true, currentResults: [FAILING_RESULT], currentScore: 0.5 });
+    expect(await readFile(instructionsPath, 'utf8')).toBe(INITIAL_CONTENT);
+  });
+
+  it('stops without a pushResult when no patch matches current content', async () => {
+    const ctx = baseCtx({ callLlmFn: vi.fn().mockResolvedValue(NON_MATCHING_PATCH_RESPONSE) });
+    const outcome = await runIteration(1, [FAILING_RESULT], 0.5, ctx);
+    expect(outcome).toEqual({ stop: true, currentResults: [FAILING_RESULT], currentScore: 0.5 });
+    expect(await readFile(instructionsPath, 'utf8')).toBe(INITIAL_CONTENT);
+  });
+
+  it('reverts instructions.ts and stops when re-running evals throws', async () => {
+    const ctx = baseCtx({ runAndPrint: vi.fn().mockRejectedValue(new Error('eval crashed')) });
+    const outcome = await runIteration(1, [FAILING_RESULT], 0.5, ctx);
+    expect(outcome).toEqual({ stop: true, currentResults: [FAILING_RESULT], currentScore: 0.5 });
+    expect(await readFile(instructionsPath, 'utf8')).toBe(INITIAL_CONTENT);
+  });
+
+  it('keeps patches and continues when the score improves but is not perfect', async () => {
+    const newResults = [PASSING_RESULT, FAILING_RESULT];
+    const ctx = baseCtx({ runAndPrint: vi.fn().mockResolvedValue(newResults) });
+    const outcome = await runIteration(1, [FAILING_RESULT, FAILING_RESULT], 0, ctx);
+    expect(outcome.stop).toBe(false);
+    expect(outcome.pushResult).toEqual({
+      iteration: 1,
+      baselineScore: 0,
+      newScore: 0.5,
+      proposalCount: 1,
+      appliedCount: 1,
+      improved: true,
+      reverted: false,
+    });
+    expect(outcome.currentResults).toBe(newResults);
+    expect(outcome.currentScore).toBe(0.5);
+    expect(await readFile(instructionsPath, 'utf8')).toBe(PATCHED_CONTENT);
+  });
+
+  it('keeps patches and stops when the score reaches 100%', async () => {
+    const ctx = baseCtx({ runAndPrint: vi.fn().mockResolvedValue([PASSING_RESULT]) });
+    const outcome = await runIteration(1, [FAILING_RESULT], 0, ctx);
+    expect(outcome.stop).toBe(true);
+    expect(outcome.pushResult?.improved).toBe(true);
+    expect(outcome.currentScore).toBe(1);
+    expect(await readFile(instructionsPath, 'utf8')).toBe(PATCHED_CONTENT);
+  });
+
+  it('reverts patches and stops when the score does not improve', async () => {
+    const ctx = baseCtx({ runAndPrint: vi.fn().mockResolvedValue([FAILING_RESULT]) });
+    const outcome = await runIteration(1, [FAILING_RESULT], 0, ctx);
+    expect(outcome.stop).toBe(true);
+    expect(outcome.pushResult).toEqual({
+      iteration: 1,
+      baselineScore: 0,
+      newScore: 0,
+      proposalCount: 1,
+      appliedCount: 1,
+      improved: false,
+      reverted: true,
+    });
+    expect(outcome.currentResults).toEqual([FAILING_RESULT]);
+    expect(outcome.currentScore).toBe(0);
+    expect(await readFile(instructionsPath, 'utf8')).toBe(INITIAL_CONTENT);
+  });
+
+  it('persists a learning entry for each current failure before reflecting', async () => {
+    const ctx = baseCtx({ dryRun: true });
+    await runIteration(1, [FAILING_RESULT], 0.5, ctx);
+    const log = await readFile(logPath, 'utf8');
+    const lines = log.trim().split('\n');
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ scenario: 's1', prompt: 'p1', failures: ['boom'] });
   });
 });
