@@ -21,7 +21,7 @@ export function getStackOrMessage(err: unknown): string {
 }
 
 /** True if `err` is the Error raised by an AbortController/AbortSignal cancellation. */
-export function isAbortError(err: unknown): boolean {
+export function isAbortError(err: unknown): err is Error {
   return err instanceof Error && err.name === 'AbortError';
 }
 
