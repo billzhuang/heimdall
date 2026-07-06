@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseAlertManagerPayload, parsePagerDutyPayload, buildAlertPrompt, type ParsedAlert } from './lib/alert.ts';
-import { runKubectl } from './lib/kubectl.ts';
+import { runKubectl, type RunKubectlOptions } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
 import { getStackOrMessage } from './lib/error-utils.ts';
@@ -35,23 +35,33 @@ export function addKubectlResultIfValid(parts: string[], label: string, result: 
 }
 
 /**
+ * Run one read-only kubectl command and append its output to `parts` if valid.
+ * `label` defaults to `kubectl <args>`; pass an explicit label when it must
+ * differ from the executed command (e.g. a display label that omits flags).
+ */
+async function fetchKubectl(
+  parts: string[],
+  opts: RunKubectlOptions,
+  args: string,
+  label = `kubectl ${args}`,
+): Promise<void> {
+  addKubectlResultIfValid(parts, label, await runKubectl(args, opts).catch(() => ''));
+}
+
+/**
  * Pre-fetch kubectl data for the alerted resource.
  * Returns combined stdout suitable for embedding in the investigation prompt.
  */
-async function seedKubectl(alert: ParsedAlert): Promise<string> {
+export async function seedKubectl(alert: ParsedAlert): Promise<string> {
   const parts: string[] = [];
   const opts = { audit: config.audit, redactSecrets: config.redactSecrets ?? true };
 
   if (alert.pod && alert.namespace) {
-    addKubectlResultIfValid(parts, `kubectl describe pod ${alert.pod} -n ${alert.namespace}`,
-      await runKubectl(`describe pod ${alert.pod} -n ${alert.namespace}`, opts).catch(() => ''));
-    addKubectlResultIfValid(parts, `kubectl logs ${alert.pod} -n ${alert.namespace} --tail=50`,
-      await runKubectl(`logs ${alert.pod} -n ${alert.namespace} --tail=50`, opts).catch(() => ''));
+    await fetchKubectl(parts, opts, `describe pod ${alert.pod} -n ${alert.namespace}`);
+    await fetchKubectl(parts, opts, `logs ${alert.pod} -n ${alert.namespace} --tail=50`);
   } else if (alert.namespace) {
-    addKubectlResultIfValid(parts, `kubectl get pods -n ${alert.namespace}`,
-      await runKubectl(`get pods -n ${alert.namespace}`, opts).catch(() => ''));
-    addKubectlResultIfValid(parts, `kubectl get events -n ${alert.namespace}`,
-      await runKubectl(`get events -n ${alert.namespace} --sort-by=.lastTimestamp`, opts).catch(() => ''));
+    await fetchKubectl(parts, opts, `get pods -n ${alert.namespace}`);
+    await fetchKubectl(parts, opts, `get events -n ${alert.namespace} --sort-by=.lastTimestamp`, `kubectl get events -n ${alert.namespace}`);
   }
 
   return parts.join('\n\n');

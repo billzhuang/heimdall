@@ -2,10 +2,13 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn(), execFile: vi.fn() }));
+vi.mock('../kubectl.ts', () => ({ runKubectl: vi.fn() }));
 
 import { spawn } from 'node:child_process';
-import { addKubectlResultIfValid, validateSourceArg, runAgent } from '../../alert-mode.ts';
+import { addKubectlResultIfValid, validateSourceArg, runAgent, seedKubectl } from '../../alert-mode.ts';
+import { runKubectl } from '../kubectl.ts';
 import { BLOCKED_PREFIX } from '../harness.ts';
+import type { ParsedAlert } from '../alert.ts';
 
 // ---------------------------------------------------------------------------
 // Fake child process factory for runAgent tests
@@ -182,5 +185,74 @@ describe('runAgent', () => {
     await vi.advanceTimersByTimeAsync(300_000);
     await assertion;
     expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+  });
+});
+
+describe('seedKubectl', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(runKubectl).mockReset();
+  });
+
+  function baseAlert(overrides: Partial<ParsedAlert> = {}): ParsedAlert {
+    return { alertname: 'TestAlert', labels: {}, ...overrides };
+  }
+
+  it('describes and tails logs for a pod+namespace alert', async () => {
+    (runKubectl as ReturnType<typeof vi.fn>).mockImplementation((args: string) =>
+      Promise.resolve(`output for: ${args}`),
+    );
+
+    const result = await seedKubectl(baseAlert({ pod: 'api-xyz', namespace: 'prod' }));
+
+    expect(runKubectl).toHaveBeenNthCalledWith(1, 'describe pod api-xyz -n prod', expect.anything());
+    expect(runKubectl).toHaveBeenNthCalledWith(2, 'logs api-xyz -n prod --tail=50', expect.anything());
+    expect(result).toBe(
+      '--- kubectl describe pod api-xyz -n prod ---\noutput for: describe pod api-xyz -n prod\n\n' +
+      '--- kubectl logs api-xyz -n prod --tail=50 ---\noutput for: logs api-xyz -n prod --tail=50',
+    );
+  });
+
+  it('lists pods and events for a namespace-only alert', async () => {
+    (runKubectl as ReturnType<typeof vi.fn>).mockImplementation((args: string) =>
+      Promise.resolve(`output for: ${args}`),
+    );
+
+    const result = await seedKubectl(baseAlert({ namespace: 'prod' }));
+
+    expect(runKubectl).toHaveBeenNthCalledWith(1, 'get pods -n prod', expect.anything());
+    expect(runKubectl).toHaveBeenNthCalledWith(2, 'get events -n prod --sort-by=.lastTimestamp', expect.anything());
+    // Note: the events label intentionally omits --sort-by=.lastTimestamp even though the
+    // executed command includes it — this pins a pre-existing label/command mismatch.
+    expect(result).toBe(
+      '--- kubectl get pods -n prod ---\noutput for: get pods -n prod\n\n' +
+      '--- kubectl get events -n prod ---\noutput for: get events -n prod --sort-by=.lastTimestamp',
+    );
+  });
+
+  it('returns an empty string and calls nothing when the alert has no pod or namespace', async () => {
+    const result = await seedKubectl(baseAlert());
+    expect(runKubectl).not.toHaveBeenCalled();
+    expect(result).toBe('');
+  });
+
+  it('swallows a runKubectl rejection and omits that entry', async () => {
+    (runKubectl as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new Error('kubectl not found'))
+      .mockResolvedValueOnce('pod-1  1/1  Running');
+
+    const result = await seedKubectl(baseAlert({ pod: 'api-xyz', namespace: 'prod' }));
+
+    expect(result).toBe('--- kubectl logs api-xyz -n prod --tail=50 ---\npod-1  1/1  Running');
+  });
+
+  it('omits Error:-prefixed and blocked-command results', async () => {
+    (runKubectl as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce('Error: pod not found')
+      .mockResolvedValueOnce(`${BLOCKED_PREFIX}not allowed`);
+
+    const result = await seedKubectl(baseAlert({ pod: 'api-xyz', namespace: 'prod' }));
+
+    expect(result).toBe('');
   });
 });
