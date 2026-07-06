@@ -45,6 +45,31 @@ export interface ExecAndReportParams {
   passthroughOnError?: boolean;
 }
 
+/** Combine execFile's stdout/stderr into the model-facing success output. */
+export function formatExecSuccessOutput(stdout: string, stderr: string, noOutputMessage: string): string {
+  return stdout.trim() || stderr.trim() || noOutputMessage;
+}
+
+/**
+ * Build the model-facing message for a failed exec.
+ *
+ * When `passthroughOnError` is set and `detail` is non-empty, `detail` is
+ * returned as-is (no prefix) — used for tools whose non-zero exit is a valid
+ * result rather than a genuine failure (e.g. Trivy exits 1 when
+ * vulnerabilities are found). Otherwise the message is prefixed with
+ * "<bin> exited with an error:", falling back to `fallbackDetail` when
+ * `detail` is empty.
+ */
+export function formatExecErrorMessage(
+  bin: string,
+  detail: string,
+  passthroughOnError: boolean,
+  fallbackDetail: string,
+): string {
+  if (passthroughOnError && detail) return detail;
+  return `${bin} exited with an error:\n${passthroughOnError ? fallbackDetail : detail}`;
+}
+
 /**
  * Run `bin argv` and turn the result into a model-facing string: redact
  * secrets, write an audit entry, and truncate to the caller's size limit.
@@ -60,18 +85,13 @@ export async function execAndReport(params: ExecAndReportParams): Promise<string
 
   try {
     const { stdout, stderr } = await execFileAsync(bin, argv, { encoding: 'utf8', ...execOptions });
-    const rawOutput = stdout.trim() || stderr.trim() || noOutputMessage;
-    const output = applyRedaction(rawOutput, regexRedactionRules);
+    const output = applyRedaction(formatExecSuccessOutput(stdout, stderr, noOutputMessage), regexRedactionRules);
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'ok' }, audit);
     return truncate(output);
   } catch (error) {
-    const rawDetail = getExecErrorDetail(error, stdoutFirst);
-    const detail = applyRedaction(rawDetail, regexRedactionRules);
+    const detail = applyRedaction(getExecErrorDetail(error, stdoutFirst), regexRedactionRules);
+    const fallbackDetail = passthroughOnError && !detail ? applyRedaction(String(error), regexRedactionRules) : '';
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
-    if (passthroughOnError) {
-      if (detail) return truncate(detail);
-      return truncate(`${bin} exited with an error:\n${applyRedaction(String(error), regexRedactionRules)}`);
-    }
-    return truncate(`${bin} exited with an error:\n${detail}`);
+    return truncate(formatExecErrorMessage(bin, detail, passthroughOnError, fallbackDetail));
   }
 }
