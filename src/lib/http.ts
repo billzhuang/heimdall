@@ -1,5 +1,5 @@
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { getMessage } from './error-utils.ts';
+import { getMessage, isAbortError } from './error-utils.ts';
 
 /**
  * Run an async operation under a hard AbortController timeout.
@@ -51,7 +51,7 @@ export async function readErrorDetail(
     const body = await response.text();
     return truncatedDetail(applyRedaction(body, redactionRules));
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') throw err;
+    if (isAbortError(err)) throw err;
     return '';
   }
 }
@@ -99,7 +99,7 @@ export function formatQueryError(
   timeoutMs: number,
   redactionRules: CompiledRedactionRule[],
 ): string {
-  if (err instanceof Error && err.name === 'AbortError') {
+  if (isAbortError(err)) {
     return `${service} query timed out after ${timeoutMs}ms.`;
   }
   const message = getMessage(err);

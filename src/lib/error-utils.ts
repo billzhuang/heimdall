@@ -20,6 +20,11 @@ export function getStackOrMessage(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
 }
 
+/** True if `err` is the Error raised by an AbortController/AbortSignal cancellation. */
+export function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'AbortError';
+}
+
 /**
  * Extract a human-readable detail string from an execFile / child_process
  * error (which may carry `stderr` and `stdout` alongside the standard

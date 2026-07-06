@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getMessage, getStackOrMessage, getExecErrorDetail } from '../error-utils.ts';
+import { getMessage, getStackOrMessage, getExecErrorDetail, isAbortError } from '../error-utils.ts';
 
 describe('getMessage', () => {
   it('returns message from an Error', () => {
@@ -76,5 +76,28 @@ describe('getExecErrorDetail', () => {
 
   it('does not throw when error is a primitive string', () => {
     expect(getExecErrorDetail('raw error')).toBe('raw error');
+  });
+});
+
+describe('isAbortError', () => {
+  it('returns true for an Error named AbortError', () => {
+    const err = new Error('The operation was aborted');
+    err.name = 'AbortError';
+    expect(isAbortError(err)).toBe(true);
+  });
+
+  it('returns true for a DOMException-style AbortError', () => {
+    expect(isAbortError(new DOMException('aborted', 'AbortError'))).toBe(true);
+  });
+
+  it('returns false for other Error names', () => {
+    expect(isAbortError(new Error('boom'))).toBe(false);
+    expect(isAbortError(new TypeError('bad type'))).toBe(false);
+  });
+
+  it('returns false for non-Error values', () => {
+    expect(isAbortError('AbortError')).toBe(false);
+    expect(isAbortError(null)).toBe(false);
+    expect(isAbortError(undefined)).toBe(false);
   });
 });
