@@ -11,7 +11,7 @@ import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { writeAudit, type AuditConfig } from './audit.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
-import { execAndReport } from './cli-exec.ts';
+import { execAndReport, DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
 import type { CompiledRedactionRule } from './regex-redact.ts';
 
 const EXEC_TIMEOUT_MS = 60_000;
@@ -19,7 +19,7 @@ const MAX_BUFFER_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_RESULT_CHARS = 20_000;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'narrow the query with stack selectors or --filter');
 
-export const NO_OUTPUT_MESSAGE = '(command produced no output)';
+export const NO_OUTPUT_MESSAGE = DEFAULT_NO_OUTPUT_MESSAGE;
 
 export interface RunCdkOptions {
   audit?: AuditConfig | null;
