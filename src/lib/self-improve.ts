@@ -133,6 +133,20 @@ export function formatScenarioSection(entries: LearningEntry[]): string {
   return entries.length > 0 ? formatLearningEntries(entries) : '';
 }
 
+/**
+ * Format a task-history section under `header` (with optional `intro` prose),
+ * or '' when `history` is empty. Shared by the interactive reflection prompt
+ * (`buildReflectionPrompt`) and the automated self-loop prompt
+ * (`buildAutoReflectionPrompt`) so the two can't silently drift apart.
+ */
+export function buildHistorySection(
+  history: TaskHistoryEntry[],
+  header: string,
+  intro = '',
+): string {
+  return history.length > 0 ? `${header}\n\n${intro}${buildTaskHistoryContext(history)}` : '';
+}
+
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */
 export async function appendLearningEntry(entry: LearningEntry, logPath: string): Promise<void> {
   await appendJsonlLine(entry, logPath);
@@ -228,12 +242,12 @@ export function buildReflectionPrompt(
   const historyLabel = useRag && hasFailures
     ? 'semantically similar to the failing scenario prompts'
     : 'most recent';
-  const historySection = hasHistory
-    ? `## Real-World Investigations (${historyLabel})\n\n` +
-      `The following are real prompts the agent handled. Review them for ` +
-      `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n` +
-      buildTaskHistoryContext(relevantHistory)
-    : '';
+  const historySection = buildHistorySection(
+    relevantHistory,
+    `## Real-World Investigations (${historyLabel})`,
+    `The following are real prompts the agent handled. Review them for ` +
+      `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n`,
+  );
 
   const failurePart = hasFailures
     ? `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +

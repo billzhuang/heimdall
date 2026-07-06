@@ -8,10 +8,9 @@
  * targeting src/lib/instructions.ts so changes are machine-parseable and reversible.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { formatScenarioSection, joinSections } from './self-improve.ts';
+import { buildHistorySection, formatScenarioSection, joinSections } from './self-improve.ts';
 import type { LearningEntry } from './self-improve.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
-import { buildTaskHistoryContext } from './task-history.ts';
 
 export interface SelfLoopPatch {
   find: string;
@@ -158,9 +157,7 @@ export function buildAutoReflectionPrompt(
 
   const scenarioList = formatScenarioSection(entries);
 
-  const historySection = hasHistory
-    ? `## Recent Real-World Investigations\n\n${buildTaskHistoryContext(taskHistory)}`
-    : '';
+  const historySection = buildHistorySection(taskHistory, '## Recent Real-World Investigations');
 
   const instructionsSection = `## Current instructions.ts content (abbreviated)\n\n\`\`\`\n${instructionsSnippet}\n\`\`\``;
 
