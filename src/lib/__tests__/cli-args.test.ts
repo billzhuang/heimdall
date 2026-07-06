@@ -4,6 +4,7 @@ import {
   requireNonEmptyValue,
   parseCommaSeparatedList,
   parseModelFlag,
+  parseAliasedFlag,
   isMainModule,
   resolveModelOrExit,
 } from '../cli-args.ts';
@@ -144,6 +145,48 @@ describe('parseModelFlag', () => {
     parseModelFlag(['--model='], 0);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('parseAliasedFlag', () => {
+  it('parses "--long <value>" and advances the index past the value', () => {
+    expect(parseAliasedFlag(['--scenario', 'oom'], 0, '--scenario', '-s')).toEqual({
+      value: 'oom',
+      nextIndex: 1,
+    });
+  });
+
+  it('parses "-short <value>" and advances the index past the value', () => {
+    expect(parseAliasedFlag(['-s', 'oom'], 0, '--scenario', '-s')).toEqual({
+      value: 'oom',
+      nextIndex: 1,
+    });
+  });
+
+  it('parses "--long=<value>" without advancing the index', () => {
+    expect(parseAliasedFlag(['--scenario=oom'], 0, '--scenario', '-s')).toEqual({
+      value: 'oom',
+      nextIndex: 0,
+    });
+  });
+
+  it('returns undefined when args[i] does not match the long or short flag', () => {
+    expect(parseAliasedFlag(['--other', 'oom'], 0, '--scenario', '-s')).toBeUndefined();
+  });
+
+  it('returns undefined when the long/short flag has no following value', () => {
+    expect(parseAliasedFlag(['--scenario'], 0, '--scenario', '-s')).toBeUndefined();
+  });
+
+  it('works without a short alias', () => {
+    expect(parseAliasedFlag(['--backend', 'codex-cli'], 0, '--backend')).toEqual({
+      value: 'codex-cli',
+      nextIndex: 1,
+    });
+    expect(parseAliasedFlag(['--backend=codex-cli'], 0, '--backend')).toEqual({
+      value: 'codex-cli',
+      nextIndex: 0,
+    });
   });
 });
 

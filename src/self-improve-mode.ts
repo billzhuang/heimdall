@@ -33,7 +33,7 @@ import {
 import { readTaskHistory, resolveTaskHistoryFilePath, type TaskHistoryEntry } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
 import { getStackOrMessage } from './lib/error-utils.ts';
-import { isMainModule } from './lib/cli-args.ts';
+import { isMainModule, parseAliasedFlag } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -93,10 +93,10 @@ export function parseSelfImproveArgs(args: string[]): SelfImproveCliArgs {
   let logStdout = false;
 
   for (let i = 0; i < args.length; i++) {
-    if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
-      scenarioFilter = args[++i];
-    } else if (args[i].startsWith('--scenario=')) {
-      scenarioFilter = args[i].slice('--scenario='.length);
+    let flag: { value: string; nextIndex: number } | undefined;
+    if ((flag = parseAliasedFlag(args, i, '--scenario', '-s'))) {
+      scenarioFilter = flag.value;
+      i = flag.nextIndex;
     } else if (args[i] === '--reflect') {
       reflect = true;
     } else if (args[i] === '--from-log') {

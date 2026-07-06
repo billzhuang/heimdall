@@ -71,6 +71,32 @@ export function parseModelFlag(
 }
 
 /**
+ * Match `args[i]` against a `--long`/`-short` flag (space-separated value) or
+ * a `--long=value` prefix. Returns `undefined` when `args[i]` matches neither
+ * form, so callers can chain it onto the next `else if` in a hand-rolled
+ * parsing loop unchanged — unlike `parseModelFlag`, a missing/empty value is
+ * not an error here, it's just a non-match.
+ *
+ * Returns the parsed value and the loop index to resume from (`i` unchanged
+ * for the `=` form, `i + 1` after consuming the following token).
+ */
+export function parseAliasedFlag(
+  args: string[],
+  i: number,
+  long: string,
+  short?: string,
+): { value: string; nextIndex: number } | undefined {
+  const arg = args[i];
+  if ((arg === long || arg === short) && args[i + 1]) {
+    return { value: args[i + 1], nextIndex: i + 1 };
+  }
+  if (arg.startsWith(`${long}=`)) {
+    return { value: arg.slice(long.length + 1), nextIndex: i };
+  }
+  return undefined;
+}
+
+/**
  * Resolve the effective model via `resolveModel`, writing an error to stderr
  * and exit(1) on an invalid specifier instead of throwing. Shared by the mode
  * entry points (alert-mode, eval-mode, triage-mode, watch-mode) that all
