@@ -13,7 +13,7 @@
  */
 import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   normaliseSeverity,
@@ -27,10 +27,10 @@ import {
 } from './github-action.ts';
 import type { OneShotFinding } from './format-output.ts';
 import { isMainModule } from './cli-args.ts';
+import { resolveBinPath } from './bin-path.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = dirname(__filename);
-const BIN_PATH   = resolve(__dirname, '..', '..', 'bin', 'heimdall');
+// This file lives in src/lib/, one level below the src/ dir that resolveBinPath expects.
+const BIN_PATH = resolveBinPath(dirname(dirname(fileURLToPath(import.meta.url))));
 
 /**
  * All environment-derived settings for a single action run.
