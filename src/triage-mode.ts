@@ -18,7 +18,6 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
-import { resolveModel } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import { parseTriageFindings, upsertBaseline, resolveBaselineFilePath } from './lib/baseline.ts';
 import {
@@ -36,7 +35,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule } from './lib/cli-args.ts';
+import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -255,13 +254,7 @@ Examples:
     }
   }
 
-  let resolvedModel: string;
-  try {
-    resolvedModel = resolveModel(modelFlag);
-  } catch (err) {
-    process.stderr.write(`Error: ${getMessage(err)}\n`);
-    process.exit(1);
-  }
+  const resolvedModel = resolveModelOrExit(modelFlag);
 
   runTriageMode(opts, resolvedModel).catch((err: unknown) => {
     process.stderr.write(`[heimdall-triage] Fatal error: ${getStackOrMessage(err)}\n`);

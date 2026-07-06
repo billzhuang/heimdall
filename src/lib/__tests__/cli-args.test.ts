@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule } from '../cli-args.ts';
+import {
+  requireNextArg,
+  requireNonEmptyValue,
+  parseCommaSeparatedList,
+  parseModelFlag,
+  isMainModule,
+  resolveModelOrExit,
+} from '../cli-args.ts';
 
 describe('requireNextArg', () => {
   afterEach(() => {
@@ -136,6 +143,32 @@ describe('parseModelFlag', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
     parseModelFlag(['--model='], 0);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('resolveModelOrExit', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns the resolved model for a valid "provider/model" flag', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    expect(resolveModelOrExit('anthropic/claude-opus-4-8')).toBe('anthropic/claude-opus-4-8');
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the default model when no flag is passed', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    expect(resolveModelOrExit()).toContain('/');
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('writes the underlying error and exits(1) for an invalid specifier', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    resolveModelOrExit('badmodel');
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Error: Invalid model "badmodel"'));
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

@@ -29,7 +29,6 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { HeimdallConfig } from './lib/config.ts';
 import { upsertBaseline, resolveBaselineFilePath, inferDiagnosisSeverity, truncateSummary } from './lib/baseline.ts';
-import { resolveModel } from './lib/model.ts';
 import {
   parseEventLine,
   matchesWatchFilter,
@@ -45,7 +44,7 @@ import {
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 
 const DIAGNOSIS_TIMEOUT_MS = 120_000;
@@ -332,13 +331,7 @@ export function parseWatchArgv(argv: string[]): WatchCliArgs {
 if (isMainModule(import.meta.url)) {
   const { modelFlag: watchModelFlag } = parseWatchArgv(process.argv.slice(2));
 
-  let resolvedWatchModel: string;
-  try {
-    resolvedWatchModel = resolveModel(watchModelFlag);
-  } catch (err) {
-    process.stderr.write(`Error: ${getMessage(err)}\n`);
-    process.exit(1);
-  }
+  const resolvedWatchModel = resolveModelOrExit(watchModelFlag);
 
   runWatchMode(resolvedWatchModel).catch((err: unknown) => {
     process.stderr.write(`[heimdall-watch] Fatal error: ${getStackOrMessage(err)}\n`);

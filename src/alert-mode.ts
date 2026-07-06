@@ -17,12 +17,11 @@ import { parseAlertManagerPayload, parsePagerDutyPayload, buildAlertPrompt, type
 import { runKubectl } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
-import { resolveModel } from './lib/model.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -183,13 +182,7 @@ Examples:
     process.exit(1);
   }
 
-  let resolvedModel: string;
-  try {
-    resolvedModel = resolveModel(modelFlag);
-  } catch (err) {
-    process.stderr.write(`Error: ${getMessage(err)}\n`);
-    process.exit(1);
-  }
+  const resolvedModel = resolveModelOrExit(modelFlag);
 
   runAlertMode({ source, input, seed, model: resolvedModel }).catch((err: unknown) => {
     process.stderr.write(`[heimdall-alert] Fatal: ${getStackOrMessage(err)}\n`);

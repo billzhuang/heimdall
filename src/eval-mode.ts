@@ -20,9 +20,8 @@ import {
   type EvalResult,
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { resolveModel } from './lib/model.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { parseModelFlag, isMainModule } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -83,13 +82,7 @@ async function main(): Promise<void> {
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const binPath = resolveBinPath(__dirname);
 
-  let resolvedModel: string;
-  try {
-    resolvedModel = resolveModel(modelFlag);
-  } catch (err) {
-    process.stderr.write(`Error: ${getMessage(err)}\n`);
-    process.exit(1);
-  }
+  const resolvedModel = resolveModelOrExit(modelFlag);
   process.env.HEIMDALL_MODEL = resolvedModel;
 
   let scenarios: Array<{ path: string; scenario: EvalScenario }>;
