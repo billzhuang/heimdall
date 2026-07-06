@@ -144,7 +144,8 @@ export function buildHistorySection(
   header: string,
   intro = '',
 ): string {
-  return history.length > 0 ? `${header}\n\n${intro}${buildTaskHistoryContext(history)}` : '';
+  const formattedIntro = intro ? `${intro.trim()}\n\n` : '';
+  return history.length > 0 ? `${header}\n\n${formattedIntro}${buildTaskHistoryContext(history)}` : '';
 }
 
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */
@@ -246,7 +247,7 @@ export function buildReflectionPrompt(
     relevantHistory,
     `## Real-World Investigations (${historyLabel})`,
     `The following are real prompts the agent handled. Review them for ` +
-      `patterns that suggest missing subagent coverage or miscalibrated severity.\n\n`,
+      `patterns that suggest missing subagent coverage or miscalibrated severity.`,
   );
 
   const failurePart = hasFailures
