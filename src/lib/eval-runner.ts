@@ -59,6 +59,17 @@ function requireOptionalArrayField(
   }
 }
 
+function requireOptionalObjectField(
+  parsed: Record<string, unknown>,
+  field: 'mocks',
+  filePath: string,
+): void {
+  const value = parsed[field];
+  if (value !== undefined && (typeof value !== 'object' || value === null || Array.isArray(value))) {
+    invalidScenario(filePath, `— "${field}" must be an object if provided`);
+  }
+}
+
 export async function loadScenario(filePath: string): Promise<EvalScenario> {
   const raw = await readFile(filePath, 'utf8');
   const parsed = loadYaml(raw) as Record<string, unknown>;
@@ -67,9 +78,7 @@ export async function loadScenario(filePath: string): Promise<EvalScenario> {
   }
   requireField(parsed, 'prompt', filePath, true);
   requireField(parsed, 'description', filePath, false);
-  if (parsed['mocks'] !== undefined && (typeof parsed['mocks'] !== 'object' || parsed['mocks'] === null || Array.isArray(parsed['mocks']))) {
-    invalidScenario(filePath, '— "mocks" must be an object if provided');
-  }
+  requireOptionalObjectField(parsed, 'mocks', filePath);
   requireOptionalArrayField(parsed, 'expectedKeywords', filePath);
   requireOptionalArrayField(parsed, 'forbiddenKeywords', filePath);
   return parsed as unknown as EvalScenario;
