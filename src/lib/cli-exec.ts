@@ -90,7 +90,7 @@ export async function execAndReport(params: ExecAndReportParams): Promise<string
     return truncate(output);
   } catch (error) {
     const detail = applyRedaction(getExecErrorDetail(error, stdoutFirst), regexRedactionRules);
-    const fallbackDetail = applyRedaction(String(error), regexRedactionRules);
+    const fallbackDetail = passthroughOnError && !detail ? applyRedaction(String(error), regexRedactionRules) : '';
     await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: true, durationMs: Date.now() - startMs, outcome: 'error' }, audit);
     return truncate(formatExecErrorMessage(bin, detail, passthroughOnError, fallbackDetail));
   }
