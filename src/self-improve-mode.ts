@@ -93,8 +93,8 @@ export function parseSelfImproveArgs(args: string[]): SelfImproveCliArgs {
   let logStdout = false;
 
   for (let i = 0; i < args.length; i++) {
-    let flag: { value: string; nextIndex: number } | undefined;
-    if ((flag = parseAliasedFlag(args, i, '--scenario', '-s'))) {
+    const flag = parseAliasedFlag(args, i, '--scenario', '-s');
+    if (flag) {
       scenarioFilter = flag.value;
       i = flag.nextIndex;
     } else if (args[i] === '--reflect') {

@@ -282,7 +282,8 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
   let reflectionTimeoutMs = 180_000;
 
   for (let i = 0; i < args.length; i++) {
-    let flag: { value: string; nextIndex: number } | undefined;
+    const backendFlag = parseAliasedFlag(args, i, '--backend', '-b');
+    const scenarioFlag = parseAliasedFlag(args, i, '--scenario', '-s');
     if ((args[i] === '--max-iterations' || args[i] === '-n') && args[i + 1]) {
       maxIterations = parseInt(args[++i], 10);
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
@@ -291,12 +292,12 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
     } else if (args[i] === '--dry-run') {
       dryRun = true;
-    } else if ((flag = parseAliasedFlag(args, i, '--backend', '-b'))) {
-      backend = flag.value;
-      i = flag.nextIndex;
-    } else if ((flag = parseAliasedFlag(args, i, '--scenario', '-s'))) {
-      scenarioFilter = flag.value;
-      i = flag.nextIndex;
+    } else if (backendFlag) {
+      backend = backendFlag.value;
+      i = backendFlag.nextIndex;
+    } else if (scenarioFlag) {
+      scenarioFilter = scenarioFlag.value;
+      i = scenarioFlag.nextIndex;
     } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
       cliLogPath = args[++i];
     } else if (args[i] === '--timeout' && args[i + 1]) {
