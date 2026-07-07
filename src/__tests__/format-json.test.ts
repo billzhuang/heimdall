@@ -41,6 +41,9 @@ function runFormatJson(input: string, env: Record<string, string> = {}) {
     env: { ...baseEnv, ...env },
   });
   if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`format-json.ts exited with status ${result.status}. Stderr: ${result.stderr}`);
+  }
   return result;
 }
 
