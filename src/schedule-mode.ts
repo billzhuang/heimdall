@@ -26,7 +26,7 @@
  */
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './lib/config.ts';
+import { loadConfig, type HeimdallConfig } from './lib/config.ts';
 import { nextFireTime, validateCronExpression } from './lib/schedule.ts';
 import { formatDurationMs } from './lib/duration.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
@@ -72,6 +72,41 @@ async function runTriage(opts: TriageOptions, signal?: AbortSignal): Promise<boo
   }
 }
 
+/** Resolution of the triage schedule read from heimdall.config.yaml. */
+export type ScheduleResolution =
+  | { ok: true; cron: string; triageOpts: TriageOptions }
+  | { ok: false; reason: 'disabled' }
+  | { ok: false; reason: 'invalid-cron'; cron: string; error: string };
+
+/**
+ * Pure resolution of the triage cron schedule from config: whether it's
+ * enabled, and if so, the validated cron expression and triage options.
+ * Kept separate from runScheduleMode so it can be unit-tested without
+ * mocking process.exit/stderr.
+ */
+export function resolveTriageSchedule(config: HeimdallConfig): ScheduleResolution {
+  const triageCfg = config.schedule?.triage;
+  if (!triageCfg?.enabled) {
+    return { ok: false, reason: 'disabled' };
+  }
+
+  const cron = triageCfg.cron ?? '0 */6 * * *';
+  const cronError = validateCronExpression(cron);
+  if (cronError) {
+    return { ok: false, reason: 'invalid-cron', cron, error: cronError };
+  }
+
+  // namespace takes precedence over allNamespaces (matches resolveNamespaceScope contract).
+  return {
+    ok: true,
+    cron,
+    triageOpts: {
+      namespace: triageCfg.namespace ?? undefined,
+      allNamespaces: triageCfg.allNamespaces ?? false,
+    },
+  };
+}
+
 /**
  * Main entry point for schedule mode.
  *
@@ -81,28 +116,21 @@ async function runTriage(opts: TriageOptions, signal?: AbortSignal): Promise<boo
  */
 export async function runScheduleMode(runOnce = false): Promise<void> {
   const config = loadConfig();
-  const scheduleCfg = config.schedule;
-  const triageCfg = scheduleCfg?.triage;
+  const resolution = resolveTriageSchedule(config);
 
-  if (!triageCfg?.enabled) {
-    process.stderr.write('[heimdall-schedule] No schedule is enabled in heimdall.config.yaml.\n');
-    process.stderr.write('[heimdall-schedule] Add schedule.triage.enabled: true to enable.\n');
-    if (!runOnce) process.exit(0);
+  if (!resolution.ok) {
+    if (resolution.reason === 'disabled') {
+      process.stderr.write('[heimdall-schedule] No schedule is enabled in heimdall.config.yaml.\n');
+      process.stderr.write('[heimdall-schedule] Add schedule.triage.enabled: true to enable.\n');
+      if (!runOnce) process.exit(0);
+      return;
+    }
+    process.stderr.write(`[heimdall-schedule] Invalid cron expression "${resolution.cron}": ${resolution.error}\n`);
+    process.exit(1);
     return;
   }
 
-  const cron = triageCfg.cron ?? '0 */6 * * *';
-  const cronError = validateCronExpression(cron);
-  if (cronError) {
-    process.stderr.write(`[heimdall-schedule] Invalid cron expression "${cron}": ${cronError}\n`);
-    process.exit(1);
-  }
-
-  // namespace takes precedence over allNamespaces (matches resolveNamespaceScope contract).
-  const triageOpts: TriageOptions = {
-    namespace: triageCfg.namespace ?? undefined,
-    allNamespaces: triageCfg.allNamespaces ?? false,
-  };
+  const { cron, triageOpts } = resolution;
 
   process.stderr.write(`[heimdall-schedule] Schedule mode started. Triage cron: "${cron}" (UTC)\n`);
 
