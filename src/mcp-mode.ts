@@ -70,6 +70,31 @@ function isValibotSchema(
   );
 }
 
+/** MCP tool input schema shape produced by {@link parametersToInputSchema}. */
+type InputSchemaShape = {
+  type: 'object';
+  properties?: Record<string, unknown>;
+  required?: string[];
+  [key: string]: unknown;
+};
+
+/**
+ * Lift `properties`/`required` off a JSON-Schema-like object into the MCP
+ * input schema shape, omitting either field when absent so callers don't see
+ * spurious `undefined` keys.
+ */
+function toInputSchemaShape(schemaLike: Record<string, unknown>): InputSchemaShape {
+  return {
+    type: 'object',
+    ...(schemaLike.properties !== undefined && {
+      properties: schemaLike.properties as Record<string, unknown>,
+    }),
+    ...(Array.isArray(schemaLike.required) && {
+      required: schemaLike.required as string[],
+    }),
+  };
+}
+
 /**
  * Convert a Flue ToolDefinition's parameters to an MCP-compatible JSON Schema
  * input schema object.
@@ -79,38 +104,17 @@ function isValibotSchema(
  * or other schema libraries) are passed through as-is. Falls back to a bare
  * `{ type: 'object' }` when neither conversion applies.
  */
-export function parametersToInputSchema(input: unknown): {
-  type: 'object';
-  properties?: Record<string, unknown>;
-  required?: string[];
-  [key: string]: unknown;
-} {
+export function parametersToInputSchema(input: unknown): InputSchemaShape {
   if (isValibotSchema(input)) {
     try {
-      const jsonSchema = toJsonSchema(input) as Record<string, unknown>;
-      return {
-        type: 'object',
-        ...(jsonSchema.properties !== undefined && {
-          properties: jsonSchema.properties as Record<string, unknown>,
-        }),
-        ...(Array.isArray(jsonSchema.required) && {
-          required: jsonSchema.required as string[],
-        }),
-      };
+      return toInputSchemaShape(toJsonSchema(input) as Record<string, unknown>);
     } catch {
       // Conversion failed — fall through to bare schema below.
     }
   }
 
   // input is a raw JSON Schema object (or something unrecognised) — use directly.
-  const raw = (input ?? {}) as Record<string, unknown>;
-  return {
-    type: 'object',
-    ...(raw.properties !== undefined && {
-      properties: raw.properties as Record<string, unknown>,
-    }),
-    ...(Array.isArray(raw.required) && { required: raw.required as string[] }),
-  };
+  return toInputSchemaShape((input ?? {}) as Record<string, unknown>);
 }
 
 export function createMcpServer(): Server {
