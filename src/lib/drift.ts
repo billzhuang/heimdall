@@ -85,15 +85,16 @@ function appendDiffFindings(
   for (const key of diff.removed) findings.push(makeRemoved(key));
 }
 
+/** Shared appeared/gone wording used by both namespace and workload findings. */
+function appearedOrGone(added: boolean): string {
+  return added ? 'appeared since the last triage run.' : 'was present at the last triage run but is now gone.';
+}
+
 function makeWorkloadFinding(type: 'new_workload' | 'deleted_workload', w: WorkloadRef): DriftFinding {
-  const action =
-    type === 'new_workload'
-      ? 'appeared since the last triage run.'
-      : 'was present at the last triage run but is now gone.';
   return {
     type,
     resource: `${w.kind}/${w.name} in ${w.namespace}`,
-    message: `${w.kind} "${w.name}" in namespace "${w.namespace}" ${action}`,
+    message: `${w.kind} "${w.name}" in namespace "${w.namespace}" ${appearedOrGone(type === 'new_workload')}`,
   };
 }
 
@@ -113,8 +114,8 @@ export function detectDrift(
   appendDiffFindings(
     findings,
     diffStringSet(new Set(previous.namespaces), new Set(current.namespaces)),
-    (ns) => ({ type: 'new_namespace', resource: `Namespace/${ns}`, message: `Namespace "${ns}" appeared since the last triage run.` }),
-    (ns) => ({ type: 'deleted_namespace', resource: `Namespace/${ns}`, message: `Namespace "${ns}" was present at the last triage run but is now gone.` }),
+    (ns) => ({ type: 'new_namespace', resource: `Namespace/${ns}`, message: `Namespace "${ns}" ${appearedOrGone(true)}` }),
+    (ns) => ({ type: 'deleted_namespace', resource: `Namespace/${ns}`, message: `Namespace "${ns}" ${appearedOrGone(false)}` }),
   );
 
   // Workload changes
