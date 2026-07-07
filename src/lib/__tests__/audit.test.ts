@@ -196,11 +196,14 @@ describe('reportBlocked', () => {
     });
   });
 
-  it('still returns the BLOCKED_PREFIX string when audit is disabled', async () => {
+  it('still returns the BLOCKED_PREFIX string when audit is disabled, null, or undefined', async () => {
     const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const result = await reportBlocked('aws ec2 terminate-instances', 'now', { enabled: false }, 'destructive AWS command blocked');
 
-    expect(result).toBe('BLOCKED: destructive AWS command blocked');
+    for (const auditVal of [{ enabled: false }, null, undefined]) {
+      const result = await reportBlocked('aws ec2 terminate-instances', 'now', auditVal, 'destructive AWS command blocked');
+      expect(result).toBe('BLOCKED: destructive AWS command blocked');
+    }
+
     expect(spy).not.toHaveBeenCalled();
   });
 });
