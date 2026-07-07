@@ -36,7 +36,7 @@ import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.t
 import { invokeAgentForFinding } from './lib/agent-invoke.ts';
 import { isPlainObject, optionalString, requireNonEmptyStringField } from './lib/json-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
-import { die, isMainModule } from './lib/cli-args.ts';
+import { isMainModule, handleHelpOrUnknownOption } from './lib/cli-args.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -398,11 +398,8 @@ export function parseServeArgv(argv: string[]): ServeCliArgs {
       ({ value: hostArg, nextIndex: i } = matchOptionalValueFlag(argv, i, '--host'));
     } else if (arg === '--model' || arg.startsWith('--model=')) {
       ({ value: modelArg, nextIndex: i } = matchOptionalValueFlag(argv, i, '--model'));
-    } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(SERVE_HELP_TEXT);
-      process.exit(0);
     } else {
-      die(`unknown option: ${arg}`);
+      handleHelpOrUnknownOption(arg, SERVE_HELP_TEXT);
     }
   }
 
