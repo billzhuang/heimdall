@@ -108,7 +108,7 @@ export function spawnAndCollect(
       detached,
     });
 
-    if (stdio === 'pipe' || stdio === 'tee' || stdio === 'stdout') {
+    if (stdio !== 'inherit') {
       child.stdout?.on('data', (chunk: Buffer) => {
         outChunks.push(chunk);
         if (stdio === 'tee') process.stdout.write(chunk);
