@@ -11,6 +11,7 @@ import {
   appendLearningEntry,
   resolveLogPath,
   resolveRagOptions,
+  includeIf,
 } from '../self-improve.ts';
 import type { HeimdallConfig } from '../config.ts';
 import type { TaskHistoryEntry } from '../task-history.ts';
@@ -18,6 +19,16 @@ import type { TaskHistoryEntry } from '../task-history.ts';
 function makeHistoryEntry(prompt: string, summary: string): TaskHistoryEntry {
   return { id: `id-${prompt}`, timestamp: '2026-01-01T00:00:00.000Z', prompt, model: 'test-model', severity: 'info', summary };
 }
+
+describe('includeIf', () => {
+  it('returns a single-element array with value when condition is true', () => {
+    expect(includeIf(true, 'section text')).toEqual(['section text']);
+  });
+
+  it('returns an empty array when condition is false', () => {
+    expect(includeIf(false, 'section text')).toEqual([]);
+  });
+});
 
 describe('generateSuggestion', () => {
   it('returns fallback for empty failures array', () => {
