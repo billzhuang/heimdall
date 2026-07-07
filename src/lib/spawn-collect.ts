@@ -26,6 +26,18 @@ function killChild(child: ChildProcess, detached: boolean, signal: NodeJS.Signal
   child.kill(signal);
 }
 
+/**
+ * Map a `stdio` mode to the child's stdio array. `'inherit'` passes stdout and
+ * stderr straight through; `'pipe'` buffers both; `'tee'` and `'stdout'` both
+ * buffer stdout and inherit stderr (they differ only in whether the caller
+ * also echoes stdout live, which happens in the `data` handler, not here).
+ */
+function stdioArrayFor(stdio: 'pipe' | 'inherit' | 'tee' | 'stdout'): ['ignore', 'inherit' | 'pipe', 'inherit' | 'pipe'] {
+  if (stdio === 'inherit') return ['ignore', 'inherit', 'inherit'];
+  if (stdio === 'pipe') return ['ignore', 'pipe', 'pipe'];
+  return ['ignore', 'pipe', 'inherit'];
+}
+
 export interface SpawnAndCollectOptions {
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
@@ -101,10 +113,7 @@ export function spawnAndCollect(
 
     const child = spawn(binPath, args, {
       env,
-      stdio:
-        stdio === 'inherit' ? ['ignore', 'inherit', 'inherit']
-        : stdio === 'pipe' ? ['ignore', 'pipe', 'pipe']
-        : ['ignore', 'pipe', 'inherit'], // 'tee' and 'stdout' both capture stdout, inherit stderr
+      stdio: stdioArrayFor(stdio),
       detached,
     });
 
@@ -142,10 +151,14 @@ export function spawnAndCollect(
     };
     if (signal) signal.addEventListener('abort', onSignalAbort, { once: true });
 
-    child.on('close', (code: number | null, childSignal: string | null) => {
+    const clearPendingTimers = () => {
       clearTimeout(timer);
       if (killGraceTimer) clearTimeout(killGraceTimer);
       if (signal) signal.removeEventListener('abort', onSignalAbort);
+    };
+
+    child.on('close', (code: number | null, childSignal: string | null) => {
+      clearPendingTimers();
       settle(() => {
         const stdout = Buffer.concat(outChunks).toString('utf8').trim();
         const stderr = Buffer.concat(errChunks).toString('utf8').trim();
@@ -155,9 +168,7 @@ export function spawnAndCollect(
     });
 
     child.on('error', (err: Error) => {
-      clearTimeout(timer);
-      if (killGraceTimer) clearTimeout(killGraceTimer);
-      if (signal) signal.removeEventListener('abort', onSignalAbort);
+      clearPendingTimers();
       settle(() => reject(err));
     });
   });
