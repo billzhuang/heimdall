@@ -133,6 +133,15 @@ export function formatScenarioSection(entries: LearningEntry[]): string {
   return entries.length > 0 ? formatLearningEntries(entries) : '';
 }
 
+/**
+ * Wrap `value` in a single-element array when `condition` is true, or return
+ * `[]` otherwise. Shared by buildReflectionPrompt and buildAutoReflectionPrompt
+ * to conditionally splice an optional section into their `sections` array.
+ */
+export function includeIf(condition: boolean, value: string): string[] {
+  return condition ? [value] : [];
+}
+
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */
 export async function appendLearningEntry(entry: LearningEntry, logPath: string): Promise<void> {
   await appendJsonlLine(entry, logPath);
@@ -244,8 +253,8 @@ export function buildReflectionPrompt(
 
   const sections: string[] = [
     `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` + failurePart,
-    ...(hasFailures ? [scenarioList] : []),
-    ...(hasHistory ? [historySection] : []),
+    ...includeIf(hasFailures, scenarioList),
+    ...includeIf(hasHistory, historySection),
   ];
 
   const taskItems: string[] = [];
