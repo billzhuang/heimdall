@@ -58,7 +58,7 @@ function dieOnInvalidServerUrl(url: string, context = ''): void {
   try {
     new URL(url);
   } catch (err) {
-    die(`Invalid server URL "${url}"${context}: ${(err as Error).message}`);
+    die(`Invalid server URL "${url}"${context}: ${getMessage(err)}`);
   }
 }
 
