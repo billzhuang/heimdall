@@ -36,7 +36,7 @@ import { runAgentDiagnose } from './serve-mode.ts';
 import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
-import { getMessage } from './lib/error-utils.ts';
+import { invokeAgentForFinding } from './lib/agent-invoke.ts';
 import { isPlainObject, optionalString } from './lib/json-utils.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
@@ -138,17 +138,11 @@ export function createAgentCoreApp(
 
     const model = resolveModelOrUndefined(defaultModel) ?? resolveModel(undefined);
 
-    try {
-      const raw = await agentFn(body.inputText, model);
-      const trimmed = raw.trim();
-      if (!trimmed) {
-        return c.json({ error: 'Agent produced no output' }, 500);
-      }
-      const finding = JSON.parse(trimmed) as OneShotFinding;
-      return c.json(buildAgentCoreResponse(finding, trimmed, body));
-    } catch (err) {
-      return c.json({ error: `Agent error: ${getMessage(err)}` }, 500);
+    const invocation = await invokeAgentForFinding(agentFn, body.inputText, model);
+    if (!invocation.ok) {
+      return c.json({ error: invocation.error }, invocation.status);
     }
+    return c.json(buildAgentCoreResponse(invocation.finding, invocation.trimmed, body));
   });
 
   return app;

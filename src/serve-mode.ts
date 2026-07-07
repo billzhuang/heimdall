@@ -30,11 +30,10 @@ import { bearerAuth } from 'hono/bearer-auth';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
-import type { OneShotFinding } from './lib/format-output.ts';
 import { resolveModel } from './lib/model.ts';
 import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
-import { getMessage } from './lib/error-utils.ts';
+import { invokeAgentForFinding } from './lib/agent-invoke.ts';
 import { isPlainObject, optionalString } from './lib/json-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { isMainModule } from './lib/cli-args.ts';
@@ -312,17 +311,11 @@ export function createServeApp(
       ? `${prompt}\n\nScope: namespace "${namespace}"`
       : prompt;
 
-    try {
-      const raw = await agentFn(fullPrompt, model);
-      const trimmed = raw.trim();
-      if (!trimmed) {
-        return c.json({ error: 'Agent produced no output' }, 500);
-      }
-      const finding = JSON.parse(trimmed) as OneShotFinding;
-      return c.json(finding);
-    } catch (err) {
-      return c.json({ error: `Agent error: ${getMessage(err)}` }, 500);
+    const invocation = await invokeAgentForFinding(agentFn, fullPrompt, model);
+    if (!invocation.ok) {
+      return c.json({ error: invocation.error }, invocation.status);
     }
+    return c.json(invocation.finding);
   });
 
   return app;
