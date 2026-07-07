@@ -28,7 +28,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './lib/config.ts';
 import type { HeimdallConfig } from './lib/config.ts';
-import { upsertBaseline, resolveBaselineFilePath, inferDiagnosisSeverity, truncateSummary } from './lib/baseline.ts';
+import { upsertBaseline, resolveBaselineFilePath, truncateSummary } from './lib/baseline.ts';
 import {
   parseEventLine,
   matchesWatchFilter,
@@ -110,7 +110,7 @@ async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
  * Aborting `signal` immediately closes the readline interface and kills
  * kubectl, unblocking the for-await loop even when no events are arriving.
  */
-async function runWatchStream(
+export async function runWatchStream(
   kubectlArgs: string[],
   watchCfg: HeimdallConfig['watch'],
   cooldownState: CooldownState,
@@ -187,7 +187,6 @@ async function runWatchStream(
     // Write a baseline entry so recurring events are recognised in future runs.
     if (baselineFile) {
       const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
-      const severity = inferDiagnosisSeverity(diagnosis);
       const summary = truncateSummary(`[${event.reason}] ${diagnosis}`);
       const { kind: baselineKind, name: baselineName } = eventObjectRef(event);
       try {
@@ -195,7 +194,6 @@ async function runWatchStream(
       } catch (err: unknown) {
         process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${getMessage(err)}\n`);
       }
-      void severity; // severity captured for future filtering; currently all watch events are recorded
     }
 
     if (watchCfg?.webhook) {
