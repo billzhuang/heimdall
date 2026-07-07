@@ -171,7 +171,16 @@ describe('sendSlackNotification — error handling', () => {
     await expect(
       sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG),
     ).resolves.toBeUndefined();
-    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('HTTP 500'));
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('HTTP 500): internal_error'));
+  });
+
+  it('truncates the response body detail to 200 chars', async () => {
+    mockFetch(503, 'x'.repeat(250));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG);
+    expect(stderrSpy).toHaveBeenCalledWith(
+      `[heimdall] Slack notification failed (HTTP 503): ${'x'.repeat(200)}\n`,
+    );
   });
 
   it('does not throw on network error', async () => {

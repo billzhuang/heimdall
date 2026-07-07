@@ -29,7 +29,7 @@ export function fetchWithTimeout<T>(
 }
 
 /** Cap a body string at 200 characters and format it as a `: <body>` suffix (empty string when blank). */
-function truncatedDetail(body: string): string {
+export function truncatedDetail(body: string): string {
   return body ? `: ${body.slice(0, 200)}` : '';
 }
 

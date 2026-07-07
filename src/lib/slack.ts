@@ -9,7 +9,7 @@
  * without throwing so the calling code can emit its result normally.
  */
 import type { OneShotFinding } from './format-output.ts';
-import { withTimeout } from './http.ts';
+import { truncatedDetail, withTimeout } from './http.ts';
 import { getMessage, isAbortError } from './error-utils.ts';
 
 export interface SlackConfig {
@@ -111,7 +111,7 @@ export async function sendSlackNotification(
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
-        const detail = body ? `: ${body.slice(0, 200)}` : '';
+        const detail = truncatedDetail(body);
         process.stderr.write(
           `[heimdall] Slack notification failed (HTTP ${response.status})${detail}\n`,
         );
