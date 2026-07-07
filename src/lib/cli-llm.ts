@@ -20,6 +20,21 @@ export interface CliLlmOptions {
   model?: string;
 }
 
+/** Builds the argv for a `callCli` invocation: `[promptFlag, prompt, --model, <model>?]`. */
+export function buildCliArgs(promptFlag: string, prompt: string, opts: CliLlmOptions = {}): string[] {
+  const args: string[] = [promptFlag, prompt];
+  if (opts.model) args.push('--model', opts.model);
+  return args;
+}
+
+/** Builds the `execFile` options for a `callCli` invocation. */
+export function buildCliExecOptions(opts: CliLlmOptions = {}): { timeout: number; maxBuffer: number } {
+  return {
+    timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxBuffer: MAX_BUFFER_BYTES,
+  };
+}
+
 /**
  * Returns `{ callCli, isCliAvailable }` bound to the given binary and prompt flag.
  */
@@ -28,13 +43,11 @@ export function makeCliLlm(cliName: string, promptFlag: string): {
   isCliAvailable: () => Promise<boolean>;
 } {
   async function callCli(prompt: string, opts: CliLlmOptions = {}): Promise<string> {
-    const args: string[] = [promptFlag, prompt];
-    if (opts.model) args.push('--model', opts.model);
-
-    const { stdout } = await execFileAsync(cliName, args, {
-      timeout: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      maxBuffer: MAX_BUFFER_BYTES,
-    });
+    const { stdout } = await execFileAsync(
+      cliName,
+      buildCliArgs(promptFlag, prompt, opts),
+      buildCliExecOptions(opts),
+    );
 
     return stdout.trim();
   }
