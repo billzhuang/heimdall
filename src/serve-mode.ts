@@ -90,6 +90,28 @@ export async function runAgentDiagnose(
   });
 }
 
+type ParsedDiagnoseRequest =
+  | { ok: true; prompt: string; namespace?: string; model?: string }
+  | { ok: false; error: string };
+
+/** Validate and normalize a parsed JSON body into diagnose request fields. Pure — no I/O. */
+export function parseDiagnoseRequestBody(parsed: unknown): ParsedDiagnoseRequest {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, error: 'Invalid JSON body: expected an object' };
+  }
+  const body = parsed as Record<string, unknown>;
+  const prompt = body['prompt'];
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return { ok: false, error: '"prompt" is required and must be a non-empty string' };
+  }
+  return {
+    ok: true,
+    prompt: prompt.trim(),
+    namespace: typeof body['namespace'] === 'string' ? body['namespace'] : undefined,
+    model: typeof body['model'] === 'string' ? body['model'] : undefined,
+  };
+}
+
 const OPENAPI_SPEC = {
   openapi: '3.1.0',
   info: {
@@ -259,29 +281,18 @@ export function createServeApp(
   });
 
   app.post('/api/diagnose', async (c) => {
-    let body: Record<string, unknown>;
+    let parsed: unknown;
     try {
-      const parsed = await c.req.json<unknown>();
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return c.json({ error: 'Invalid JSON body: expected an object' }, 400);
-      }
-      body = parsed as Record<string, unknown>;
+      parsed = await c.req.json<unknown>();
     } catch {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
 
-    const prompt = body['prompt'];
-    if (typeof prompt !== 'string' || !prompt.trim()) {
-      return c.json(
-        { error: '"prompt" is required and must be a non-empty string' },
-        400,
-      );
+    const result = parseDiagnoseRequestBody(parsed);
+    if (!result.ok) {
+      return c.json({ error: result.error }, 400);
     }
-
-    const namespace =
-      typeof body['namespace'] === 'string' ? body['namespace'] : undefined;
-    const modelOverride =
-      typeof body['model'] === 'string' ? body['model'] : undefined;
+    const { prompt, namespace, model: modelOverride } = result;
 
     let model: string;
     try {
@@ -298,8 +309,8 @@ export function createServeApp(
     }
 
     const fullPrompt = namespace
-      ? `${prompt.trim()}\n\nScope: namespace "${namespace}"`
-      : prompt.trim();
+      ? `${prompt}\n\nScope: namespace "${namespace}"`
+      : prompt;
 
     try {
       const raw = await agentFn(fullPrompt, model);
