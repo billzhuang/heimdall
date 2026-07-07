@@ -35,6 +35,7 @@ import { resolveModel } from './lib/model.ts';
 import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { getMessage } from './lib/error-utils.ts';
+import { isPlainObject, optionalString } from './lib/json-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { isMainModule } from './lib/cli-args.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
@@ -96,19 +97,18 @@ type ParsedDiagnoseRequest =
 
 /** Validate and normalize a parsed JSON body into diagnose request fields. Pure — no I/O. */
 export function parseDiagnoseRequestBody(parsed: unknown): ParsedDiagnoseRequest {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (!isPlainObject(parsed)) {
     return { ok: false, error: 'Invalid JSON body: expected an object' };
   }
-  const body = parsed as Record<string, unknown>;
-  const prompt = body['prompt'];
+  const prompt = parsed['prompt'];
   if (typeof prompt !== 'string' || !prompt.trim()) {
     return { ok: false, error: '"prompt" is required and must be a non-empty string' };
   }
   return {
     ok: true,
     prompt: prompt.trim(),
-    namespace: typeof body['namespace'] === 'string' ? body['namespace'] : undefined,
-    model: typeof body['model'] === 'string' ? body['model'] : undefined,
+    namespace: optionalString(parsed['namespace']),
+    model: optionalString(parsed['model']),
   };
 }
 

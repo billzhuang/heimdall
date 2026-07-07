@@ -6,6 +6,7 @@
  * source. Extracts structured fields from alert labels/annotations so the
  * investigation prompt is concise and targeted.
  */
+import { isPlainObject, optionalString } from './json-utils.ts';
 
 export interface ParsedAlert {
   alertname: string;
@@ -36,11 +37,6 @@ interface AlertManagerPayload {
   alerts?: AlertManagerAlert[];
 }
 
-/** Narrows `v` to a non-null, non-array object. */
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === 'object' && !Array.isArray(v);
-}
-
 /**
  * Parse an AlertManager v4 webhook payload.
  * Returns one `ParsedAlert` per firing alert entry.
@@ -67,8 +63,8 @@ function parseOneAlert(alert: AlertManagerAlert): ParsedAlert {
     pod: clean.pod ?? extractPodFromInstance(clean.instance),
     deployment: clean.deployment ?? clean.job,
     severity: clean.severity,
-    summary: typeof ann.summary === 'string' ? ann.summary : undefined,
-    description: typeof ann.description === 'string' ? ann.description : undefined,
+    summary: optionalString(ann.summary),
+    description: optionalString(ann.description),
     labels: clean,
   };
 }

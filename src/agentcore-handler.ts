@@ -37,6 +37,7 @@ import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { getMessage } from './lib/error-utils.ts';
+import { isPlainObject, optionalString } from './lib/json-utils.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
 const AGENTCORE_PORT_DEFAULT = 8080;
@@ -61,24 +62,21 @@ type ParsedAgentCoreRequest =
 
 /** Validate and normalize a parsed JSON body into an AgentCoreRequest. Pure — no I/O. */
 export function parseAgentCoreRequestBody(parsed: unknown): ParsedAgentCoreRequest {
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  if (!isPlainObject(parsed)) {
     return { ok: false, error: 'Invalid JSON body: expected an object' };
   }
-  const raw = parsed as Record<string, unknown>;
-  if (typeof raw['inputText'] !== 'string' || !(raw['inputText'] as string).trim()) {
+  const inputText = parsed['inputText'];
+  if (typeof inputText !== 'string' || !inputText.trim()) {
     return { ok: false, error: '"inputText" is required and must be a non-empty string' };
   }
   return {
     ok: true,
     body: {
-      inputText: (raw['inputText'] as string).trim(),
-      sessionId: typeof raw['sessionId'] === 'string' ? raw['sessionId'] : undefined,
-      sessionAttributes:
-        raw['sessionAttributes'] &&
-        typeof raw['sessionAttributes'] === 'object' &&
-        !Array.isArray(raw['sessionAttributes'])
-          ? (raw['sessionAttributes'] as Record<string, string>)
-          : undefined,
+      inputText: inputText.trim(),
+      sessionId: optionalString(parsed['sessionId']),
+      sessionAttributes: isPlainObject(parsed['sessionAttributes'])
+        ? (parsed['sessionAttributes'] as Record<string, string>)
+        : undefined,
     },
   };
 }
