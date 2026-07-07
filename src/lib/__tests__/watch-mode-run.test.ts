@@ -14,7 +14,10 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: vi.fn() };
+});
 
 import { spawn } from 'node:child_process';
 import { runWatchStream } from '../../watch-mode.ts';
@@ -38,7 +41,7 @@ function fakeAgentChild(stdoutData: string) {
     stdout.emit('data', Buffer.from(stdoutData));
     childEmitter.emit('close', 0, null);
   });
-  return Object.assign(childEmitter, { stdout, stderr: new EventEmitter() });
+  return Object.assign(childEmitter, { stdout, stderr: new EventEmitter(), kill: vi.fn() });
 }
 
 const WARNING_EVENT = {
