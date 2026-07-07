@@ -21,12 +21,11 @@ import { promisify } from 'node:util';
 import { validateCommand, applyNamespaceLockdown } from './kubectl-safety.ts';
 import { tokenizeShellArgs, buildShellCommand } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { BLOCKED_PREFIX } from './harness.ts';
 import { recordCacheHit, recordCacheMiss } from './telemetry.ts';
 import { IN_CLUSTER_CONTEXT, isInCluster, parseKubeconfig, resolveKubeconfigPath } from './kubeconfig.ts';
 import { redactSecretValues } from './redact.ts';
 import { applyRedaction, type CompiledRedactionRule } from './regex-redact.ts';
-import { writeAudit, type AuditConfig, type AuditEntry } from './audit.ts';
+import { writeAudit, reportBlocked, type AuditConfig, type AuditEntry } from './audit.ts';
 import { getExecErrorDetail } from './error-utils.ts';
 import { DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
 export type { AuditConfig } from './audit.ts';
@@ -329,8 +328,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   const cmd = buildShellCommand('kubectl', argv);
   const validation = validateCommand(cmd);
   if (!validation.allowed) {
-    await auditKubectlCall(cmd, startTs, audit, { allowed: false, outcome: 'blocked' });
-    return `${BLOCKED_PREFIX}${validation.reason}`;
+    return reportBlocked(cmd, startTs, audit, validation.reason);
   }
 
   // Enforce namespace lockdown: block cross-namespace reads and inject the
@@ -339,8 +337,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   if (typeof options.lockedNamespace === 'string') {
     const lockdown = applyNamespaceLockdown(argv, options.lockedNamespace);
     if (lockdown.blocked) {
-      await auditKubectlCall(cmd, startTs, audit, { allowed: false, outcome: 'blocked' });
-      return `${BLOCKED_PREFIX}${lockdown.reason}`;
+      return reportBlocked(cmd, startTs, audit, lockdown.reason ?? '');
     }
     argv = lockdown.argv;
   }

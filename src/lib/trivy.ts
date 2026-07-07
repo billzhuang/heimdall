@@ -12,8 +12,7 @@
  */
 import { validateTrivyCommand } from './trivy-safety.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { writeAudit, type AuditConfig } from './audit.ts';
-import { BLOCKED_PREFIX } from './harness.ts';
+import { reportBlocked, type AuditConfig } from './audit.ts';
 import { execAndReport } from './cli-exec.ts';
 import type { CompiledRedactionRule } from './regex-redact.ts';
 
@@ -69,8 +68,7 @@ export async function runTrivy(
 
   const validation = validateTrivyCommand(cmd);
   if (!validation.allowed) {
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
-    return `${BLOCKED_PREFIX}${validation.reason}`;
+    return reportBlocked(cmd, startTs, audit, validation.reason);
   }
 
   // Trivy exits non-zero when vulnerabilities are found (exit code 1) — that

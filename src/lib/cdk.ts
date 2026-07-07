@@ -9,8 +9,7 @@
  */
 import { validateCdkCommand, tokenizeCdkCommand } from './cdk-safety.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { writeAudit, type AuditConfig } from './audit.ts';
-import { BLOCKED_PREFIX } from './harness.ts';
+import { reportBlocked, type AuditConfig } from './audit.ts';
 import { execAndReport, DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
 import type { CompiledRedactionRule } from './regex-redact.ts';
 
@@ -68,8 +67,7 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   }
 
   if (!validation.allowed) {
-    await writeAudit({ ts: startTs, level: 'audit', cmd: cmdStr, allowed: false, outcome: 'blocked' }, audit);
-    return `${BLOCKED_PREFIX}${validation.reason}`;
+    return reportBlocked(cmdStr, startTs, audit, validation.reason);
   }
 
   // Tokenize after validation so we exec the same tokens the validator parsed.

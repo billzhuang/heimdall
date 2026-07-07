@@ -10,8 +10,7 @@
 import { validateAwsCommand } from './aws-safety.ts';
 import { tokenizeShellArgs, buildShellCommand } from './tokenizer.ts';
 import { makeTruncate } from './output-truncation.ts';
-import { writeAudit, type AuditConfig } from './audit.ts';
-import { BLOCKED_PREFIX } from './harness.ts';
+import { reportBlocked, type AuditConfig } from './audit.ts';
 import { execAndReport, DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
 import type { CompiledRedactionRule } from './regex-redact.ts';
 
@@ -84,8 +83,7 @@ export async function runAwsCli(args: string, options: RunAwsCliOptions = {}): P
   }
 
   if (!validation.allowed) {
-    await writeAudit({ ts: startTs, level: 'audit', cmd, allowed: false, outcome: 'blocked' }, audit);
-    return `${BLOCKED_PREFIX}${validation.reason}`;
+    return reportBlocked(cmd, startTs, audit, validation.reason);
   }
 
   return execAndReport({
