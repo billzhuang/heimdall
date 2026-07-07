@@ -24,9 +24,9 @@
  */
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { resolve, dirname } from 'node:path';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './lib/config.ts';
+import { loadConfig, resolveConfigDir } from './lib/config.ts';
 import type { HeimdallConfig } from './lib/config.ts';
 import { upsertBaseline, resolveBaselineFilePath, truncateSummary } from './lib/baseline.ts';
 import {
@@ -222,10 +222,7 @@ export async function runWatchMode(model?: string): Promise<void> {
   const cooldownState: CooldownState = new Map();
 
   const baselineFile = config.learning?.enabled !== false
-    ? (() => {
-        const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
-        return resolveBaselineFilePath(config.learning?.baselineFile, configDir);
-      })()
+    ? resolveBaselineFilePath(config.learning?.baselineFile, resolveConfigDir())
     : null;
 
   // Watch a single namespace explicitly, or all namespaces (-A).

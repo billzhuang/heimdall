@@ -18,7 +18,7 @@
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildTriagePrompt, type TriageOptions } from './lib/triage.ts';
-import { loadConfig } from './lib/config.ts';
+import { loadConfig, resolveConfigDir } from './lib/config.ts';
 import { parseTriageFindings, upsertBaseline, resolveBaselineFilePath } from './lib/baseline.ts';
 import {
   loadCheckpoint,
@@ -167,8 +167,7 @@ async function performDriftDetection(config: LoadedConfig): Promise<string> {
 async function recordBaselines(config: LoadedConfig, output: string): Promise<void> {
   if (config.learning?.enabled === false || !output) return;
 
-  const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
-  const baselineFile = resolveBaselineFilePath(config.learning?.baselineFile, configDir);
+  const baselineFile = resolveBaselineFilePath(config.learning?.baselineFile, resolveConfigDir());
   const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
   const findings = parseTriageFindings(output);
   for (const finding of findings) {

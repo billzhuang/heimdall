@@ -6,7 +6,7 @@
  * back to safe defaults so the agent works out-of-the-box with zero config.
  */
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import * as yaml from 'js-yaml';
 import * as v from 'valibot';
 
@@ -438,6 +438,15 @@ function resolveConfigPath(): string {
   const envPath = process.env.HEIMDALL_CONFIG;
   if (envPath) return resolve(envPath);
   return resolve(process.cwd(), 'heimdall.config.yaml');
+}
+
+/**
+ * Directory containing the resolved `heimdall.config.yaml` (or the file at
+ * `HEIMDALL_CONFIG`), used to resolve config-relative paths such as runbooks
+ * and baseline/task-history files.
+ */
+export function resolveConfigDir(): string {
+  return dirname(resolveConfigPath());
 }
 
 /** Parse an empty document through the schema to get a fresh default object. */
