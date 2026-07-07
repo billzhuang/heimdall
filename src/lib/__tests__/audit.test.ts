@@ -3,7 +3,7 @@ import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import * as fsPromises from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeAudit, type AuditEntry } from '../audit.ts';
+import { writeAudit, reportBlocked, type AuditEntry } from '../audit.ts';
 
 // Wrap appendFile and mkdir so individual tests can inject one-shot failures
 // without affecting unrelated tests (which use the real implementation by default).
@@ -171,6 +171,40 @@ describe('writeAudit — non-ENOENT file error falls back to stderr', () => {
     expect(lines.length).toBeGreaterThan(0);
     const entry = JSON.parse(lines[0].trimEnd());
     expect(entry.cmd).toBe('kubectl get pods -n default');
+  });
+});
+
+describe('reportBlocked', () => {
+  it('writes a blocked audit entry and returns BLOCKED_PREFIX + reason', async () => {
+    const lines: string[] = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+
+    const result = await reportBlocked('kubectl delete pod web', '2026-06-20T00:00:00.000Z', { enabled: true }, 'destructive command blocked');
+
+    expect(result).toBe('BLOCKED: destructive command blocked');
+    expect(lines).toHaveLength(1);
+    const entry = JSON.parse(lines[0].trimEnd());
+    expect(entry).toMatchObject({
+      ts: '2026-06-20T00:00:00.000Z',
+      level: 'audit',
+      cmd: 'kubectl delete pod web',
+      allowed: false,
+      outcome: 'blocked',
+    });
+  });
+
+  it('still returns the BLOCKED_PREFIX string when audit is disabled, null, or undefined', async () => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    for (const auditVal of [{ enabled: false }, null, undefined]) {
+      const result = await reportBlocked('aws ec2 terminate-instances', 'now', auditVal, 'destructive AWS command blocked');
+      expect(result).toBe('BLOCKED: destructive AWS command blocked');
+    }
+
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
