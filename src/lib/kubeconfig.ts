@@ -99,6 +99,16 @@ export function getContextNames(kubeconfig: ParsedKubeconfig): string[] {
   return kubeconfig.contexts.map((ctx) => ctx.name);
 }
 
+/** Read and parse a single kubeconfig file; unreadable or invalid files resolve to `null`. */
+async function readKubeconfigFile(path: string): Promise<ParsedKubeconfig | null> {
+  try {
+    const content = await readFile(path.trim(), 'utf8');
+    return parseKubeconfigContent(content);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Parse one or more kubeconfig files (path may contain the platform separator,
  * e.g. `a:b` on POSIX). Unreadable files are skipped.
@@ -107,14 +117,9 @@ export async function parseKubeconfig(kubeconfigPath: string): Promise<ParsedKub
   const separator = process.platform === 'win32' ? ';' : ':';
   const paths = kubeconfigPath.includes(separator) ? kubeconfigPath.split(separator) : [kubeconfigPath];
 
-  const parsed: (ParsedKubeconfig | null)[] = [];
-  for (const path of paths) {
-    try {
-      const content = await readFile(path.trim(), 'utf8');
-      parsed.push(parseKubeconfigContent(content));
-    } catch {
-      parsed.push(null);
-    }
-  }
+  // Promise.all preserves input order in the results array regardless of
+  // which read settles first, so merge precedence (first-wins) is unaffected
+  // by parallelizing these independent file reads.
+  const parsed = await Promise.all(paths.map(readKubeconfigFile));
   return mergeKubeconfigs(parsed);
 }
