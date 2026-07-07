@@ -305,6 +305,37 @@ async function resolveCacheFile(
 }
 
 /**
+ * Eval mock mode: when `HEIMDALL_KUBECTL_MOCK` is set, return fixture output
+ * instead of exec'ing kubectl. Returns undefined when the env var is unset,
+ * so callers can distinguish "not in mock mode" from an actual mock result.
+ */
+async function tryEvalMockMode(
+  argv: string[],
+  cmd: string,
+  startTs: string,
+  audit: AuditConfig | null | undefined,
+  context: string | undefined,
+): Promise<string | undefined> {
+  const evalMockFile = process.env.HEIMDALL_KUBECTL_MOCK;
+  if (!evalMockFile) return undefined;
+
+  try {
+    let mocks = evalMockCache.get(evalMockFile);
+    if (!mocks) {
+      const raw = await readFile(evalMockFile, 'utf8');
+      mocks = JSON.parse(raw) as Record<string, string>;
+      evalMockCache.set(evalMockFile, mocks);
+    }
+    const hit = matchMock(mocks, argv);
+    const result = hit ?? `(eval: no mock fixture for: ${argv.join(' ')})`;
+    await auditKubectlCall(cmd, startTs, audit, { context, allowed: true, cached: false, durationMs: 0, outcome: 'ok' });
+    return result;
+  } catch (err) {
+    return `(eval mock error: ${String(err)})`;
+  }
+}
+
+/**
  * Validate and run a read-only kubectl command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
  */
@@ -345,24 +376,8 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
     argv = lockdown.argv;
   }
 
-  // Eval mock mode: return fixture output instead of exec'ing kubectl.
-  const evalMockFile = process.env.HEIMDALL_KUBECTL_MOCK;
-  if (evalMockFile) {
-    try {
-      let mocks = evalMockCache.get(evalMockFile);
-      if (!mocks) {
-        const raw = await readFile(evalMockFile, 'utf8');
-        mocks = JSON.parse(raw) as Record<string, string>;
-        evalMockCache.set(evalMockFile, mocks);
-      }
-      const hit = matchMock(mocks, argv);
-      const result = hit ?? `(eval: no mock fixture for: ${argv.join(' ')})`;
-      await auditKubectlCall(cmd, startTs, audit, { context: options.context, allowed: true, cached: false, durationMs: 0, outcome: 'ok' });
-      return result;
-    } catch (err) {
-      return `(eval mock error: ${String(err)})`;
-    }
-  }
+  const mockResult = await tryEvalMockMode(argv, cmd, startTs, audit, options.context);
+  if (mockResult !== undefined) return mockResult;
 
   const execCtx = resolveExecutionContext(argv, options);
   argv = execCtx.argv;
