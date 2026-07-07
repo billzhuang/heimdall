@@ -4,7 +4,12 @@ import { EventEmitter } from 'node:events';
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
-import { parseScheduleArgv, runAgent } from '../../schedule-mode.ts';
+import { parseScheduleArgv, runAgent, resolveTriageSchedule } from '../../schedule-mode.ts';
+import type { HeimdallConfig } from '../config.ts';
+
+function makeConfig(triage: Partial<NonNullable<HeimdallConfig['schedule']>['triage']> | undefined): HeimdallConfig {
+  return { schedule: triage ? { triage } : undefined } as unknown as HeimdallConfig;
+}
 
 // ---------------------------------------------------------------------------
 // Fake child process factory for runAgent tests
@@ -131,6 +136,47 @@ describe('runAgent', () => {
     controller.abort();
     await expect(promise).rejects.toThrow('Aborted');
     expect(killSpy).toHaveBeenCalledWith('SIGTERM');
+  });
+});
+
+describe('resolveTriageSchedule', () => {
+  it('returns disabled when schedule.triage is absent', () => {
+    expect(resolveTriageSchedule(makeConfig(undefined))).toEqual({ ok: false, reason: 'disabled' });
+  });
+
+  it('returns disabled when schedule.triage.enabled is false', () => {
+    const config = makeConfig({ enabled: false });
+    expect(resolveTriageSchedule(config)).toEqual({ ok: false, reason: 'disabled' });
+  });
+
+  it('defaults cron to every 6 hours when enabled without an explicit cron', () => {
+    const config = makeConfig({ enabled: true });
+    expect(resolveTriageSchedule(config)).toEqual({
+      ok: true,
+      cron: '0 */6 * * *',
+      triageOpts: { namespace: undefined, allNamespaces: false },
+    });
+  });
+
+  it('carries through an explicit cron, namespace, and allNamespaces', () => {
+    const config = makeConfig({ enabled: true, cron: '0 0 * * *', namespace: 'prod', allNamespaces: false });
+    expect(resolveTriageSchedule(config)).toEqual({
+      ok: true,
+      cron: '0 0 * * *',
+      triageOpts: { namespace: 'prod', allNamespaces: false },
+    });
+  });
+
+  it('returns invalid-cron with the validation error for a malformed cron', () => {
+    const config = makeConfig({ enabled: true, cron: 'not-a-cron' });
+    const result = resolveTriageSchedule(config);
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.reason === 'invalid-cron') {
+      expect(result.cron).toBe('not-a-cron');
+      expect(result.error).toBeTruthy();
+    } else {
+      throw new Error('expected invalid-cron result');
+    }
   });
 });
 
