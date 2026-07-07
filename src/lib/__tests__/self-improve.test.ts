@@ -6,6 +6,7 @@ import {
   generateSuggestion,
   buildLearningEntry,
   buildReflectionPrompt,
+  buildPromptSections,
   formatLearningEntries,
   readLearningLog,
   appendLearningEntry,
@@ -27,6 +28,32 @@ describe('includeIf', () => {
 
   it('returns an empty array when condition is false', () => {
     expect(includeIf(false, 'section text')).toEqual([]);
+  });
+});
+
+describe('buildPromptSections', () => {
+  it('includes only the preamble and extras when entries and history are both empty', () => {
+    expect(buildPromptSections('preamble', [], '', ['extra'])).toEqual(['preamble', 'extra']);
+  });
+
+  it('splices in the scenario list when entries is non-empty', () => {
+    const entries = [buildLearningEntry('A', 'pa', ['Missing expected keyword: "x"'])];
+    const sections = buildPromptSections('preamble', entries, '');
+    expect(sections).toHaveLength(2);
+    expect(sections[1]).toContain('"A"');
+  });
+
+  it('splices in the history section only when non-empty', () => {
+    expect(buildPromptSections('preamble', [], 'history text')).toEqual(['preamble', 'history text']);
+    expect(buildPromptSections('preamble', [], '')).toEqual(['preamble']);
+  });
+
+  it('appends extra sections after entries and history, in order', () => {
+    const entries = [buildLearningEntry('A', 'pa', ['x'])];
+    const sections = buildPromptSections('preamble', entries, 'history text', ['one', 'two']);
+    expect(sections[0]).toBe('preamble');
+    expect(sections[sections.length - 2]).toBe('one');
+    expect(sections[sections.length - 1]).toBe('two');
   });
 });
 

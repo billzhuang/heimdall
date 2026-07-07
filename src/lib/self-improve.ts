@@ -142,6 +142,25 @@ export function includeIf<T>(condition: boolean, value: T): T[] {
   return condition ? [value] : [];
 }
 
+/**
+ * Assemble the [preamble, scenario-list?, history-section?, ...extra] section
+ * array shared by every self-improve/self-loop reflection prompt — pass the
+ * result to joinSections(). `historySection` is included only when non-empty.
+ */
+export function buildPromptSections(
+  preamble: string,
+  entries: LearningEntry[],
+  historySection: string,
+  extraSections: string[] = [],
+): string[] {
+  return [
+    preamble,
+    ...includeIf(entries.length > 0, formatScenarioSection(entries)),
+    ...includeIf(historySection !== '', historySection),
+    ...extraSections,
+  ];
+}
+
 /** Append a single learning entry to a JSONL log file (creates the file if absent). */
 export async function appendLearningEntry(entry: LearningEntry, logPath: string): Promise<void> {
   await appendJsonlLine(entry, logPath);
@@ -232,8 +251,6 @@ export function buildReflectionPrompt(
 
   const hasHistory = relevantHistory.length > 0;
 
-  const scenarioList = formatScenarioSection(entries);
-
   const historyLabel = useRag && hasFailures
     ? 'semantically similar to the failing scenario prompts'
     : 'most recent';
@@ -251,11 +268,11 @@ export function buildReflectionPrompt(
       `Be specific: quote the line(s) to change and what to replace them with.`
     : `No eval failures this run.`;
 
-  const sections: string[] = [
+  const sections: string[] = buildPromptSections(
     `You are reviewing self-evaluation results for the Heimdall Kubernetes SRE agent.\n\n` + failurePart,
-    ...includeIf(hasFailures, scenarioList),
-    ...includeIf(hasHistory, historySection),
-  ];
+    entries,
+    historySection,
+  );
 
   const taskItems: string[] = [];
   if (hasFailures) {
