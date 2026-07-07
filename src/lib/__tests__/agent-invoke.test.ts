@@ -28,8 +28,11 @@ describe('invokeAgentForFinding', () => {
   it('returns a 500 result when the agent output is not valid JSON', async () => {
     const agentFn = vi.fn().mockResolvedValueOnce('not-json');
     const result = await invokeAgentForFinding(agentFn, 'why?', 'anthropic/claude-sonnet-4-6');
-    expect(result.ok).toBe(false);
-    expect(result).toMatchObject({ status: 500 });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 500,
+      error: expect.stringContaining('Agent error:'),
+    });
   });
 
   it('falls back to a null finding when the agent output parses to a non-object value', async () => {
