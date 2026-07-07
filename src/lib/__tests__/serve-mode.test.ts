@@ -18,7 +18,14 @@ vi.mock('../config.ts', () => ({
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
-import { createServeApp, parsePortValue, parsePortArg, parseServeArgv, runAgentDiagnose } from '../../serve-mode.ts';
+import {
+  createServeApp,
+  parsePortValue,
+  parsePortArg,
+  parseServeArgv,
+  parseDiagnoseRequestBody,
+  runAgentDiagnose,
+} from '../../serve-mode.ts';
 
 // ---------------------------------------------------------------------------
 // Fake child process factory for runAgentDiagnose tests
@@ -257,6 +264,73 @@ describe('createServeApp', () => {
       const schema = jsonContent['schema'] as Record<string, unknown>;
       const required = schema['required'] as string[];
       expect(required).toContain('prompt');
+    });
+  });
+
+  describe('parseDiagnoseRequestBody', () => {
+    it('rejects non-object bodies', () => {
+      expect(parseDiagnoseRequestBody(null)).toEqual({
+        ok: false,
+        error: 'Invalid JSON body: expected an object',
+      });
+      expect(parseDiagnoseRequestBody('a string')).toEqual({
+        ok: false,
+        error: 'Invalid JSON body: expected an object',
+      });
+      expect(parseDiagnoseRequestBody(['not', 'an', 'object'])).toEqual({
+        ok: false,
+        error: 'Invalid JSON body: expected an object',
+      });
+    });
+
+    it('rejects a missing or blank prompt', () => {
+      expect(parseDiagnoseRequestBody({ namespace: 'prod' })).toEqual({
+        ok: false,
+        error: '"prompt" is required and must be a non-empty string',
+      });
+      expect(parseDiagnoseRequestBody({ prompt: '   ' })).toEqual({
+        ok: false,
+        error: '"prompt" is required and must be a non-empty string',
+      });
+      expect(parseDiagnoseRequestBody({ prompt: 42 })).toEqual({
+        ok: false,
+        error: '"prompt" is required and must be a non-empty string',
+      });
+    });
+
+    it('trims prompt and normalizes optional fields', () => {
+      expect(parseDiagnoseRequestBody({ prompt: '  why is pod x crashing?  ' })).toEqual({
+        ok: true,
+        prompt: 'why is pod x crashing?',
+        namespace: undefined,
+        model: undefined,
+      });
+    });
+
+    it('passes through namespace and model when they are strings', () => {
+      expect(
+        parseDiagnoseRequestBody({
+          prompt: 'Check pod health',
+          namespace: 'staging',
+          model: 'anthropic/claude-opus-4-8',
+        }),
+      ).toEqual({
+        ok: true,
+        prompt: 'Check pod health',
+        namespace: 'staging',
+        model: 'anthropic/claude-opus-4-8',
+      });
+    });
+
+    it('ignores non-string namespace and model', () => {
+      expect(
+        parseDiagnoseRequestBody({ prompt: 'Check pod health', namespace: 42, model: [] }),
+      ).toEqual({
+        ok: true,
+        prompt: 'Check pod health',
+        namespace: undefined,
+        model: undefined,
+      });
     });
   });
 
