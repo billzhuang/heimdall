@@ -53,6 +53,15 @@ function loadSessionOrDie(id: string): SessionRecord {
   }
 }
 
+/** Die with a formatted message when `url` is not a well-formed URL. `context` is appended after the quoted url (e.g. " configured for session <id>"). */
+function dieOnInvalidServerUrl(url: string, context = ''): void {
+  try {
+    new URL(url);
+  } catch (err) {
+    die(`Invalid server URL "${url}"${context}: ${getMessage(err)}`);
+  }
+}
+
 /**
  * Parse a `--flag <value>` / `--flag=<value>` style option at `args[i]`. Call
  * only when the caller has already matched `args[i]` against `prefix` (the
@@ -146,11 +155,7 @@ export function cmdStart(args: string[]): void {
     }
   }
 
-  try {
-    new URL(serverUrl);
-  } catch (err) {
-    die(`Invalid server URL "${serverUrl}": ${(err as Error).message}`);
-  }
+  dieOnInvalidServerUrl(serverUrl);
 
   const session = createSession({ name, serverUrl });
   process.stdout.write(`Session created:\n${formatSession(session)}\n\nSession ID: ${session.id}\n`);
@@ -178,11 +183,7 @@ export async function cmdPrompt(args: string[]): Promise<void> {
 
   const session = loadSessionOrDie(sessionId);
 
-  try {
-    new URL(session.serverUrl);
-  } catch (err) {
-    die(`Invalid server URL "${session.serverUrl}" configured for session ${session.id}: ${(err as Error).message}`);
-  }
+  dieOnInvalidServerUrl(session.serverUrl, ` configured for session ${session.id}`);
 
   const client = createFlueClient({ baseUrl: session.serverUrl });
 
