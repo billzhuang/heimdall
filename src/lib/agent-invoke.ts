@@ -6,6 +6,7 @@
  */
 import type { OneShotFinding } from './format-output.ts';
 import { getMessage } from './error-utils.ts';
+import { isPlainObject } from './json-utils.ts';
 
 export type AgentInvocationResult =
   | { ok: true; finding: OneShotFinding | null; trimmed: string }
@@ -26,7 +27,8 @@ export async function invokeAgentForFinding(
     if (!trimmed) {
       return { ok: false, status: 500, error: 'Agent produced no output' };
     }
-    const finding = JSON.parse(trimmed) as OneShotFinding;
+    const parsed: unknown = JSON.parse(trimmed);
+    const finding = isPlainObject(parsed) ? (parsed as unknown as OneShotFinding) : null;
     return { ok: true, finding, trimmed };
   } catch (err) {
     return { ok: false, status: 500, error: `Agent error: ${getMessage(err)}` };

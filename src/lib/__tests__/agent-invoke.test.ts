@@ -31,4 +31,12 @@ describe('invokeAgentForFinding', () => {
     expect(result.ok).toBe(false);
     expect(result).toMatchObject({ status: 500 });
   });
+
+  it('falls back to a null finding when the agent output parses to a non-object value', async () => {
+    for (const raw of ['"just a string"', '42', 'true', '[1,2,3]']) {
+      const agentFn = vi.fn().mockResolvedValueOnce(raw);
+      const result = await invokeAgentForFinding(agentFn, 'why?', 'anthropic/claude-sonnet-4-6');
+      expect(result).toEqual({ ok: true, finding: null, trimmed: raw });
+    }
+  });
 });
