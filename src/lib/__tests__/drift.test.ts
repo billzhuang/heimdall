@@ -177,7 +177,9 @@ describe('detectDrift', () => {
       namespaces: ['default', 'prod', 'staging'],
     };
     const findings = detectDrift(current, base);
-    expect(findings.some((f) => f.type === 'new_namespace' && f.resource === 'Namespace/staging')).toBe(true);
+    const finding = findings.find((f) => f.type === 'new_namespace' && f.resource === 'Namespace/staging');
+    expect(finding).toBeDefined();
+    expect(finding?.message).toBe('Namespace "staging" appeared since the last triage run.');
   });
 
   it('detects deleted namespace', () => {
@@ -187,7 +189,9 @@ describe('detectDrift', () => {
       namespaces: ['default'],
     };
     const findings = detectDrift(current, base);
-    expect(findings.some((f) => f.type === 'deleted_namespace' && f.resource === 'Namespace/prod')).toBe(true);
+    const finding = findings.find((f) => f.type === 'deleted_namespace' && f.resource === 'Namespace/prod');
+    expect(finding).toBeDefined();
+    expect(finding?.message).toBe('Namespace "prod" was present at the last triage run but is now gone.');
   });
 
   it('detects new workload', () => {
@@ -200,7 +204,9 @@ describe('detectDrift', () => {
       ],
     };
     const findings = detectDrift(current, base);
-    expect(findings.some((f) => f.type === 'new_workload' && f.resource.includes('worker'))).toBe(true);
+    const finding = findings.find((f) => f.type === 'new_workload' && f.resource.includes('worker'));
+    expect(finding).toBeDefined();
+    expect(finding?.message).toBe('Deployment "worker" in namespace "prod" appeared since the last triage run.');
   });
 
   it('detects deleted workload', () => {
@@ -210,7 +216,11 @@ describe('detectDrift', () => {
       workloads: [{ kind: 'Deployment', namespace: 'prod', name: 'api' }],
     };
     const findings = detectDrift(current, base);
-    expect(findings.some((f) => f.type === 'deleted_workload' && f.resource.includes('db'))).toBe(true);
+    const finding = findings.find((f) => f.type === 'deleted_workload' && f.resource.includes('db'));
+    expect(finding).toBeDefined();
+    expect(finding?.message).toBe(
+      'StatefulSet "db" in namespace "prod" was present at the last triage run but is now gone.',
+    );
   });
 
   it('detects new node (topology change)', () => {
