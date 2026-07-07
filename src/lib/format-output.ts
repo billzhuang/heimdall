@@ -36,22 +36,41 @@ export interface OneShotFinding {
   remediationSteps?: string[];
 }
 
-/**
- * Regex matching any structured RCA section header (Causal Chain, Evidence,
- * Validity Score, Remediation Steps). Used to find section boundaries.
- */
-const RCA_SECTION_HEADER_RE =
-  /(?:^|\n)(?:##?\s+(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):?|(?:Causal Chain|Evidence|Validity Score|Remediation Steps?):)[ \t]*(?=\n|-?\d)/im;
+/** Section-name patterns for every structured RCA section, in canonical order. */
+const CAUSAL_CHAIN_PATTERN = 'Causal Chain';
+const EVIDENCE_PATTERN = 'Evidence';
+const VALIDITY_SCORE_PATTERN = 'Validity Score';
+const REMEDIATION_STEPS_PATTERN = 'Remediation Steps?';
+const RCA_SECTION_PATTERNS = [
+  CAUSAL_CHAIN_PATTERN,
+  EVIDENCE_PATTERN,
+  VALIDITY_SCORE_PATTERN,
+  REMEDIATION_STEPS_PATTERN,
+];
 
 function makeSectionRe(sectionPattern: string, suffix: string): RegExp {
   return new RegExp(`(?:^|\\n)(?:##?\\s+${sectionPattern}:?|${sectionPattern}:)[ \\t]*${suffix}`, 'i');
 }
 
+/**
+ * Regex matching any structured RCA section header (Causal Chain, Evidence,
+ * Validity Score, Remediation Steps). Used to find section boundaries.
+ * Built from RCA_SECTION_PATTERNS so the section names have a single source
+ * of truth shared with the per-section regexes below.
+ */
+const RCA_SECTION_HEADER_RE = (() => {
+  const alternation = RCA_SECTION_PATTERNS.join('|');
+  return new RegExp(
+    `(?:^|\\n)(?:##?\\s+(?:${alternation}):?|(?:${alternation}):)[ \\t]*(?=\\n|-?\\d)`,
+    'im',
+  );
+})();
+
 /** Header regex for each named RCA section. */
-const CAUSAL_CHAIN_RE = makeSectionRe('Causal Chain', '\\n');
-const EVIDENCE_RE = makeSectionRe('Evidence', '\\n');
-const VALIDITY_SCORE_RE = makeSectionRe('Validity Score', '(-?\\d+(?:\\.\\d+)?)');
-const REMEDIATION_STEPS_RE = makeSectionRe('Remediation Steps?', '\\n');
+const CAUSAL_CHAIN_RE = makeSectionRe(CAUSAL_CHAIN_PATTERN, '\\n');
+const EVIDENCE_RE = makeSectionRe(EVIDENCE_PATTERN, '\\n');
+const VALIDITY_SCORE_RE = makeSectionRe(VALIDITY_SCORE_PATTERN, '(-?\\d+(?:\\.\\d+)?)');
+const REMEDIATION_STEPS_RE = makeSectionRe(REMEDIATION_STEPS_PATTERN, '\\n');
 
 /** Strips leading bullet or numbered-list markers from a line. */
 const BULLET_STRIP_RE = /^\s*(?:[-*•]|\d+[.):])\s*/;
