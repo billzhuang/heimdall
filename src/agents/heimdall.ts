@@ -14,13 +14,13 @@
 import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import type { ToolDefinition } from '@flue/runtime';
 import { initTelemetry, isTelemetryEnabled, recordToolCall, startOtelExport } from '../lib/telemetry.ts';
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { ALL_TOOL_PLUGINS } from '../tools/index.ts';
 import { buildToolRegistry } from '../lib/plugin.ts';
 import { readJsonlFileSync } from '../lib/jsonl.ts';
 import { DEFAULT_MODEL } from '../lib/model.ts';
 import { SUBAGENT_DESCRIPTIONS, SUBAGENT_INSTRUCTIONS, buildInstructions, type SubagentName, type ToolConfigKey } from '../lib/instructions.ts';
-import { loadConfig } from '../lib/config.ts';
+import { loadConfig, resolveConfigDir } from '../lib/config.ts';
 import { compileRules } from '../lib/regex-redact.ts';
 import { loadRunbooks } from '../lib/runbooks.ts';
 import { selectDiverseEntries, buildRagContext } from '../lib/rag.ts';
@@ -34,7 +34,7 @@ const regexRedactionRules = config.redaction?.enabled ? compileRules(config.reda
 initTelemetry(config.telemetry ?? { enabled: false });
 startOtelExport(config.otel ?? { enabled: false });
 
-const configDir = dirname(resolve(process.env.HEIMDALL_CONFIG ?? 'heimdall.config.yaml'));
+const configDir = resolveConfigDir();
 const runbookContext = loadRunbooks(configDir, config.runbooks ?? []);
 
 /** Load task history synchronously for RAG context injection at agent startup. */

@@ -36,6 +36,7 @@ vi.mock('../../lib/config.ts', () => ({
     telemetry: { enabled: false },
     otel: { enabled: false },
   }),
+  resolveConfigDir: () => process.cwd(),
 }));
 
 import heimdall, { description } from '../heimdall.ts';

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadConfig, tryReadConfigFile } from '../config.ts';
+import { loadConfig, resolveConfigDir, tryReadConfigFile } from '../config.ts';
 
 const EXPECTED_DEFAULT_TOOLS = {
   kubectl: true,
@@ -460,6 +460,15 @@ describe('loadConfig', () => {
       // either way loadConfig() returns a HeimdallConfig with a tools property.
       const config = loadConfig();
       expect(config.tools).toBeDefined();
+    });
+
+    it('resolveConfigDir returns the directory of the HEIMDALL_CONFIG file', () => {
+      process.env.HEIMDALL_CONFIG = join(tmpDir, 'nested', 'via-env.yaml');
+      expect(resolveConfigDir()).toBe(join(tmpDir, 'nested'));
+    });
+
+    it('resolveConfigDir falls back to the current working directory by default', () => {
+      expect(resolveConfigDir()).toBe(process.cwd());
     });
   });
 

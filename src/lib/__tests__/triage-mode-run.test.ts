@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
-vi.mock('../config.ts', () => ({ loadConfig: vi.fn() }));
+vi.mock('../config.ts', () => ({ loadConfig: vi.fn(), resolveConfigDir: () => '/tmp' }));
 vi.mock('../kubectl.ts', () => ({ runKubectl: vi.fn() }));
 // saveCheckpoint runs real (writes to a temp file below) but is spied on so
 // tests can await its fire-and-forget call from runTriageMode, which does
