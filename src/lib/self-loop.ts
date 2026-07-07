@@ -8,7 +8,7 @@
  * targeting src/lib/instructions.ts so changes are machine-parseable and reversible.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { formatScenarioSection, includeIf, joinSections } from './self-improve.ts';
+import { buildPromptSections, joinSections } from './self-improve.ts';
 import type { LearningEntry } from './self-improve.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
@@ -153,10 +153,7 @@ export function buildAutoReflectionPrompt(
   taskHistory: TaskHistoryEntry[],
   instructionsSnippet: string,
 ): string {
-  const hasFailures = entries.length > 0;
   const hasHistory = taskHistory.length > 0;
-
-  const scenarioList = formatScenarioSection(entries);
 
   const historySection = hasHistory
     ? `## Recent Real-World Investigations\n\n${buildTaskHistoryContext(taskHistory)}`
@@ -185,15 +182,14 @@ Rules:
 - Prefer small, targeted edits. Do not rewrite entire sections.
 - If no change is needed, output: NO_CHANGES_NEEDED`;
 
-  const sections = [
+  const sections = buildPromptSections(
     `You are the self-improvement loop for the Heimdall Kubernetes SRE agent.\n\n` +
       `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
       `Propose specific text patches to \`src/lib/instructions.ts\` that would fix these failures.`,
-    ...includeIf(hasFailures, scenarioList),
-    ...includeIf(hasHistory, historySection),
-    instructionsSection,
-    patchFormat,
-  ];
+    entries,
+    historySection,
+    [instructionsSection, patchFormat],
+  );
 
   return joinSections(sections);
 }
