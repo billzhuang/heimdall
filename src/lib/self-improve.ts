@@ -138,7 +138,7 @@ export function formatScenarioSection(entries: LearningEntry[]): string {
  * `[]` otherwise. Shared by buildReflectionPrompt and buildAutoReflectionPrompt
  * to conditionally splice an optional section into their `sections` array.
  */
-export function includeIf(condition: boolean, value: string): string[] {
+export function includeIf<T>(condition: boolean, value: T): T[] {
   return condition ? [value] : [];
 }
 
