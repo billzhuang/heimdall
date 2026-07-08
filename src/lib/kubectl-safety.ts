@@ -255,68 +255,59 @@ export function applyNamespaceLockdown(argv: string[], lockedNs: string): Namesp
 }
 
 /**
+ * True when `args` contains a bare stdin read (`-f -`/`-f-`/`--filename[=]-`)
+ * that would cause execFile to hang waiting for input. "-f-" and
+ * "--filename=-" are always a hang risk (no value follows the dash). "-f -" /
+ * "--filename -" are only a hang risk when "-" is the final token; when extra
+ * tokens follow (e.g. a heredoc marker like "<<EOF"), kubectl will fail with
+ * an argument error rather than blocking on stdin indefinitely.
+ */
+function hasStdinHangRisk(args: string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '-f-' || arg === '--filename=-') return true;
+    if ((arg === '-f' || arg === '--filename') && args[i + 1] === '-' && i + 2 >= args.length) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Validate a kubectl command against the read-only policy. Non-kubectl
  * commands are out of scope (the tool only ever runs kubectl), unknown
  * subcommands are denied by default.
  */
 export function validateCommand(command: string): CommandValidationResult {
   const parsed = parseKubectlCommand(command);
+  const result = (allowed: boolean, reason: string): CommandValidationResult => ({
+    allowed,
+    reason,
+    command: parsed.rawCommand,
+    subcommand: parsed.isKubectl ? parsed.subcommand : null,
+  });
 
   if (!parsed.isKubectl) {
-    return {
-      allowed: false,
-      reason: 'Only kubectl commands are permitted by this tool.',
-      command: parsed.rawCommand,
-      subcommand: null,
-    };
+    return result(false, 'Only kubectl commands are permitted by this tool.');
   }
 
   if (!parsed.subcommand) {
     // Bare `kubectl` (prints help) is harmless.
-    return {
-      allowed: true,
-      reason: 'kubectl without subcommand',
-      command: parsed.rawCommand,
-      subcommand: null,
-    };
+    return result(true, 'kubectl without subcommand');
   }
 
   if (DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand)) {
-    return {
-      allowed: false,
-      reason: `Destructive command '${parsed.subcommand}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
-      command: parsed.rawCommand,
-      subcommand: parsed.subcommand,
-    };
+    return result(
+      false,
+      `Destructive command '${parsed.subcommand}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
+    );
   }
 
-  // Block bare stdin reads that would cause execFile to hang waiting for input.
-  // "-f-" and "--filename=-" are always blocked (no value follows the dash).
-  // "-f -" / "--filename -" are only blocked when "-" is the final token; when
-  // extra tokens follow (e.g. a heredoc marker like "<<EOF"), kubectl will fail
-  // with an argument error rather than blocking on stdin indefinitely.
-  for (let i = 0; i < parsed.args.length; i++) {
-    const arg = parsed.args[i];
-    if (arg === '-f-' || arg === '--filename=-') {
-      return {
-        allowed: false,
-        reason: 'Reading from stdin via "-" is not supported and would cause the command to hang.',
-        command: parsed.rawCommand,
-        subcommand: parsed.subcommand,
-      };
-    }
-    if (
-      (arg === '-f' || arg === '--filename') &&
-      parsed.args[i + 1] === '-' &&
-      i + 2 >= parsed.args.length
-    ) {
-      return {
-        allowed: false,
-        reason: 'Reading from stdin via "-" is not supported and would cause the command to hang.',
-        command: parsed.rawCommand,
-        subcommand: parsed.subcommand,
-      };
-    }
+  if (hasStdinHangRisk(parsed.args)) {
+    return result(
+      false,
+      'Reading from stdin via "-" is not supported and would cause the command to hang.',
+    );
   }
 
   // Command families that mix read-only and mutating verbs: gate on the nested
@@ -325,35 +316,21 @@ export function validateCommand(command: string): CommandValidationResult {
   if (nestedAllowed) {
     const verb = parsed.args[0]?.toLowerCase() ?? '';
     if (nestedAllowed.includes(verb)) {
-      return {
-        allowed: true,
-        reason: `Read-only command '${parsed.subcommand} ${verb}' is allowed`,
-        command: parsed.rawCommand,
-        subcommand: parsed.subcommand,
-      };
+      return result(true, `Read-only command '${parsed.subcommand} ${verb}' is allowed`);
     }
     const attempted = `${parsed.subcommand} ${verb}`.trim();
-    return {
-      allowed: false,
-      reason: `'${attempted}' is blocked. Only read-only '${parsed.subcommand}' verbs are permitted: ${nestedAllowed.join(', ')}.`,
-      command: parsed.rawCommand,
-      subcommand: parsed.subcommand,
-    };
+    return result(
+      false,
+      `'${attempted}' is blocked. Only read-only '${parsed.subcommand}' verbs are permitted: ${nestedAllowed.join(', ')}.`,
+    );
   }
 
   if (ALLOWED_KUBECTL_COMMANDS.includes(parsed.subcommand as AllowedCommand)) {
-    return {
-      allowed: true,
-      reason: `Read-only command '${parsed.subcommand}' is allowed`,
-      command: parsed.rawCommand,
-      subcommand: parsed.subcommand,
-    };
+    return result(true, `Read-only command '${parsed.subcommand}' is allowed`);
   }
 
-  return {
-    allowed: false,
-    reason: `Unknown kubectl subcommand '${parsed.subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
-    command: parsed.rawCommand,
-    subcommand: parsed.subcommand,
-  };
+  return result(
+    false,
+    `Unknown kubectl subcommand '${parsed.subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
+  );
 }
