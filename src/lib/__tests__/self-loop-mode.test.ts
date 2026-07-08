@@ -116,9 +116,10 @@ describe('parseSelfLoopArgs', () => {
     expect(parseSelfLoopArgs(['--scenario=crashloop'])).toMatchObject({ scenarioFilter: 'crashloop' });
   });
 
-  it('parses --log-path/-l', () => {
+  it('parses --log-path/-l and --log-path=<value>', () => {
     expect(parseSelfLoopArgs(['--log-path', '/tmp/log.jsonl'])).toMatchObject({ cliLogPath: '/tmp/log.jsonl' });
     expect(parseSelfLoopArgs(['-l', '/tmp/log.jsonl'])).toMatchObject({ cliLogPath: '/tmp/log.jsonl' });
+    expect(parseSelfLoopArgs(['--log-path=/tmp/log.jsonl'])).toMatchObject({ cliLogPath: '/tmp/log.jsonl' });
   });
 
   it('parses --timeout <seconds> and --timeout=<seconds> into milliseconds', () => {

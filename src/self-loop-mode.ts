@@ -286,6 +286,7 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
     const backendFlag = parseAliasedFlag(args, i, '--backend', '-b');
     const scenarioFlag = parseAliasedFlag(args, i, '--scenario', '-s');
     const timeoutFlag = parseAliasedFlag(args, i, '--timeout');
+    const logPathFlag = parseAliasedFlag(args, i, '--log-path', '-l');
     if (maxIterationsFlag) {
       maxIterations = parseInt(maxIterationsFlag.value, 10);
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
@@ -298,8 +299,9 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
     } else if (scenarioFlag) {
       scenarioFilter = scenarioFlag.value;
       i = scenarioFlag.nextIndex;
-    } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
-      cliLogPath = args[++i];
+    } else if (logPathFlag) {
+      cliLogPath = logPathFlag.value;
+      i = logPathFlag.nextIndex;
     } else if (timeoutFlag) {
       const secs = parseInt(timeoutFlag.value, 10);
       requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
