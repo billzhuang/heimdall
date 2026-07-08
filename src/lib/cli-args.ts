@@ -74,6 +74,35 @@ export function parseModelFlag(
 }
 
 /**
+ * Parse a required `--flag <value>` / `--flag=<value>` style CLI flag at
+ * `args[i]`. Call only when the caller has already matched `args[i]` against
+ * the flag's aliases or the `equalsPrefix` (e.g. `--namespace=`). Writes an
+ * error to stderr and exit(1) when the value is missing (`spaceMissingMsg`)
+ * or empty in the `=` form (`equalsEmptyMsg`).
+ *
+ * Returns the parsed value, the loop index to resume from (`i` unchanged for
+ * the `=` form, `i + 1` after consuming the following token), and
+ * `usedEquals` so callers whose downstream validation message differs by
+ * form (e.g. list-parsing) can pick the right one.
+ */
+export function parseRequiredFlag(
+  args: string[],
+  i: number,
+  equalsPrefix: string,
+  spaceMissingMsg: string,
+  equalsEmptyMsg: string,
+): { value: string; nextIndex: number; usedEquals: boolean } {
+  const arg = args[i];
+  if (arg.startsWith(equalsPrefix)) {
+    const value = arg.slice(equalsPrefix.length);
+    requireNonEmptyValue(value, equalsEmptyMsg);
+    return { value, nextIndex: i, usedEquals: true };
+  }
+  requireNextArg(args, i, spaceMissingMsg);
+  return { value: args[i + 1], nextIndex: i + 1, usedEquals: false };
+}
+
+/**
  * Match `args[i]` against a `--long`/`-short` flag (space-separated value) or
  * a `--long=value` prefix. Returns `undefined` when `args[i]` matches neither
  * form, so callers can chain it onto the next `else if` in a hand-rolled

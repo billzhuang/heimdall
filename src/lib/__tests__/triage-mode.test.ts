@@ -24,6 +24,48 @@ describe('heimdall triage CLI', () => {
     expect(status).toBe(1);
     expect(stderr).toContain('Error: unknown option: --bogus\n');
   });
+
+  it('exits 1 on -n with a missing value', () => {
+    const { status, stderr } = triageMode('-n');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: -n requires a namespace argument\n');
+  });
+
+  it('exits 1 on --namespace with a missing value', () => {
+    const { status, stderr } = triageMode('--namespace');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: --namespace requires a namespace argument\n');
+  });
+
+  it('exits 1 on --namespace= with an empty value', () => {
+    const { status, stderr } = triageMode('--namespace=');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: --namespace= requires a non-empty value\n');
+  });
+
+  it('exits 1 on --contexts with a missing value', () => {
+    const { status, stderr } = triageMode('--contexts');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: --contexts requires a comma-separated list of context names\n');
+  });
+
+  it('exits 1 on --contexts= with an empty value', () => {
+    const { status, stderr } = triageMode('--contexts=');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: --contexts= requires a non-empty comma-separated list\n');
+  });
+
+  it('exits 1 on --contexts with a value that has no non-empty entries', () => {
+    const { status, stderr } = triageMode('--contexts', ',,,');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: --contexts value produced an empty list after parsing\n');
+  });
+
+  it('exits 1 on --contexts= with a value that has no non-empty entries', () => {
+    const { status, stderr } = triageMode('--contexts=,,,');
+    expect(status).toBe(1);
+    expect(stderr).toContain('Error: --contexts= value produced an empty list after parsing\n');
+  });
 });
 
 describe('buildSweepStartupMessages', () => {

@@ -5,6 +5,7 @@ import {
   requireNonEmptyValue,
   parseCommaSeparatedList,
   parseModelFlag,
+  parseRequiredFlag,
   parseAliasedFlag,
   isMainModule,
   resolveModelOrExit,
@@ -167,6 +168,58 @@ describe('parseModelFlag', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
     parseModelFlag(['--model='], 0);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('parseRequiredFlag', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('parses the space-separated form and advances the index past the value', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const args = ['--namespace', 'prod'];
+    expect(parseRequiredFlag(args, 0, '--namespace=', 'missing', 'empty')).toEqual({
+      value: 'prod',
+      nextIndex: 1,
+      usedEquals: false,
+    });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('parses the "=" form without advancing the index', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const args = ['--namespace=prod'];
+    expect(parseRequiredFlag(args, 0, '--namespace=', 'missing', 'empty')).toEqual({
+      value: 'prod',
+      nextIndex: 0,
+      usedEquals: true,
+    });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('writes the space-form error and exits when the next token is missing', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseRequiredFlag(['--namespace'], 0, '--namespace=', '--namespace requires a namespace argument', 'empty');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace requires a namespace argument\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes the space-form error and exits when the next token looks like a flag', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseRequiredFlag(['--namespace', '--other'], 0, '--namespace=', '--namespace requires a namespace argument', 'empty');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace requires a namespace argument\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('writes the "=" form error and exits when the value is empty', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseRequiredFlag(['--namespace='], 0, '--namespace=', 'missing', '--namespace= requires a non-empty value');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
