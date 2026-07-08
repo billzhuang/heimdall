@@ -18,7 +18,7 @@ import { runKubectl, type RunKubectlOptions } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
 import { getStackOrMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/bin-path.ts';
+import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { die, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
@@ -69,9 +69,8 @@ export async function seedKubectl(alert: ParsedAlert): Promise<string> {
 
 export async function runAgent(prompt: string, model?: string): Promise<void> {
   const binPath = resolveBinPath(__dirname);
-  const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
   await spawnAndCollect(binPath, ['-p', prompt], {
-    env,
+    env: buildAgentEnv(model),
     timeoutMs: ALERT_TIMEOUT_MS,
     stdio: 'inherit',
     onTimeout: () => new Error('alert investigation timed out'),

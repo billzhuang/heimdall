@@ -43,7 +43,7 @@ import {
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/bin-path.ts';
+import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { die, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
@@ -60,14 +60,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 /** Invoke the Heimdall agent with a single prompt and return its response. */
 export async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
   const binPath = resolveBinPath(__dirname);
-  const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
 
   try {
     // stdio: 'stdout' inherits stderr so the agent's diagnostic output is
     // visible on the watch-mode process's stderr alongside our own status
     // messages, while buffering stdout (silently — no live echo) to return.
     const stdout = await spawnAndCollect(binPath, ['-p', prompt], {
-      env,
+      env: buildAgentEnv(model),
       timeoutMs: DIAGNOSIS_TIMEOUT_MS,
       stdio: 'stdout',
       onTimeout: () => new Error(DIAGNOSIS_TIMEOUT_MESSAGE),

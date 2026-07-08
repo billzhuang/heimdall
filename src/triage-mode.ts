@@ -32,7 +32,7 @@ import {
 } from './lib/drift.ts';
 import { runKubectl } from './lib/kubectl.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/bin-path.ts';
+import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { die, requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
@@ -48,10 +48,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  */
 async function runAgent(prompt: string, model?: string): Promise<string> {
   const binPath = resolveBinPath(__dirname);
-  const env = model ? { ...process.env, HEIMDALL_MODEL: model } : process.env;
 
   return spawnAndCollect(binPath, ['-p', prompt], {
-    env,
+    env: buildAgentEnv(model),
     timeoutMs: TRIAGE_TIMEOUT_MS,
     stdio: 'tee',
     onTimeout: () => new Error('triage timed out after 5 minutes'),
