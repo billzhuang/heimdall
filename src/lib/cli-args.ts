@@ -15,19 +15,23 @@ export function isMainModule(importMetaUrl: string): boolean {
   return fileURLToPath(importMetaUrl) === process.argv[1];
 }
 
+/** Write "Error: <msg>" to stderr and exit(code). Shared by every stderr+exit(1) guard below. */
+export function die(msg: string, code = 1): never {
+  process.stderr.write(`Error: ${msg}\n`);
+  process.exit(code);
+}
+
 /** Write an error to stderr and exit(1) when the next CLI token is missing or looks like a flag. */
 export function requireNextArg(args: string[], i: number, msg: string): void {
   if (!args[i + 1] || args[i + 1].startsWith('-')) {
-    process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
+    die(msg);
   }
 }
 
 /** Write an error to stderr and exit(1) when value is empty. */
 export function requireNonEmptyValue(value: string, msg: string): void {
   if (!value) {
-    process.stderr.write(`Error: ${msg}\n`);
-    process.exit(1);
+    die(msg);
   }
 }
 
@@ -39,8 +43,7 @@ export function requireNonEmptyValue(value: string, msg: string): void {
 export function parseCommaSeparatedList(raw: string, emptyMsg: string): string[] {
   const parsed = raw.split(',').map((v) => v.trim()).filter(Boolean);
   if (parsed.length === 0) {
-    process.stderr.write(`Error: ${emptyMsg}\n`);
-    process.exit(1);
+    die(emptyMsg);
   }
   return Array.from(new Set(parsed));
 }
@@ -107,7 +110,6 @@ export function resolveModelOrExit(cliFlag?: string): string {
   try {
     return resolveModel(cliFlag);
   } catch (err) {
-    process.stderr.write(`Error: ${getMessage(err)}\n`);
-    process.exit(1);
+    die(getMessage(err));
   }
 }

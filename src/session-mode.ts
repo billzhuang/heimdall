@@ -27,7 +27,7 @@ import {
   type SessionRecord,
 } from './lib/session.ts';
 import { getMessage } from './lib/error-utils.ts';
-import { isMainModule } from './lib/cli-args.ts';
+import { die, isMainModule } from './lib/cli-args.ts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -37,11 +37,6 @@ export function formatSession(s: SessionRecord): string {
     ? `last prompt ${new Date(s.lastPromptAt).toLocaleString()}`
     : 'no prompts yet';
   return `  ${s.id}${label}\n    server: ${s.serverUrl}  |  created: ${new Date(s.createdAt).toLocaleString()}  |  ${last}`;
-}
-
-function die(msg: string, code = 1): never {
-  process.stderr.write(`Error: ${msg}\n`);
-  process.exit(code);
 }
 
 /** Load a session by id, or die with the underlying error message on failure. */
