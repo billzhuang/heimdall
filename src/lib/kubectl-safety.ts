@@ -255,6 +255,20 @@ export function applyNamespaceLockdown(argv: string[], lockedNs: string): Namesp
 }
 
 /**
+ * Build a validation result for `parsed`. `subcommand` defaults to
+ * `parsed.subcommand`; pass `null` explicitly for the two cases (not-kubectl,
+ * no-subcommand) where the parsed subcommand shouldn't be echoed back.
+ */
+function makeResult(
+  allowed: boolean,
+  reason: string,
+  parsed: ParsedKubectlCommand,
+  subcommand: string | null = parsed.subcommand,
+): CommandValidationResult {
+  return { allowed, reason, command: parsed.rawCommand, subcommand };
+}
+
+/**
  * Validate a kubectl command against the read-only policy. Non-kubectl
  * commands are out of scope (the tool only ever runs kubectl), unknown
  * subcommands are denied by default.
@@ -263,31 +277,20 @@ export function validateCommand(command: string): CommandValidationResult {
   const parsed = parseKubectlCommand(command);
 
   if (!parsed.isKubectl) {
-    return {
-      allowed: false,
-      reason: 'Only kubectl commands are permitted by this tool.',
-      command: parsed.rawCommand,
-      subcommand: null,
-    };
+    return makeResult(false, 'Only kubectl commands are permitted by this tool.', parsed, null);
   }
 
   if (!parsed.subcommand) {
     // Bare `kubectl` (prints help) is harmless.
-    return {
-      allowed: true,
-      reason: 'kubectl without subcommand',
-      command: parsed.rawCommand,
-      subcommand: null,
-    };
+    return makeResult(true, 'kubectl without subcommand', parsed, null);
   }
 
   if (DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand)) {
-    return {
-      allowed: false,
-      reason: `Destructive command '${parsed.subcommand}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
-      command: parsed.rawCommand,
-      subcommand: parsed.subcommand,
-    };
+    return makeResult(
+      false,
+      `Destructive command '${parsed.subcommand}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
+      parsed,
+    );
   }
 
   // Block bare stdin reads that would cause execFile to hang waiting for input.
@@ -298,24 +301,14 @@ export function validateCommand(command: string): CommandValidationResult {
   for (let i = 0; i < parsed.args.length; i++) {
     const arg = parsed.args[i];
     if (arg === '-f-' || arg === '--filename=-') {
-      return {
-        allowed: false,
-        reason: 'Reading from stdin via "-" is not supported and would cause the command to hang.',
-        command: parsed.rawCommand,
-        subcommand: parsed.subcommand,
-      };
+      return makeResult(false, 'Reading from stdin via "-" is not supported and would cause the command to hang.', parsed);
     }
     if (
       (arg === '-f' || arg === '--filename') &&
       parsed.args[i + 1] === '-' &&
       i + 2 >= parsed.args.length
     ) {
-      return {
-        allowed: false,
-        reason: 'Reading from stdin via "-" is not supported and would cause the command to hang.',
-        command: parsed.rawCommand,
-        subcommand: parsed.subcommand,
-      };
+      return makeResult(false, 'Reading from stdin via "-" is not supported and would cause the command to hang.', parsed);
     }
   }
 
@@ -325,35 +318,23 @@ export function validateCommand(command: string): CommandValidationResult {
   if (nestedAllowed) {
     const verb = parsed.args[0]?.toLowerCase() ?? '';
     if (nestedAllowed.includes(verb)) {
-      return {
-        allowed: true,
-        reason: `Read-only command '${parsed.subcommand} ${verb}' is allowed`,
-        command: parsed.rawCommand,
-        subcommand: parsed.subcommand,
-      };
+      return makeResult(true, `Read-only command '${parsed.subcommand} ${verb}' is allowed`, parsed);
     }
     const attempted = `${parsed.subcommand} ${verb}`.trim();
-    return {
-      allowed: false,
-      reason: `'${attempted}' is blocked. Only read-only '${parsed.subcommand}' verbs are permitted: ${nestedAllowed.join(', ')}.`,
-      command: parsed.rawCommand,
-      subcommand: parsed.subcommand,
-    };
+    return makeResult(
+      false,
+      `'${attempted}' is blocked. Only read-only '${parsed.subcommand}' verbs are permitted: ${nestedAllowed.join(', ')}.`,
+      parsed,
+    );
   }
 
   if (ALLOWED_KUBECTL_COMMANDS.includes(parsed.subcommand as AllowedCommand)) {
-    return {
-      allowed: true,
-      reason: `Read-only command '${parsed.subcommand}' is allowed`,
-      command: parsed.rawCommand,
-      subcommand: parsed.subcommand,
-    };
+    return makeResult(true, `Read-only command '${parsed.subcommand}' is allowed`, parsed);
   }
 
-  return {
-    allowed: false,
-    reason: `Unknown kubectl subcommand '${parsed.subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
-    command: parsed.rawCommand,
-    subcommand: parsed.subcommand,
-  };
+  return makeResult(
+    false,
+    `Unknown kubectl subcommand '${parsed.subcommand}' is blocked. Only explicitly allowed read-only commands are permitted.`,
+    parsed,
+  );
 }
