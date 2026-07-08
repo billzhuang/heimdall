@@ -1,4 +1,4 @@
-import { vi } from 'vitest';
+import { vi, afterEach } from 'vitest';
 import { BLOCKED_PREFIX } from '../harness.ts';
 import { escapeRegExpLiteral } from '../regexp-utils.ts';
 
@@ -11,6 +11,14 @@ export function mockFetch(body: string, status = 200): ReturnType<typeof vi.fn> 
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
+}
+
+/** Call at the top of a test file (or inside a describe) to reset timers and globals after each test. */
+export function restoreGlobalsAfterEach(): void {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 }
 
 export function makeAbortError(): Error {

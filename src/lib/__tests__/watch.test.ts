@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   parseEventLine,
   matchesWatchFilter,
@@ -13,6 +13,7 @@ import {
   type WatchFilterConfig,
   type CooldownState,
 } from '../watch.ts';
+import { restoreGlobalsAfterEach } from './test-helpers.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -522,10 +523,7 @@ describe('shouldResetBackoff', () => {
 // ---------------------------------------------------------------------------
 
 describe('postWebhook', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
+  restoreGlobalsAfterEach();
 
   it('resolves without throwing on a successful 2xx response', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({

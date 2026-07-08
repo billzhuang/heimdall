@@ -1,14 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runJaegerQuery, resolveJaegerTimeUs } from '../jaeger.ts';
 import type { JaegerConfig } from '../jaeger.ts';
-import { mockFetch, makeAbortError } from './test-helpers.ts';
+import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: JaegerConfig = { url: 'http://jaeger:16686', timeoutMs: 5_000 };
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+restoreGlobalsAfterEach();
 
 // ---------------------------------------------------------------------------
 // resolveJaegerTimeUs

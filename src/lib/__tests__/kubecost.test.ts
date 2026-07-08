@@ -1,14 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runKubecostQuery, resolveAllocationNamespace } from '../kubecost.ts';
 import type { KubecostConfig } from '../kubecost.ts';
-import { mockFetch, makeAbortError } from './test-helpers.ts';
+import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: KubecostConfig = { url: 'http://kubecost:9090', timeoutMs: 5_000 };
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+restoreGlobalsAfterEach();
 
 // ---------------------------------------------------------------------------
 // Allocation queries

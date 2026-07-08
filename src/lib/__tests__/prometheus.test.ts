@@ -1,14 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runPrometheusQuery } from '../prometheus.ts';
 import type { PrometheusConfig } from '../prometheus.ts';
-import { mockFetch, makeAbortError } from './test-helpers.ts';
+import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: PrometheusConfig = { url: 'http://prometheus:9090', timeoutMs: 5_000 };
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+restoreGlobalsAfterEach();
 
 // ---------------------------------------------------------------------------
 // Instant queries
