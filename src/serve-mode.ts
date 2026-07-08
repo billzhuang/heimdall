@@ -358,6 +358,21 @@ export interface ServeCliArgs {
 }
 
 /**
+ * Match `--long value` or `--long=value` at `argv[i]`. Call only when the
+ * caller has already confirmed `argv[i]` is one of those two forms.
+ *
+ * Unlike `parseAliasedFlag` in cli-args.ts, a missing space-separated value
+ * resolves to `undefined` instead of erroring — matching this file's
+ * historical leniency for `--host`/`--model` (only `--port` requires a value).
+ */
+function matchOptionalValueFlag(argv: string[], i: number, long: string): { value: string | undefined; nextIndex: number } {
+  const arg = argv[i];
+  return arg === long
+    ? { value: argv[i + 1], nextIndex: i + 1 }
+    : { value: arg.slice(long.length + 1), nextIndex: i };
+}
+
+/**
  * Parse `heimdall serve` CLI flags. Exits the process directly for --help,
  * a missing/invalid --port value, and unknown options, matching this mode's
  * historical behavior.
@@ -380,14 +395,10 @@ export function parseServeArgv(argv: string[]): ServeCliArgs {
     } else if (arg.startsWith('--port=')) {
       const raw = arg.slice('--port='.length);
       portArg = resolvePortArgOrExit(raw, '--port');
-    } else if (arg === '--host') {
-      hostArg = argv[++i];
-    } else if (arg.startsWith('--host=')) {
-      hostArg = arg.slice('--host='.length);
-    } else if (arg === '--model') {
-      modelArg = argv[++i];
-    } else if (arg.startsWith('--model=')) {
-      modelArg = arg.slice('--model='.length);
+    } else if (arg === '--host' || arg.startsWith('--host=')) {
+      ({ value: hostArg, nextIndex: i } = matchOptionalValueFlag(argv, i, '--host'));
+    } else if (arg === '--model' || arg.startsWith('--model=')) {
+      ({ value: modelArg, nextIndex: i } = matchOptionalValueFlag(argv, i, '--model'));
     } else if (arg === '-h' || arg === '--help') {
       process.stdout.write(SERVE_HELP_TEXT);
       process.exit(0);
