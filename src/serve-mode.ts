@@ -35,7 +35,7 @@ import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { invokeAgentForFinding } from './lib/agent-invoke.ts';
 import { isPlainObject, optionalString, requireNonEmptyStringField } from './lib/json-utils.ts';
-import { resolveBinPath } from './lib/bin-path.ts';
+import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { die, isMainModule } from './lib/cli-args.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 
@@ -76,9 +76,8 @@ export async function runAgentDiagnose(
   timeoutMs = DIAGNOSE_TIMEOUT_MS,
 ): Promise<string> {
   const binPath = resolveBinPath(__dirname);
-  const env = { ...process.env, HEIMDALL_MODEL: model };
   return spawnAndCollect(binPath, ['-p', prompt, '--json'], {
-    env,
+    env: buildAgentEnv(model),
     timeoutMs,
     detached: true,
     onTimeout: () => new Error(`agent timed out after ${timeoutMs / 1000}s`),
