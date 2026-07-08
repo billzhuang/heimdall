@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  die,
   requireNextArg,
   requireNonEmptyValue,
   parseCommaSeparatedList,
@@ -8,6 +9,28 @@ import {
   isMainModule,
   resolveModelOrExit,
 } from '../cli-args.ts';
+
+describe('die', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('writes "Error: <msg>" to stderr and exits with the given code', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    die('something went wrong', 2);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: something went wrong\n');
+    expect(exitSpy).toHaveBeenCalledWith(2);
+  });
+
+  it('defaults to exit code 1', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    die('boom');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: boom\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
 
 describe('requireNextArg', () => {
   afterEach(() => {
