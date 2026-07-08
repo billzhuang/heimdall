@@ -73,6 +73,16 @@ function pushBulletSection(lines: string[], title: string, items: string[] | nul
   lines.push('');
 }
 
+/** Append a named fenced-code section (header + ``` block + blank line). No-op when items is empty, null, or undefined. */
+function pushCodeSection(lines: string[], title: string, items: string[] | null | undefined, lang: 'bash' | 'sh' = 'bash'): void {
+  if (items == null || items.length === 0) return;
+  lines.push(`### ${title}`);
+  lines.push(`\`\`\`${lang}`);
+  for (const item of items) lines.push(item);
+  lines.push('```');
+  lines.push('');
+}
+
 /** Append the Heimdall branding footer (`---` + attribution line). */
 function pushFooter(lines: string[]): void {
   lines.push('---');
@@ -103,15 +113,7 @@ export function renderJobSummary(finding: OneShotFinding, prompt?: string): stri
   pushBulletSection(lines, 'Causal Chain', finding.causalChain);
   pushBulletSection(lines, 'Remediation Steps', finding.remediationSteps);
 
-  if (finding.suggestedCommands && finding.suggestedCommands.length > 0) {
-    lines.push('### Suggested Commands');
-    lines.push('```');
-    for (const cmd of finding.suggestedCommands) {
-      lines.push(cmd);
-    }
-    lines.push('```');
-    lines.push('');
-  }
+  pushCodeSection(lines, 'Suggested Commands', finding.suggestedCommands);
 
   if (finding.validityScore !== undefined) {
     lines.push(`*Validity score: ${finding.validityScore}*`);
