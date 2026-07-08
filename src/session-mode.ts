@@ -232,7 +232,7 @@ export function cmdEnd(args: string[]): void {
   try {
     deleteSession(sessionId);
   } catch (err) {
-    die((err as Error).message);
+    die(getMessage(err));
   }
   process.stdout.write(`Session ${sessionId} ended.\n`);
 }

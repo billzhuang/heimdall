@@ -17,6 +17,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { getMessage } from './error-utils.ts';
 
 export interface SessionRecord {
   /** UUID that doubles as the Flue agent instance id. */
@@ -78,7 +79,7 @@ function parseSessionRecord(raw: string, context: string): SessionRecord {
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`Failed to parse session ${context}: ${(err as Error).message}`);
+    throw new Error(`Failed to parse session ${context}: ${getMessage(err)}`);
   }
   if (!isValidSessionRecord(parsed)) {
     throw new Error(`Invalid session record structure for ${context}`);
