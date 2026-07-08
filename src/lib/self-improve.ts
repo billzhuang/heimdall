@@ -37,7 +37,7 @@ const FAILURE_HANDLERS: Array<[string, FailureHandler]> = [
   [
     'Severity:',
     (failure, scenario) => {
-      const m = failure.match(/expected "(.+)", got "(.+)"/);
+      const m = failure.match(/expected "([^"]+)", got "([^"]+)"/);
       if (!m) return null;
       return (
         `Severity miscalibrated: expected "${m[1]}", got "${m[2]}" for "${scenario}". ` +
@@ -48,7 +48,7 @@ const FAILURE_HANDLERS: Array<[string, FailureHandler]> = [
   [
     'Missing expected keyword:',
     (failure, scenario) => {
-      const kw = failure.match(/"(.+)"/)?.[1];
+      const kw = failure.match(/"([^"]+)"/)?.[1];
       if (!kw) return null;
       return (
         `Required term "${kw}" absent in answer for "${scenario}". ` +
@@ -59,7 +59,7 @@ const FAILURE_HANDLERS: Array<[string, FailureHandler]> = [
   [
     'Found forbidden keyword:',
     (failure, scenario) => {
-      const kw = failure.match(/"(.+)"/)?.[1];
+      const kw = failure.match(/"([^"]+)"/)?.[1];
       if (!kw) return null;
       return (
         `Forbidden term "${kw}" appeared in answer for "${scenario}". ` +
