@@ -93,18 +93,18 @@ export function parseSelfImproveArgs(args: string[]): SelfImproveCliArgs {
   let logStdout = false;
 
   for (let i = 0; i < args.length; i++) {
-    const flag = parseAliasedFlag(args, i, '--scenario', '-s');
-    if (flag) {
-      scenarioFilter = flag.value;
-      i = flag.nextIndex;
+    const scenarioFlag = parseAliasedFlag(args, i, '--scenario', '-s');
+    const logPathFlag = parseAliasedFlag(args, i, '--log-path', '-l');
+    if (scenarioFlag) {
+      scenarioFilter = scenarioFlag.value;
+      i = scenarioFlag.nextIndex;
     } else if (args[i] === '--reflect') {
       reflect = true;
     } else if (args[i] === '--from-log') {
       fromLog = true;
-    } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
-      cliLogPath = args[++i];
-    } else if (args[i].startsWith('--log-path=')) {
-      cliLogPath = args[i].slice('--log-path='.length);
+    } else if (logPathFlag) {
+      cliLogPath = logPathFlag.value;
+      i = logPathFlag.nextIndex;
     } else if (args[i] === '--log-stdout') {
       logStdout = true;
     } else if (args[i] === '-h' || args[i] === '--help') {
