@@ -5,7 +5,7 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn(), execFile: vi.fn() }));
 vi.mock('../kubectl.ts', () => ({ runKubectl: vi.fn() }));
 
 import { spawn } from 'node:child_process';
-import { addKubectlResultIfValid, validateSourceArg, runAgent, seedKubectl } from '../../alert-mode.ts';
+import { addKubectlResultIfValid, validateSourceArg, runAgent, seedKubectl, parseAlertArgs } from '../../alert-mode.ts';
 import { runKubectl } from '../kubectl.ts';
 import { BLOCKED_PREFIX } from '../harness.ts';
 import type { ParsedAlert } from '../alert.ts';
@@ -120,6 +120,109 @@ describe('validateSourceArg', () => {
       'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('parseAlertArgs', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('defaults to source raw and seed enabled with the positional input', () => {
+    expect(parseAlertArgs(['alert.json'])).toEqual({
+      source: 'raw',
+      seed: true,
+      input: 'alert.json',
+      modelFlag: undefined,
+    });
+  });
+
+  it('parses --source/-s and --source=<value>', () => {
+    expect(parseAlertArgs(['--source', 'grafana', 'a.json'])).toMatchObject({ source: 'grafana' });
+    expect(parseAlertArgs(['-s', 'prometheus', 'a.json'])).toMatchObject({ source: 'prometheus' });
+    expect(parseAlertArgs(['--source=pagerduty', 'a.json'])).toMatchObject({ source: 'pagerduty' });
+  });
+
+  it('exits 1 for an invalid --source value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseAlertArgs(['--source', 'datadog', 'a.json']);
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('parses --no-seed', () => {
+    expect(parseAlertArgs(['--no-seed', 'a.json'])).toMatchObject({ seed: false });
+  });
+
+  it('parses --model and --model=<value>', () => {
+    expect(parseAlertArgs(['--model', 'anthropic/claude-opus-4-8', 'a.json'])).toMatchObject({
+      modelFlag: 'anthropic/claude-opus-4-8',
+    });
+    expect(parseAlertArgs(['--model=anthropic/claude-opus-4-8', 'a.json'])).toMatchObject({
+      modelFlag: 'anthropic/claude-opus-4-8',
+    });
+  });
+
+  it('treats the last non-flag token as the positional input', () => {
+    expect(parseAlertArgs(['--source', 'raw', 'my alert text'])).toMatchObject({ input: 'my alert text' });
+  });
+
+  it('prints usage and exits 0 for --help/-h', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseAlertArgs(['--help']);
+    expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: heimdall alert'));
+    expect(exitSpy).toHaveBeenCalledWith(0);
+    parseAlertArgs(['-h']);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('exits 1 for an unrecognized option', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseAlertArgs(['--bogus', 'a.json']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits 1 when no input is provided', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseAlertArgs(['--no-seed']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: alert input (file path or raw text) is required\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits 1 when a trailing --source/-s has no value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseAlertArgs(['a.json', '--source']);
+    expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --source\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('exits 1 for an empty --source= value', () => {
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    parseAlertArgs(['--source=', 'a.json']);
+    expect(stderrSpy).toHaveBeenCalledWith(
+      'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('parses a combination of flags', () => {
+    expect(
+      parseAlertArgs(['--source', 'grafana', '--no-seed', '--model', 'anthropic/claude-opus-4-8', 'a.json']),
+    ).toEqual({
+      source: 'grafana',
+      seed: false,
+      input: 'a.json',
+      modelFlag: 'anthropic/claude-opus-4-8',
+    });
   });
 });
 
