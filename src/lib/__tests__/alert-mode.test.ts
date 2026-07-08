@@ -145,8 +145,10 @@ describe('parseAlertArgs', () => {
 
   it('exits 1 for an invalid --source value', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    parseAlertArgs(['--source', 'datadog', 'a.json']);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    expect(() => parseAlertArgs(['--source', 'datadog', 'a.json'])).toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
     );
@@ -172,42 +174,58 @@ describe('parseAlertArgs', () => {
 
   it('prints usage and exits 0 for --help/-h', () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    parseAlertArgs(['--help']);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    expect(() => parseAlertArgs(['--help'])).toThrow('process.exit');
     expect(stdoutSpy).toHaveBeenCalledWith(expect.stringContaining('Usage: heimdall alert'));
     expect(exitSpy).toHaveBeenCalledWith(0);
-    parseAlertArgs(['-h']);
+    expect(stderrSpy).not.toHaveBeenCalled();
+
+    stdoutSpy.mockClear();
+    exitSpy.mockClear();
+
+    expect(() => parseAlertArgs(['-h'])).toThrow('process.exit');
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
   it('exits 1 for an unrecognized option', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    parseAlertArgs(['--bogus', 'a.json']);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    expect(() => parseAlertArgs(['--bogus', 'a.json'])).toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('exits 1 when no input is provided', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    parseAlertArgs(['--no-seed']);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    expect(() => parseAlertArgs(['--no-seed'])).toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith('Error: alert input (file path or raw text) is required\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('exits 1 when a trailing --source/-s has no value', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    parseAlertArgs(['a.json', '--source']);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    expect(() => parseAlertArgs(['a.json', '--source'])).toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --source\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('exits 1 for an empty --source= value', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    parseAlertArgs(['--source=', 'a.json']);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    expect(() => parseAlertArgs(['--source=', 'a.json'])).toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
     );

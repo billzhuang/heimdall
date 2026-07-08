@@ -199,7 +199,7 @@ export function parseAlertArgs(args: string[]): AlertCliArgs {
 
   if (!input) {
     process.stderr.write('Error: alert input (file path or raw text) is required\n');
-    process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">\n');
+    process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">\n');
     process.exit(1);
   }
 
