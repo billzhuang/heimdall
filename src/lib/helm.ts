@@ -31,6 +31,41 @@ export interface RunHelmOptions {
   allNamespaces?: boolean;
 }
 
+/** Result of {@link resolveHelmNamespaceLockdown}: either the resolved query params, or a blocked-response reason. */
+export type HelmNamespaceLockdownResult =
+  | { blocked: true; reason: string }
+  | { blocked: false; namespace: string | undefined; allNamespaces: boolean | undefined };
+
+/**
+ * Resolve the effective namespace/allNamespaces for a helm_release query,
+ * applying namespace lockdown when configured.
+ *
+ * When no namespace is locked, the caller-requested namespace and
+ * allNamespaces pass through unchanged. When locked, `allNamespaces` and any
+ * conflicting namespace are blocked; an unset namespace defaults to the
+ * locked namespace.
+ */
+export function resolveHelmNamespaceLockdown(
+  namespace: string | undefined,
+  allNamespaces: boolean | undefined,
+  lockedNamespace: string | null | undefined,
+): HelmNamespaceLockdownResult {
+  if (!lockedNamespace) return { blocked: false, namespace, allNamespaces };
+  if (allNamespaces) {
+    return {
+      blocked: true,
+      reason: `namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`,
+    };
+  }
+  if (namespace && namespace !== lockedNamespace) {
+    return {
+      blocked: true,
+      reason: `namespace lockdown is active — only '${lockedNamespace}' is accessible; '${namespace}' is not allowed`,
+    };
+  }
+  return { blocked: false, namespace: lockedNamespace, allNamespaces: false };
+}
+
 /** Returns an error string if `value` starts with a hyphen (option injection), else null. */
 function leadingHyphenError(value: string | undefined, label: string): string | null {
   return value?.startsWith('-') ? `Error: ${label} cannot start with a hyphen.` : null;

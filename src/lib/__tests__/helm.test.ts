@@ -10,7 +10,7 @@ vi.mock('node:child_process', () => ({
   execFile: vi.fn(),
 }));
 
-import { runHelm, ALLOWED_HELM_ACTIONS, ALLOWED_HELM_GET_TYPES } from '../helm.ts';
+import { runHelm, resolveHelmNamespaceLockdown, ALLOWED_HELM_ACTIONS, ALLOWED_HELM_GET_TYPES } from '../helm.ts';
 import { stubExec, resetExec } from './execfile-helpers.ts';
 
 beforeEach(() => {
@@ -181,5 +181,50 @@ describe('runHelm — exhaustive action guard', () => {
     // @ts-expect-error — testing the runtime guard for an unexpected action value
     const result = await runHelm('deploy' as unknown as HelmAction, {});
     expect(result).toMatch(/unknown helm action/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveHelmNamespaceLockdown (pure helper)
+// ---------------------------------------------------------------------------
+
+describe('resolveHelmNamespaceLockdown', () => {
+  it('passes through namespace and allNamespaces unchanged when no lockdown is set', () => {
+    expect(resolveHelmNamespaceLockdown('staging', undefined, undefined)).toEqual({
+      blocked: false,
+      namespace: 'staging',
+      allNamespaces: undefined,
+    });
+    expect(resolveHelmNamespaceLockdown(undefined, true, null)).toEqual({
+      blocked: false,
+      namespace: undefined,
+      allNamespaces: true,
+    });
+  });
+
+  it('blocks allNamespaces when lockdown is active', () => {
+    const result = resolveHelmNamespaceLockdown(undefined, true, 'prod-payments');
+    expect(result).toEqual({ blocked: true, reason: expect.stringMatching(/allNamespaces/i) });
+  });
+
+  it('blocks a mismatched namespace when lockdown is active', () => {
+    const result = resolveHelmNamespaceLockdown('other-namespace', undefined, 'prod-payments');
+    expect(result).toEqual({ blocked: true, reason: expect.stringContaining('other-namespace') });
+  });
+
+  it('allows the correct locked namespace and forces allNamespaces to false', () => {
+    expect(resolveHelmNamespaceLockdown('prod-payments', undefined, 'prod-payments')).toEqual({
+      blocked: false,
+      namespace: 'prod-payments',
+      allNamespaces: false,
+    });
+  });
+
+  it('fills in the locked namespace when none is requested', () => {
+    expect(resolveHelmNamespaceLockdown(undefined, undefined, 'prod-payments')).toEqual({
+      blocked: false,
+      namespace: 'prod-payments',
+      allNamespaces: false,
+    });
   });
 });
