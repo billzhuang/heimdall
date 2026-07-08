@@ -13,12 +13,7 @@ restoreGlobalsAfterEach();
 
 describe('runJaegerQuery — success', () => {
   it('calls /api/traces with the service name', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{"data":[]}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{"data":[]}');
 
     await runJaegerQuery({ service: 'checkout' }, BASE_CONFIG);
 
@@ -38,8 +33,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('includes operation in the query URL when provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', operation: 'POST /charge' }, BASE_CONFIG);
 
@@ -49,8 +43,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('includes minDuration when provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'checkout', minDuration: '500ms' }, BASE_CONFIG);
 
@@ -59,8 +52,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('includes tags when provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'orders', tags: 'error=true' }, BASE_CONFIG);
 
@@ -70,8 +62,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('resolves relative start/end to Unix microseconds in the URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', start: '-1h', end: '-30m' }, BASE_CONFIG);
 
@@ -84,8 +75,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('omits start param when the time expression is unrecognised', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', start: '-5y' }, BASE_CONFIG);
 
@@ -94,8 +84,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('omits end param when the time expression is unrecognised', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', end: 'yesterday' }, BASE_CONFIG);
 
@@ -104,8 +93,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('passes ISO8601 start/end as microseconds', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', start: '2024-06-01T11:00:00.000Z' }, BASE_CONFIG);
 
@@ -117,8 +105,7 @@ describe('runJaegerQuery — success', () => {
   });
 
   it('strips trailing slash from base URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api' }, { ...BASE_CONFIG, url: 'http://jaeger:16686/' });
 
@@ -135,8 +122,7 @@ describe('runJaegerQuery — success', () => {
 
 describe('runJaegerQuery — limit clamping', () => {
   it('uses default limit of 20 when not specified', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api' }, BASE_CONFIG);
 
@@ -145,8 +131,7 @@ describe('runJaegerQuery — limit clamping', () => {
   });
 
   it('clamps limit to MAX_LIMIT (100) when exceeded', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', limit: 999 }, BASE_CONFIG);
 
@@ -156,8 +141,7 @@ describe('runJaegerQuery — limit clamping', () => {
   });
 
   it('clamps limit to 1 when zero or negative', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', limit: 0 }, BASE_CONFIG);
 
@@ -166,8 +150,7 @@ describe('runJaegerQuery — limit clamping', () => {
   });
 
   it('uses DEFAULT_LIMIT when limit is null', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'api', limit: null }, BASE_CONFIG);
 
