@@ -174,6 +174,15 @@ describe('sendSlackNotification — error handling', () => {
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('HTTP 500'));
   });
 
+  it('caps the error body detail at 200 characters', async () => {
+    mockFetch(500, 'x'.repeat(300));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    await sendSlackNotification(CRITICAL_FINDING, BASE_CONFIG);
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`HTTP 500): ${'x'.repeat(200)}`),
+    );
+  });
+
   it('does not throw on network error', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network failure')));
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
