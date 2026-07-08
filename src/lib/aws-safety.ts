@@ -11,7 +11,7 @@
  * Everything else is blocked, with an additional explicit block list for the
  * most commonly misused destructive operations to provide clearer error messages.
  */
-import { findNextNonOptionToken } from './tokenizer.ts';
+import { findNextNonOptionToken, type CommandValidationResult } from './tokenizer.ts';
 import { classifySubcommand } from './subcommand-policy.ts';
 
 /**
@@ -60,12 +60,7 @@ export interface ParsedAwsCommand {
 }
 
 /** Result of validating an AWS CLI command against the read-only policy. */
-export interface AwsCommandValidationResult {
-  allowed: boolean;
-  reason: string;
-  command: string;
-  subcommand: string | null;
-}
+export type AwsCommandValidationResult = CommandValidationResult;
 
 /**
  * AWS CLI global options that consume the following token as their value.

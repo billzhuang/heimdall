@@ -10,7 +10,7 @@
  * Mutating subcommands (deploy, destroy, bootstrap, watch, import, migrate, gc,
  * rollback) are always blocked with a clear error message.
  */
-import { tokenizeShellArgs, findNextNonOptionToken } from './tokenizer.ts';
+import { tokenizeShellArgs, findNextNonOptionToken, type CommandValidationResult } from './tokenizer.ts';
 import { classifySubcommand } from './subcommand-policy.ts';
 
 /**
@@ -59,12 +59,7 @@ export interface ParsedCdkCommand {
 }
 
 /** Result of validating a CDK CLI command against the read-only policy. */
-export interface CdkCommandValidationResult {
-  allowed: boolean;
-  reason: string;
-  command: string;
-  subcommand: string | null;
-}
+export type CdkCommandValidationResult = CommandValidationResult;
 
 /**
  * CDK global options that consume the following token as their value.
