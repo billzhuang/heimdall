@@ -39,6 +39,7 @@ import {
   computeBackoffMs,
   shouldResetBackoff,
   eventObjectRef,
+  eventNamespace,
   type CooldownState,
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
@@ -150,8 +151,9 @@ export async function runWatchStream(
     if (!matchesWatchFilter(event, watchCfg ?? {})) continue;
 
     const ts = new Date().toISOString();
-    const ns = event.metadata.namespace ?? event.involvedObject.namespace ?? 'unknown';
-    const objRef = `${event.involvedObject.kind ?? 'unknown'}/${event.involvedObject.name ?? 'unknown'}`;
+    const ns = eventNamespace(event, 'unknown');
+    const { kind: objKind, name: objName } = eventObjectRef(event);
+    const objRef = `${objKind}/${objName}`;
 
     if (!shouldDiagnose(event, cooldownState, Date.now(), cooldownSeconds)) {
       logWatch(`Cooldown: suppressing repeat ${event.reason} on ${objRef} in ${ns}`);
@@ -170,9 +172,8 @@ export async function runWatchStream(
     if (baselineFile) {
       const clusterName = process.env.HEIMDALL_CLUSTER_NAME ?? 'default';
       const summary = truncateSummary(`[${event.reason}] ${diagnosis}`);
-      const { kind: baselineKind, name: baselineName } = eventObjectRef(event);
       try {
-        await upsertBaseline(clusterName, ns, baselineKind, baselineName, summary, baselineFile);
+        await upsertBaseline(clusterName, ns, objKind, objName, summary, baselineFile);
       } catch (err: unknown) {
         logWatch(`Warning: could not write baseline: ${getMessage(err)}`);
       }

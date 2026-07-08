@@ -60,7 +60,7 @@ export type CooldownState = Map<string, number>;
 
 const MAX_COOLDOWN_ENTRIES = 10_000;
 
-function eventNamespace(event: K8sEventObject, fallback = 'unknown'): string {
+export function eventNamespace(event: K8sEventObject, fallback = 'unknown'): string {
   return event.metadata.namespace ?? event.involvedObject.namespace ?? fallback;
 }
 
