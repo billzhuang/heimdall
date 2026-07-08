@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { withTimeout, fetchWithTimeout, readErrorDetail, formatHttpErrorMessage, formatQueryError, makeResponseHandler } from '../http.ts';
+import { withTimeout, fetchWithTimeout, readErrorDetail, formatHttpErrorMessage, formatQueryError, makeResponseHandler, truncatedDetail } from '../http.ts';
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
@@ -142,6 +142,25 @@ describe('fetchWithTimeout', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// truncatedDetail
+// ---------------------------------------------------------------------------
+
+describe('truncatedDetail', () => {
+  it('returns empty string for an empty body', () => {
+    expect(truncatedDetail('')).toBe('');
+  });
+
+  it('formats a non-empty body as ": <body>"', () => {
+    expect(truncatedDetail('not found')).toBe(': not found');
+  });
+
+  it('caps the body at 200 characters', () => {
+    const long = 'x'.repeat(300);
+    expect(truncatedDetail(long)).toBe(`: ${'x'.repeat(200)}`);
   });
 });
 
