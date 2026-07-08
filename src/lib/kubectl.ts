@@ -337,7 +337,7 @@ export async function runKubectl(args: string, options: RunKubectlOptions = {}):
   if (typeof options.lockedNamespace === 'string') {
     const lockdown = applyNamespaceLockdown(argv, options.lockedNamespace);
     if (lockdown.blocked) {
-      return reportBlocked(cmd, startTs, audit, lockdown.reason ?? '');
+      return reportBlocked(cmd, startTs, audit, lockdown.reason);
     }
     argv = lockdown.argv;
   }

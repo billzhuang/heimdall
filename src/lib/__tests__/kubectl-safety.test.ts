@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import { describe, it, expect } from 'vitest';
 import {
   ALLOWED_KUBECTL_COMMANDS,
@@ -212,7 +213,7 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks -A', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-A'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toMatch(/-A/);
     expect(result.reason).toContain(NS);
   });
@@ -224,20 +225,20 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks -n with a different namespace', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-n', 'other'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('other');
     expect(result.reason).toContain(NS);
   });
 
   it('blocks --namespace=<other>', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '--namespace=kube-system'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('kube-system');
   });
 
   it('blocks --namespace <other> (two-token form)', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '--namespace', 'staging'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('staging');
   });
 
@@ -261,7 +262,7 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks -n=<other> (shorthand with attached = value)', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-n=other'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('other');
   });
 
@@ -272,7 +273,7 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks -nother (shorthand with attached value, no equals)', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-nother'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('other');
   });
 
@@ -283,7 +284,7 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks -An (grouped shorthand containing A)', () => {
     const result = applyNamespaceLockdown(['get', 'pods', '-An', NS], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('-A');
   });
 
@@ -297,7 +298,7 @@ describe('applyNamespaceLockdown', () => {
 
   it('blocks mixed flags that bypass via overwrite (--namespace=<locked> then -n=other)', () => {
     const result = applyNamespaceLockdown(['get', 'pods', `--namespace=${NS}`, '-n=other'], NS);
-    expect(result.blocked).toBe(true);
+    assert(result.blocked);
     expect(result.reason).toContain('other');
   });
 
