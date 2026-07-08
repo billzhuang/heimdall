@@ -180,13 +180,13 @@ export async function runWatchStream(
 
     if (watchCfg?.webhook) {
       postWebhook(watchCfg.webhook, finding).catch((err: unknown) => {
-        logWatch(`Webhook error: ${String(err)}`);
+        logWatch(`Webhook error: ${getMessage(err)}`);
       });
     }
 
     if (eventSink) {
       eventSink.write(finding).catch((err: unknown) => {
-        logWatch(`EventSink error: ${String(err)}`);
+        logWatch(`EventSink error: ${getMessage(err)}`);
       });
     }
   }
