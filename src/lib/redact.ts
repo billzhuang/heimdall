@@ -13,6 +13,11 @@ export const REDACTED_FORMAT_MESSAGE =
   'Secret values cannot be safely extracted in this output format. ' +
   'Use -o json or -o yaml to inspect Secrets — values will be redacted automatically.';
 
+/** Map an -o/--output value string to a format discriminant. */
+function parseFormatValue(val: string): 'json' | 'yaml' | 'other' {
+  return val === 'json' ? 'json' : val === 'yaml' ? 'yaml' : 'other';
+}
+
 /**
  * Detect the kubectl output format from the argv token list.
  * Recognises both attached forms (`-ojson`, `-o=json`, `--output=json`) and
@@ -28,11 +33,9 @@ export function detectFormat(argv: string[]): 'json' | 'yaml' | 'other' {
     } else if (a === '-oyaml') {
       result = 'yaml';
     } else if (a.startsWith('-o=') || a.startsWith('--output=')) {
-      const val = a.slice(a.indexOf('=') + 1);
-      result = val === 'json' ? 'json' : val === 'yaml' ? 'yaml' : 'other';
+      result = parseFormatValue(a.slice(a.indexOf('=') + 1));
     } else if ((a === '-o' || a === '--output') && i + 1 < argv.length) {
-      const val = argv[++i];
-      result = val === 'json' ? 'json' : val === 'yaml' ? 'yaml' : 'other';
+      result = parseFormatValue(argv[++i]);
     }
   }
   return result ?? 'other';
@@ -117,15 +120,23 @@ export function redactDataFields(
   return result;
 }
 
+/** Redact a single named data field on a Secret result object, if present. */
+function redactField(
+  result: Record<string, unknown>,
+  field: string,
+  isBase64: boolean,
+): void {
+  const v = result[field];
+  if (v && typeof v === 'object' && !Array.isArray(v)) {
+    result[field] = redactDataFields(v as Record<string, unknown>, isBase64);
+  }
+}
+
 /** Redact `.data` and `.stringData` fields of a single Secret object. */
 function redactSecret(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = { ...obj };
-  if (result['data'] && typeof result['data'] === 'object' && !Array.isArray(result['data'])) {
-    result['data'] = redactDataFields(result['data'] as Record<string, unknown>, true);
-  }
-  if (result['stringData'] && typeof result['stringData'] === 'object' && !Array.isArray(result['stringData'])) {
-    result['stringData'] = redactDataFields(result['stringData'] as Record<string, unknown>, false);
-  }
+  redactField(result, 'data', true);
+  redactField(result, 'stringData', false);
   return result;
 }
 
