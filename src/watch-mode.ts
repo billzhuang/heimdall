@@ -44,7 +44,7 @@ import {
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { die, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 
@@ -296,8 +296,7 @@ export function parseWatchArgv(argv: string[]): WatchCliArgs {
       process.stdout.write(WATCH_HELP_TEXT);
       process.exit(0);
     } else {
-      process.stderr.write(`Error: unknown option: ${arg}\n`);
-      process.exit(1);
+      die(`unknown option: ${arg}`);
     }
   }
 

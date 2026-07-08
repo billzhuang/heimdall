@@ -21,7 +21,7 @@ import { getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { die, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -182,7 +182,7 @@ Examples:
     } else if (!arg.startsWith('-')) {
       input = arg;
     } else {
-      process.stderr.write(`Error: unknown option: ${arg}\n`); process.exit(1);
+      die(`unknown option: ${arg}`);
     }
   }
 
