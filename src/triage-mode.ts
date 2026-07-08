@@ -35,7 +35,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { die, requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { die, parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -205,22 +205,19 @@ if (isMainModule(import.meta.url)) {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '-n' || arg === '--namespace') {
-      requireNextArg(args, i, `${arg} requires a namespace argument`);
-      opts.namespace = args[++i];
-    } else if (arg.startsWith('--namespace=')) {
-      const ns = arg.slice('--namespace='.length);
-      requireNonEmptyValue(ns, '--namespace= requires a non-empty value');
-      opts.namespace = ns;
+    if (arg === '-n' || arg === '--namespace' || arg.startsWith('--namespace=')) {
+      const parsed = parseRequiredFlag(args, i, '--namespace=', `${arg} requires a namespace argument`, '--namespace= requires a non-empty value');
+      opts.namespace = parsed.value;
+      i = parsed.nextIndex;
     } else if (arg === '-A' || arg === '--all-namespaces') {
       opts.allNamespaces = true;
-    } else if (arg === '--contexts') {
-      requireNextArg(args, i, '--contexts requires a comma-separated list of context names');
-      opts.contexts = parseCommaSeparatedList(args[++i], '--contexts value produced an empty list after parsing');
-    } else if (arg.startsWith('--contexts=')) {
-      const raw = arg.slice('--contexts='.length);
-      requireNonEmptyValue(raw, '--contexts= requires a non-empty comma-separated list');
-      opts.contexts = parseCommaSeparatedList(raw, '--contexts= value produced an empty list after parsing');
+    } else if (arg === '--contexts' || arg.startsWith('--contexts=')) {
+      const parsed = parseRequiredFlag(args, i, '--contexts=', '--contexts requires a comma-separated list of context names', '--contexts= requires a non-empty comma-separated list');
+      const emptyMsg = parsed.usedEquals
+        ? '--contexts= value produced an empty list after parsing'
+        : '--contexts value produced an empty list after parsing';
+      opts.contexts = parseCommaSeparatedList(parsed.value, emptyMsg);
+      i = parsed.nextIndex;
     } else if (arg === '--model' || arg.startsWith('--model=')) {
       const parsed = parseModelFlag(args, i);
       modelFlag = parsed.value;
