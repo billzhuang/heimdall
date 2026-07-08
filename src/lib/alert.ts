@@ -161,8 +161,10 @@ function pdUrgencyToSeverity(urgency?: string): string | undefined {
  * Falls back to the raw PagerDuty service name only when the service wasn't
  * found in serviceMap at all — a mapped entry with no deployment (namespace
  * only) deliberately leaves deployment unset rather than falling back.
+ *
+ * Exported for direct unit testing.
  */
-function resolveDeploymentFallback(
+export function resolveDeploymentFallback(
   mapped: { namespace?: string; deployment?: string },
   serviceName: string | undefined,
 ): string | undefined {
