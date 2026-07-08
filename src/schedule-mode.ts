@@ -35,7 +35,7 @@ import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
-import { isMainModule } from './lib/cli-args.ts';
+import { die, isMainModule } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -203,8 +203,7 @@ export function parseScheduleArgv(argv: string[]): ScheduleCliArgs {
       process.stdout.write(SCHEDULE_HELP_TEXT);
       process.exit(0);
     } else {
-      process.stderr.write(`Error: unknown option: ${arg}\n`);
-      process.exit(1);
+      die(`unknown option: ${arg}`);
     }
   }
 

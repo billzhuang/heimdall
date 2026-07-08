@@ -35,7 +35,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { die, requireNextArg, requireNonEmptyValue, parseCommaSeparatedList, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -248,8 +248,7 @@ Examples:
 `);
       process.exit(0);
     } else {
-      process.stderr.write(`Error: unknown option: ${arg}\n`);
-      process.exit(1);
+      die(`unknown option: ${arg}`);
     }
   }
 
