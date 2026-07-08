@@ -163,12 +163,9 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
 }
 
 /** Result of applying namespace lockdown to a tokenized argv. */
-export interface NamespaceLockdownResult {
-  blocked: boolean;
-  reason?: string;
-  /** The (potentially modified) argv to use for execution. */
-  argv: string[];
-}
+export type NamespaceLockdownResult =
+  | { blocked: true; reason: string; argv: string[] }
+  | { blocked: false; argv: string[] };
 
 /**
  * Enforce namespace lockdown on a tokenized kubectl argv.
