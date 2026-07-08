@@ -210,6 +210,35 @@ async function queryEvents(
   return result.ok ? result.text : result.error;
 }
 
+/**
+ * Client-side status filter for the /api/v1/monitor response: keep only
+ * entries whose overall_state matches one of the comma-separated
+ * monitorStatus values (case-insensitive). Returns `text` unchanged when
+ * monitorStatus is unset, or when `text` isn't a JSON array.
+ */
+export function filterMonitorsByStatus(text: string, monitorStatus?: string | null): string {
+  if (!monitorStatus?.trim()) return text;
+
+  const allowedStates = new Set(
+    monitorStatus.split(',').map((s) => s.trim().toLowerCase()),
+  );
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (Array.isArray(parsed)) {
+      const filtered = parsed.filter((m: unknown) => {
+        if (m !== null && typeof m === 'object' && 'overall_state' in m) {
+          return allowedStates.has(String((m as Record<string, unknown>)['overall_state']).toLowerCase());
+        }
+        return false;
+      });
+      return JSON.stringify(filtered);
+    }
+  } catch {
+    // JSON parse failed — return the raw text and let truncation/redaction apply
+  }
+  return text;
+}
+
 async function queryMonitors(
   params: DatadogQueryParams,
   config: DatadogConfig,
@@ -228,31 +257,7 @@ async function queryMonitors(
 
   const result = await fetchDatadog(url, config, signal, 'monitors');
   if (!result.ok) return result.error;
-  const text = result.text;
-
-  // Client-side status filter: when monitorStatus is specified, keep only monitors
-  // whose overall_state matches one of the requested states (case-insensitive).
-  if (params.monitorStatus?.trim()) {
-    const allowedStates = new Set(
-      params.monitorStatus.split(',').map((s) => s.trim().toLowerCase()),
-    );
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        const filtered = parsed.filter((m: unknown) => {
-          if (m !== null && typeof m === 'object' && 'overall_state' in m) {
-            return allowedStates.has(String((m as Record<string, unknown>)['overall_state']).toLowerCase());
-          }
-          return false;
-        });
-        return JSON.stringify(filtered);
-      }
-    } catch {
-      // JSON parse failed — return the raw text and let truncation/redaction apply
-    }
-  }
-
-  return text;
+  return filterMonitorsByStatus(result.text, params.monitorStatus);
 }
 
 /**
