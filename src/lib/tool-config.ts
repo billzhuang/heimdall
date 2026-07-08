@@ -72,10 +72,11 @@ export function buildLockdownNote(
  * "aws"); its uppercase form is used as the CLI's display label.
  */
 export function buildArgsInputSchema(bin: string) {
+  const normalizedBin = bin.toLowerCase();
   return v.object({
     args: v.pipe(
       v.string(),
-      v.description(`Arguments passed to the ${bin.toUpperCase()} CLI, excluding the leading "${bin}".`),
+      v.description(`Arguments passed to the ${normalizedBin.toUpperCase()} CLI, excluding the leading "${normalizedBin}".`),
     ),
   });
 }

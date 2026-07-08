@@ -139,6 +139,14 @@ describe('buildArgsInputSchema', () => {
       description: 'Arguments passed to the CDK CLI, excluding the leading "cdk".',
     });
   });
+
+  it('normalizes a mixed-case binary name to lowercase in both the label and the exclusion note', () => {
+    const schema = buildArgsInputSchema('Aws');
+    expect(schema.entries.args.pipe[1]).toMatchObject({
+      type: 'description',
+      description: 'Arguments passed to the AWS CLI, excluding the leading "aws".',
+    });
+  });
 });
 
 describe('resolveConfigString', () => {
