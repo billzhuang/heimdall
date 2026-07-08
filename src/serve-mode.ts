@@ -34,7 +34,7 @@ import { resolveModel } from './lib/model.ts';
 import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { invokeAgentForFinding } from './lib/agent-invoke.ts';
-import { isPlainObject, optionalString } from './lib/json-utils.ts';
+import { isPlainObject, optionalString, requireNonEmptyStringField } from './lib/json-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { isMainModule } from './lib/cli-args.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
@@ -99,13 +99,11 @@ export function parseDiagnoseRequestBody(parsed: unknown): ParsedDiagnoseRequest
   if (!isPlainObject(parsed)) {
     return { ok: false, error: 'Invalid JSON body: expected an object' };
   }
-  const prompt = parsed['prompt'];
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    return { ok: false, error: '"prompt" is required and must be a non-empty string' };
-  }
+  const promptField = requireNonEmptyStringField(parsed, 'prompt');
+  if (!promptField.ok) return promptField;
   return {
     ok: true,
-    prompt: prompt.trim(),
+    prompt: promptField.value,
     namespace: optionalString(parsed['namespace']),
     model: optionalString(parsed['model']),
   };

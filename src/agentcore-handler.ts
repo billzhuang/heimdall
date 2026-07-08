@@ -37,7 +37,7 @@ import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { invokeAgentForFinding } from './lib/agent-invoke.ts';
-import { isPlainObject, optionalString } from './lib/json-utils.ts';
+import { isPlainObject, optionalString, requireNonEmptyStringField } from './lib/json-utils.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
 const AGENTCORE_PORT_DEFAULT = 8080;
@@ -65,14 +65,12 @@ export function parseAgentCoreRequestBody(parsed: unknown): ParsedAgentCoreReque
   if (!isPlainObject(parsed)) {
     return { ok: false, error: 'Invalid JSON body: expected an object' };
   }
-  const inputText = parsed['inputText'];
-  if (typeof inputText !== 'string' || !inputText.trim()) {
-    return { ok: false, error: '"inputText" is required and must be a non-empty string' };
-  }
+  const inputTextField = requireNonEmptyStringField(parsed, 'inputText');
+  if (!inputTextField.ok) return inputTextField;
   return {
     ok: true,
     body: {
-      inputText: inputText.trim(),
+      inputText: inputTextField.value,
       sessionId: optionalString(parsed['sessionId']),
       sessionAttributes: isPlainObject(parsed['sessionAttributes'])
         ? (parsed['sessionAttributes'] as Record<string, string>)

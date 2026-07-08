@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPlainObject, optionalString } from '../json-utils.ts';
+import { isPlainObject, optionalString, requireNonEmptyStringField } from '../json-utils.ts';
 
 describe('isPlainObject', () => {
   it('accepts plain objects', () => {
@@ -30,5 +30,42 @@ describe('optionalString', () => {
     expect(optionalString(undefined)).toBeUndefined();
     expect(optionalString({})).toBeUndefined();
     expect(optionalString([])).toBeUndefined();
+  });
+});
+
+describe('requireNonEmptyStringField', () => {
+  it('returns the trimmed value when the field is a non-empty string', () => {
+    expect(requireNonEmptyStringField({ prompt: '  hello  ' }, 'prompt')).toEqual({
+      ok: true,
+      value: 'hello',
+    });
+  });
+
+  it('errors when the field is missing', () => {
+    expect(requireNonEmptyStringField({}, 'prompt')).toEqual({
+      ok: false,
+      error: '"prompt" is required and must be a non-empty string',
+    });
+  });
+
+  it('errors when the field is whitespace-only', () => {
+    expect(requireNonEmptyStringField({ prompt: '   ' }, 'prompt')).toEqual({
+      ok: false,
+      error: '"prompt" is required and must be a non-empty string',
+    });
+  });
+
+  it('errors when the field is not a string', () => {
+    expect(requireNonEmptyStringField({ prompt: 42 }, 'prompt')).toEqual({
+      ok: false,
+      error: '"prompt" is required and must be a non-empty string',
+    });
+  });
+
+  it('interpolates the field name into the error message', () => {
+    expect(requireNonEmptyStringField({}, 'inputText')).toEqual({
+      ok: false,
+      error: '"inputText" is required and must be a non-empty string',
+    });
   });
 });
