@@ -1,17 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildTriagePrompt,
-  compareSeverity,
-  parseSeverity,
   resolveNamespaceScope,
-  TRIAGE_CATEGORIES,
-  type Severity,
 } from '../triage.ts';
 
 describe('buildTriagePrompt', () => {
   it('covers all 7 triage categories in order', () => {
     const prompt = buildTriagePrompt();
-    // Map category keys to the heading labels used in the prompt.
+    // Ordered diagnostic categories, mapped to the heading labels used in the prompt.
     const categoryLabels: Record<string, string> = {
       nodes: 'Nodes',
       pods: 'Pods',
@@ -21,7 +17,7 @@ describe('buildTriagePrompt', () => {
       jobs: 'Jobs',
       capi: 'CAPI drift',
     };
-    const positions = TRIAGE_CATEGORIES.map((cat) => {
+    const positions = Object.keys(categoryLabels).map((cat) => {
       const label = categoryLabels[cat];
       return { cat, pos: prompt.indexOf(label) };
     });
@@ -108,60 +104,6 @@ describe('buildTriagePrompt', () => {
     const prompt = buildTriagePrompt({ contexts: [] });
     expect(prompt).toContain('default namespace');
     expect(prompt).not.toMatch(/multi-cluster-investigator/i);
-  });
-});
-
-describe('parseSeverity', () => {
-  it.each<[string, Severity]>([
-    ['critical error', 'critical'],
-    ['CRITICAL', 'critical'],
-    ['warning: pod is pending', 'warning'],
-    ['WARNING', 'warning'],
-    ['info: PDB present', 'info'],
-    ['INFO', 'info'],
-  ])('parses "%s" → %s', (text, expected) => {
-    expect(parseSeverity(text)).toBe(expected);
-  });
-
-  it('returns undefined for unrecognised text', () => {
-    expect(parseSeverity('unknown severity')).toBeUndefined();
-    expect(parseSeverity('')).toBeUndefined();
-  });
-});
-
-describe('compareSeverity', () => {
-  it('orders critical before warning before info', () => {
-    expect(compareSeverity('critical', 'warning')).toBeLessThan(0);
-    expect(compareSeverity('warning', 'info')).toBeLessThan(0);
-    expect(compareSeverity('critical', 'info')).toBeLessThan(0);
-  });
-
-  it('returns 0 for equal severities', () => {
-    expect(compareSeverity('critical', 'critical')).toBe(0);
-    expect(compareSeverity('warning', 'warning')).toBe(0);
-    expect(compareSeverity('info', 'info')).toBe(0);
-  });
-
-  it('reverses correctly', () => {
-    expect(compareSeverity('info', 'critical')).toBeGreaterThan(0);
-    expect(compareSeverity('info', 'warning')).toBeGreaterThan(0);
-    expect(compareSeverity('warning', 'critical')).toBeGreaterThan(0);
-  });
-
-  it('can sort an array of findings by severity', () => {
-    const severities: Severity[] = ['info', 'critical', 'warning', 'critical', 'info'];
-    const sorted = [...severities].sort(compareSeverity);
-    expect(sorted).toEqual(['critical', 'critical', 'warning', 'info', 'info']);
-  });
-});
-
-describe('parseSeverity — priority ordering', () => {
-  it('returns critical when text contains both critical and warning', () => {
-    expect(parseSeverity('critical warning detected')).toBe('critical');
-  });
-
-  it('returns warning when text contains both warning and info', () => {
-    expect(parseSeverity('warning: info logged')).toBe('warning');
   });
 });
 

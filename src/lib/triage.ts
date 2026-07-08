@@ -23,12 +23,6 @@ export interface TriageOptions {
   slos?: SloDefinition[];
 }
 
-/** Severity levels for triage findings. */
-export type Severity = 'critical' | 'warning' | 'info';
-
-/** Ordered diagnostic categories — checked in this sequence every run. */
-export const TRIAGE_CATEGORIES = ['nodes', 'pods', 'workloads', 'events', 'pvcs', 'jobs', 'capi'] as const;
-
 /** Resolved namespace scope strings derived from {@link TriageOptions}. */
 export interface NamespaceScope {
   /** kubectl flag suffix: `''` | `' -n <ns>'` | `' -A'` */
@@ -163,25 +157,4 @@ Delegate this investigation to the \`multi-cluster-investigator\` subagent. It w
 4. Produce a per-cluster summary and a cross-cluster findings section.
 
 After the subagent reports, synthesise its findings into your final answer following the standard response format. End with a summary line: "Multi-cluster triage complete: X clusters swept, Y cross-cluster issues found, Z total findings."`;
-}
-
-/**
- * Parse a severity label from free-form text (case-insensitive).
- * Returns undefined if no recognised level is found.
- */
-export function parseSeverity(text: string): Severity | undefined {
-  const lower = text.toLowerCase();
-  if (lower.includes('critical')) return 'critical';
-  if (lower.includes('warning')) return 'warning';
-  if (lower.includes('info')) return 'info';
-  return undefined;
-}
-
-/**
- * Compare two severity values for sorting: critical > warning > info.
- * Returns negative if a > b, 0 if equal, positive if a < b.
- */
-export function compareSeverity(a: Severity, b: Severity): number {
-  const rank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
-  return rank[a] - rank[b];
 }
