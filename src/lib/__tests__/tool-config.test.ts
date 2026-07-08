@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { resolveTimeoutMs, clampLimit, buildLockdownNote, resolveConfigString } from '../tool-config.ts';
+import * as v from 'valibot';
+import { resolveTimeoutMs, clampLimit, buildLockdownNote, resolveConfigString, buildArgsInputSchema } from '../tool-config.ts';
 
 describe('resolveTimeoutMs', () => {
   it('returns the provided value when it is a positive finite number', () => {
@@ -109,6 +110,34 @@ describe('buildLockdownNote', () => {
       throw new Error('should not be called');
     };
     expect(buildLockdownNote('', message)).toBe('');
+  });
+});
+
+describe('buildArgsInputSchema', () => {
+  it('accepts a plain args string', () => {
+    const schema = buildArgsInputSchema('aws');
+    expect(v.parse(schema, { args: 'ec2 describe-instances' })).toEqual({ args: 'ec2 describe-instances' });
+  });
+
+  it('rejects a non-string args value', () => {
+    const schema = buildArgsInputSchema('aws');
+    expect(() => v.parse(schema, { args: 42 })).toThrow();
+  });
+
+  it('describes the argument using the uppercased binary name as the CLI label', () => {
+    const schema = buildArgsInputSchema('aws');
+    expect(schema.entries.args.pipe[1]).toMatchObject({
+      type: 'description',
+      description: 'Arguments passed to the AWS CLI, excluding the leading "aws".',
+    });
+  });
+
+  it('derives the label from whichever binary name is passed', () => {
+    const schema = buildArgsInputSchema('cdk');
+    expect(schema.entries.args.pipe[1]).toMatchObject({
+      type: 'description',
+      description: 'Arguments passed to the CDK CLI, excluding the leading "cdk".',
+    });
   });
 });
 

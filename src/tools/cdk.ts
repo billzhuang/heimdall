@@ -11,10 +11,10 @@
  * rollback) are blocked in code by the safety policy in cdk-safety.ts.
  */
 import { defineTool } from '@flue/runtime';
-import * as v from 'valibot';
 import { runCdk, type RunCdkOptions } from '../lib/cdk.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
+import { buildArgsInputSchema } from '../lib/tool-config.ts';
 
 export function makeCdkQuery(options?: RunCdkOptions, regexRedactionRules?: CompiledRedactionRule[]) {
   return defineTool({
@@ -31,12 +31,7 @@ export function makeCdkQuery(options?: RunCdkOptions, regexRedactionRules?: Comp
       'There is no shell, so pipes/redirects do not work. ' +
       'For diff/synth/metadata the CDK app must be in the working directory or ' +
       'specified via --app. Credentials are resolved by the AWS CLI credential chain.',
-    input: v.object({
-      args: v.pipe(
-        v.string(),
-        v.description('Arguments passed to the CDK CLI, excluding the leading "cdk".'),
-      ),
-    }),
+    input: buildArgsInputSchema('cdk'),
     run: async ({ input: { args } }) => runCdk(args, { ...options, regexRedactionRules }),
   });
 }
