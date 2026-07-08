@@ -71,6 +71,24 @@ function isValibotSchema(
 }
 
 /**
+ * Build the `{ type: 'object', properties?, required? }` shape shared by both
+ * `parametersToInputSchema` branches from a JSON-Schema-like object.
+ */
+function buildInputSchemaShape(source: Record<string, unknown>): {
+  type: 'object';
+  properties?: Record<string, unknown>;
+  required?: string[];
+} {
+  return {
+    type: 'object',
+    ...(source.properties !== undefined && {
+      properties: source.properties as Record<string, unknown>,
+    }),
+    ...(Array.isArray(source.required) && { required: source.required as string[] }),
+  };
+}
+
+/**
  * Convert a Flue ToolDefinition's parameters to an MCP-compatible JSON Schema
  * input schema object.
  *
@@ -87,30 +105,14 @@ export function parametersToInputSchema(input: unknown): {
 } {
   if (isValibotSchema(input)) {
     try {
-      const jsonSchema = toJsonSchema(input) as Record<string, unknown>;
-      return {
-        type: 'object',
-        ...(jsonSchema.properties !== undefined && {
-          properties: jsonSchema.properties as Record<string, unknown>,
-        }),
-        ...(Array.isArray(jsonSchema.required) && {
-          required: jsonSchema.required as string[],
-        }),
-      };
+      return buildInputSchemaShape(toJsonSchema(input) as Record<string, unknown>);
     } catch {
       // Conversion failed — fall through to bare schema below.
     }
   }
 
   // input is a raw JSON Schema object (or something unrecognised) — use directly.
-  const raw = (input ?? {}) as Record<string, unknown>;
-  return {
-    type: 'object',
-    ...(raw.properties !== undefined && {
-      properties: raw.properties as Record<string, unknown>,
-    }),
-    ...(Array.isArray(raw.required) && { required: raw.required as string[] }),
-  };
+  return buildInputSchemaShape((input ?? {}) as Record<string, unknown>);
 }
 
 export function createMcpServer(): Server {
