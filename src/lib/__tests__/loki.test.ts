@@ -1,14 +1,11 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runLokiQuery, resolveTime, validateNamespaceLockdown } from '../loki.ts';
 import type { LokiConfig } from '../loki.ts';
-import { mockFetch, makeAbortError } from './test-helpers.ts';
+import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: LokiConfig = { url: 'http://loki:3100', timeoutMs: 5_000 };
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+restoreGlobalsAfterEach();
 
 // ---------------------------------------------------------------------------
 // resolveTime

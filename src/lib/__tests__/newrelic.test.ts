@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runNewRelicQuery, resolveNrqlTime, augmentNrqlClauses, effectiveNrqlLimit, nrqlUntilClause } from '../newrelic.ts';
 import type { NewRelicConfig } from '../newrelic.ts';
-import { mockFetch } from './test-helpers.ts';
+import { mockFetch, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: NewRelicConfig = {
   apiKey: 'test-api-key',
@@ -9,10 +9,7 @@ const BASE_CONFIG: NewRelicConfig = {
   timeoutMs: 5_000,
 };
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+restoreGlobalsAfterEach();
 
 // ---------------------------------------------------------------------------
 // resolveNrqlTime

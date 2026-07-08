@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runDatadogQuery } from '../datadog.ts';
 import { resolveTimeSeconds, resolveTimeISO } from '../time-resolution.ts';
 import type { DatadogConfig } from '../datadog.ts';
-import { mockFetch } from './test-helpers.ts';
+import { mockFetch, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: DatadogConfig = {
   apiKey: 'test-api-key',
@@ -11,10 +11,7 @@ const BASE_CONFIG: DatadogConfig = {
   timeoutMs: 5_000,
 };
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+restoreGlobalsAfterEach();
 
 // ---------------------------------------------------------------------------
 // resolveTimeSeconds
