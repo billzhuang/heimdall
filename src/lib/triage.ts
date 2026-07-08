@@ -28,7 +28,6 @@ export type Severity = 'critical' | 'warning' | 'info';
 
 /** Ordered diagnostic categories — checked in this sequence every run. */
 export const TRIAGE_CATEGORIES = ['nodes', 'pods', 'workloads', 'events', 'pvcs', 'jobs', 'capi'] as const;
-export type TriageCategory = (typeof TRIAGE_CATEGORIES)[number];
 
 /** Resolved namespace scope strings derived from {@link TriageOptions}. */
 export interface NamespaceScope {

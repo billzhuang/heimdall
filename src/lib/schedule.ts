@@ -5,20 +5,6 @@
  * Implements a minimal 5-field cron parser (minute hour dom month dow) in UTC,
  * covering *, step (STAR/n), specific values, ranges (a-b), and comma lists.
  */
-export interface ScheduledTriageConfig {
-  /** Enable/disable the triage schedule. */
-  enabled: boolean;
-  /**
-   * Standard 5-field UTC cron expression, e.g. "0 STAR/6 * * *" (every 6 h).
-   * Fields: minute hour day-of-month month day-of-week.
-   */
-  cron: string;
-  /** Optional namespace scope for the triage sweep. */
-  namespace?: string | null;
-  /** Sweep all namespaces (-A). */
-  allNamespaces?: boolean | null;
-}
-
 /** Structural form of a single non-comma cron sub-expression (see {@link parseCronPart}). */
 export type CronPartAst =
   | { readonly kind: 'wildcard' }

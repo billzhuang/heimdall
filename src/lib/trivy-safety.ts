@@ -15,7 +15,6 @@ import { findNextNonOptionToken } from './tokenizer.ts';
 
 /** Trivy scan types that Heimdall permits. */
 export const ALLOWED_TRIVY_SCAN_TYPES = ['image', 'fs', 'config', 'sbom'] as const;
-export type AllowedTrivyScanType = (typeof ALLOWED_TRIVY_SCAN_TYPES)[number];
 
 /** Trivy subcommands that are always blocked (management / mutating operations). */
 export const BLOCKED_TRIVY_SUBCOMMANDS = ['server', 'plugin'] as const;
