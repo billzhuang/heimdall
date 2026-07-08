@@ -282,14 +282,14 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
   let reflectionTimeoutMs = 180_000;
 
   for (let i = 0; i < args.length; i++) {
+    const maxIterationsFlag = parseAliasedFlag(args, i, '--max-iterations', '-n');
     const backendFlag = parseAliasedFlag(args, i, '--backend', '-b');
     const scenarioFlag = parseAliasedFlag(args, i, '--scenario', '-s');
-    if ((args[i] === '--max-iterations' || args[i] === '-n') && args[i + 1]) {
-      maxIterations = parseInt(args[++i], 10);
+    const timeoutFlag = parseAliasedFlag(args, i, '--timeout');
+    if (maxIterationsFlag) {
+      maxIterations = parseInt(maxIterationsFlag.value, 10);
       requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
-    } else if (args[i].startsWith('--max-iterations=')) {
-      maxIterations = parseInt(args[i].slice('--max-iterations='.length), 10);
-      requirePositiveInt(maxIterations, '--max-iterations must be a positive integer');
+      i = maxIterationsFlag.nextIndex;
     } else if (args[i] === '--dry-run') {
       dryRun = true;
     } else if (backendFlag) {
@@ -300,14 +300,11 @@ export function parseSelfLoopArgs(args: string[]): SelfLoopCliArgs {
       i = scenarioFlag.nextIndex;
     } else if ((args[i] === '--log-path' || args[i] === '-l') && args[i + 1]) {
       cliLogPath = args[++i];
-    } else if (args[i] === '--timeout' && args[i + 1]) {
-      const secs = parseInt(args[++i], 10);
+    } else if (timeoutFlag) {
+      const secs = parseInt(timeoutFlag.value, 10);
       requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
       reflectionTimeoutMs = secs * 1000;
-    } else if (args[i].startsWith('--timeout=')) {
-      const secs = parseInt(args[i].slice('--timeout='.length), 10);
-      requirePositiveInt(secs, '--timeout must be a positive integer (seconds)');
-      reflectionTimeoutMs = secs * 1000;
+      i = timeoutFlag.nextIndex;
     } else if (args[i] === '-h' || args[i] === '--help') {
       process.stdout.write(HELP_TEXT);
       process.exit(0);
