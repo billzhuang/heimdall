@@ -254,18 +254,9 @@ export function applyNamespaceLockdown(argv: string[], lockedNs: string): Namesp
   return { blocked: false, argv };
 }
 
-/**
- * Build a validation result for `parsed`. `subcommand` defaults to
- * `parsed.subcommand`; pass `null` explicitly for the two cases (not-kubectl,
- * no-subcommand) where the parsed subcommand shouldn't be echoed back.
- */
-function makeResult(
-  allowed: boolean,
-  reason: string,
-  parsed: ParsedKubectlCommand,
-  subcommand: string | null = parsed.subcommand,
-): CommandValidationResult {
-  return { allowed, reason, command: parsed.rawCommand, subcommand };
+/** Build a validation result for `parsed`. */
+function makeResult(allowed: boolean, reason: string, parsed: ParsedKubectlCommand): CommandValidationResult {
+  return { allowed, reason, command: parsed.rawCommand, subcommand: parsed.subcommand };
 }
 
 /**
@@ -277,12 +268,12 @@ export function validateCommand(command: string): CommandValidationResult {
   const parsed = parseKubectlCommand(command);
 
   if (!parsed.isKubectl) {
-    return makeResult(false, 'Only kubectl commands are permitted by this tool.', parsed, null);
+    return makeResult(false, 'Only kubectl commands are permitted by this tool.', parsed);
   }
 
   if (!parsed.subcommand) {
     // Bare `kubectl` (prints help) is harmless.
-    return makeResult(true, 'kubectl without subcommand', parsed, null);
+    return makeResult(true, 'kubectl without subcommand', parsed);
   }
 
   if (DESTRUCTIVE_KUBECTL_COMMANDS.includes(parsed.subcommand as DestructiveCommand)) {
