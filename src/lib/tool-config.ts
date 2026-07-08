@@ -1,6 +1,7 @@
 /**
  * Shared config resolution helpers used by tool factory functions.
  */
+import * as v from 'valibot';
 
 /**
  * Resolve a timeout value from raw config input. Returns `rawTimeout` when it
@@ -62,4 +63,20 @@ export function buildLockdownNote(
   message: (namespace: string) => string,
 ): string {
   return lockedNamespace ? ` NAMESPACE LOCKDOWN ACTIVE: ${message(lockedNamespace)}` : '';
+}
+
+/**
+ * Build the valibot input schema for a tool that accepts a single free-form
+ * `args` string covering everything after the binary name — the shape shared
+ * by `aws_cli` and `cdk_query`. `bin` is the lowercase binary name (e.g.
+ * "aws"); its uppercase form is used as the CLI's display label.
+ */
+export function buildArgsInputSchema(bin: string) {
+  const normalizedBin = bin.toLowerCase();
+  return v.object({
+    args: v.pipe(
+      v.string(),
+      v.description(`Arguments passed to the ${normalizedBin.toUpperCase()} CLI, excluding the leading "${normalizedBin}".`),
+    ),
+  });
 }
