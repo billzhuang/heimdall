@@ -42,6 +42,14 @@ export function detectFormat(argv: string[]): 'json' | 'yaml' | 'other' {
 const FLAGS_CONSUMING_NEXT = OPTIONS_WITH_VALUE;
 
 /**
+ * Estimate the decoded byte length of a base64-encoded string.
+ * Strips trailing padding characters before computing the estimate.
+ */
+export function estimateBase64Bytes(encoded: string): number {
+  return Math.floor(encoded.replace(/\s/g, '').replace(/=+$/, '').length * 3 / 4);
+}
+
+/**
  * Return true when a single resource-type token refers to a Kubernetes Secret.
  * Handles singular/plural forms and slash-prefixed name forms (e.g. `secret/my-creds`).
  * Also handles comma-separated resource lists where secret appears alongside other kinds
@@ -102,7 +110,7 @@ export function redactDataFields(
   for (const [key, value] of Object.entries(fields)) {
     const str = typeof value === 'string' ? value : String(value ?? '');
     const byteCount = isBase64
-      ? Math.floor(str.replace(/=+$/, '').length * 3 / 4)
+      ? estimateBase64Bytes(str)
       : Buffer.byteLength(str, 'utf8');
     result[key] = `<redacted: ${byteCount} bytes>`;
   }
