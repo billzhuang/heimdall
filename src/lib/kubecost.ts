@@ -9,6 +9,7 @@
 import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { runJsonQuery } from './http.ts';
+import { BLOCKED_PREFIX } from './harness.ts';
 
 export interface KubecostConfig {
   url: string;
@@ -67,7 +68,7 @@ export function resolveAllocationNamespace(
   if (!lockedNamespace) return { namespace: requested ?? undefined };
   if (requested != null && requested !== lockedNamespace) {
     return {
-      blockedMessage: `BLOCKED: namespace lockdown is active — queries are restricted to namespace '${lockedNamespace}'. Remove the namespace parameter or set it to '${lockedNamespace}'.`,
+      blockedMessage: `${BLOCKED_PREFIX}namespace lockdown is active — queries are restricted to namespace '${lockedNamespace}'. Remove the namespace parameter or set it to '${lockedNamespace}'.`,
     };
   }
   return { namespace: lockedNamespace };

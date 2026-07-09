@@ -11,6 +11,7 @@ import { resolveTimePassthrough } from './time-resolution.ts';
 import { runJsonQuery } from './http.ts';
 import { clampLimit } from './tool-config.ts';
 import { escapeRegExpLiteral } from './regexp-utils.ts';
+import { BLOCKED_PREFIX } from './harness.ts';
 
 export interface LokiConfig {
   url: string;
@@ -72,7 +73,7 @@ export async function runLokiQuery(params: LokiQueryParams, config: LokiConfig):
   if (config.lockedNamespace) {
     if (!validateNamespaceLockdown(params.query, config.lockedNamespace)) {
       return (
-        `BLOCKED: namespace lockdown is active — queries must include ` +
+        `${BLOCKED_PREFIX}namespace lockdown is active — queries must include ` +
         `namespace="${config.lockedNamespace}" in the stream selector. ` +
         `Example: '{namespace="${config.lockedNamespace}", app="my-app"} |= "ERROR"'`
       );
