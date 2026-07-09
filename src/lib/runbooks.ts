@@ -59,9 +59,11 @@ export function readRunbook(absPath: string): string | null {
  * Subtracts the marker length from the slice budget so the combined result
  * never exceeds `budget`. When `budget` is smaller than the marker itself,
  * returns a partial marker rather than using a negative slice index (which
- * would trim from the end of `text` in JS). Assumes `budget > 0`.
+ * would trim from the end of `text` in JS). A non-positive budget returns ''
+ * rather than a negative-index slice of the marker.
  */
 export function truncateToBudget(text: string, budget: number): string {
+  if (budget <= 0) return '';
   if (text.length <= budget) return text;
   if (budget <= TRUNCATION_MARKER.length) return TRUNCATION_MARKER.slice(0, budget);
   return text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;

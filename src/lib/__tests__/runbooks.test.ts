@@ -116,6 +116,11 @@ describe('truncateToBudget', () => {
     const result = truncateToBudget('x'.repeat(100), marker.length);
     expect(result).toBe(marker);
   });
+
+  it('returns an empty string for a zero or negative budget instead of slicing from the end', () => {
+    expect(truncateToBudget('x'.repeat(100), 0)).toBe('');
+    expect(truncateToBudget('x'.repeat(100), -1)).toBe('');
+  });
 });
 
 // ── loadRunbooks ─────────────────────────────────────────────────────────────
