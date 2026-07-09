@@ -45,6 +45,18 @@ export function tokenizeCdkArgs(input: string): string[] {
 }
 
 /**
+ * Ensure `trimmed` begins with a canonical lowercase `cdk` prefix so
+ * `validateCdkCommand` (which requires the leading binary token) can parse it.
+ * Callers may pass `"cdk synth"`, `"CDK synth"`, or just `"synth"`.
+ *
+ * Uses /i for case-insensitivity (CDK → cdk) and (\s|$) instead of \b so
+ * 'cdk-real synth' is not mistakenly treated as already having the prefix.
+ */
+export function ensureCdkPrefix(trimmed: string): string {
+  return /^cdk(\s|$)/i.test(trimmed) ? trimmed.replace(/^cdk/i, 'cdk') : `cdk ${trimmed}`;
+}
+
+/**
  * Validate and run a read-only CDK CLI command. Returns the command output (or
  * a descriptive error message) as a string suitable for returning to the model.
  */
@@ -56,10 +68,7 @@ export async function runCdk(args: string, options: RunCdkOptions = {}): Promise
   const trimmed = args.trim();
   if (!trimmed) return 'Error: no CDK CLI arguments provided.';
 
-  // Ensure lowercase 'cdk' prefix so the validator can parse the subcommand.
-  // Use /i for case-insensitivity (CDK → cdk) and (\s|$) instead of \b so
-  // 'cdk-real synth' is not mistakenly treated as already having the prefix.
-  const cmdStr = /^cdk(\s|$)/i.test(trimmed) ? trimmed.replace(/^cdk/i, 'cdk') : `cdk ${trimmed}`;
+  const cmdStr = ensureCdkPrefix(trimmed);
   const validation = validateCdkCommand(cmdStr);
 
   if (!validation) {
