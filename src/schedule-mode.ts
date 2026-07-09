@@ -24,14 +24,12 @@
  *   Use `flue run triage --target node` instead of this process.
  *   See src/workflows/triage.ts.
  */
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadConfig, type HeimdallConfig } from './lib/config.ts';
 import { nextFireTime, validateCronExpression } from './lib/schedule.ts';
 import { formatDurationMs } from './lib/duration.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
 import { getMessage } from './lib/error-utils.ts';
-import { resolveBinPath } from './lib/bin-path.ts';
+import { resolveHeimdallBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
@@ -40,11 +38,9 @@ import { isMainModule, handleHelpOrUnknownOption, runMainOrExit } from './lib/cl
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /** Invoke the Heimdall agent with a prompt, streaming output to stdout. */
 export async function runAgent(prompt: string, signal?: AbortSignal): Promise<void> {
-  const binPath = resolveBinPath(__dirname);
+  const binPath = resolveHeimdallBinPath(import.meta.url);
   await spawnAndCollect(binPath, ['-p', prompt], {
     env: process.env,
     timeoutMs: TRIAGE_TIMEOUT_MS,

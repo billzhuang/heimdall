@@ -1,8 +1,18 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Resolve the absolute path to the heimdall binary relative to a src dir. */
 export function resolveBinPath(srcDir: string): string {
   return resolve(srcDir, '..', 'bin', 'heimdall');
+}
+
+/**
+ * Resolve the absolute path to the heimdall binary from a mode entry point's
+ * own `import.meta.url` — the `dirname(fileURLToPath(...))` + `resolveBinPath`
+ * pair repeated across every mode that only needs `__dirname` for this.
+ */
+export function resolveHeimdallBinPath(moduleUrl: string): string {
+  return resolveBinPath(dirname(fileURLToPath(moduleUrl)));
 }
 
 /**

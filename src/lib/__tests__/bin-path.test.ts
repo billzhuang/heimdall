@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolve, isAbsolute } from 'node:path';
-import { resolveBinPath, buildAgentEnv } from '../bin-path.ts';
+import { resolveBinPath, resolveHeimdallBinPath, buildAgentEnv } from '../bin-path.ts';
 
 describe('resolveBinPath', () => {
   it('resolves to <project-root>/bin/heimdall relative to a src/ subdirectory', () => {
@@ -12,6 +12,17 @@ describe('resolveBinPath', () => {
   it('produces an absolute path', () => {
     const binPath = resolveBinPath('/absolute/src/path');
     expect(isAbsolute(binPath)).toBe(true);
+  });
+});
+
+describe('resolveHeimdallBinPath', () => {
+  it('resolves the same path as resolveBinPath(dirname(fileURLToPath(moduleUrl)))', () => {
+    const moduleUrl = 'file:///some/project/src/alert-mode.ts';
+    expect(resolveHeimdallBinPath(moduleUrl)).toBe(resolveBinPath('/some/project/src'));
+  });
+
+  it('produces an absolute path', () => {
+    expect(isAbsolute(resolveHeimdallBinPath('file:///some/project/src/watch-mode.ts'))).toBe(true);
   });
 });
 

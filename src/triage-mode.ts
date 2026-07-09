@@ -32,7 +32,7 @@ import {
 } from './lib/drift.ts';
 import { runKubectl } from './lib/kubectl.ts';
 import { getMessage } from './lib/error-utils.ts';
-import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
+import { resolveHeimdallBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption, runMainOrExit } from './lib/cli-args.ts';
@@ -47,7 +47,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * callers can parse findings for baseline writing.
  */
 async function runAgent(prompt: string, model?: string): Promise<string> {
-  const binPath = resolveBinPath(__dirname);
+  const binPath = resolveHeimdallBinPath(import.meta.url);
 
   return spawnAndCollect(binPath, ['-p', prompt], {
     env: buildAgentEnv(model),
