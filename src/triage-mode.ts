@@ -35,7 +35,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { die, parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -197,10 +197,38 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
   await recordBaselines(config, output);
 }
 
-// --- CLI arg parsing when run directly ---
-if (isMainModule(import.meta.url)) {
-  const args = process.argv.slice(2);
-  const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
+const TRIAGE_HELP_TEXT = `Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
+
+Run a structured whole-cluster health sweep and report findings by severity.
+
+Options:
+  -n, --namespace <ns>          Scope the sweep to a single namespace
+  -A, --all-namespaces          Sweep all namespaces
+  --contexts <ctx1,ctx2,...>    Sweep multiple kubeconfig contexts (multi-cluster mode)
+  --model <provider/model>      Override the LLM model (default: anthropic/claude-sonnet-4-6)
+  -h, --help                    Show this help message
+
+Examples:
+  heimdall triage                                     # sweep the default namespace
+  heimdall triage -A                                  # sweep all namespaces
+  heimdall triage -n prod                             # sweep only the prod namespace
+  heimdall triage --contexts cluster-a,cluster-b      # multi-cluster sweep
+  heimdall triage --contexts=prod-us,prod-eu -A       # multi-cluster, all namespaces
+  npm run triage -- -n staging
+`;
+
+export interface TriageCliArgs {
+  opts: TriageOptions;
+  modelFlag?: string;
+}
+
+/**
+ * Parse `heimdall triage` CLI flags.
+ * Exits the process directly for --help or an unrecognized option, matching
+ * this mode's historical behavior.
+ */
+export function parseTriageArgs(args: string[]): TriageCliArgs {
+  const opts: TriageOptions = {};
   let modelFlag: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -222,32 +250,17 @@ if (isMainModule(import.meta.url)) {
       const parsed = parseModelFlag(args, i);
       modelFlag = parsed.value;
       i = parsed.nextIndex;
-    } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
-
-Run a structured whole-cluster health sweep and report findings by severity.
-
-Options:
-  -n, --namespace <ns>          Scope the sweep to a single namespace
-  -A, --all-namespaces          Sweep all namespaces
-  --contexts <ctx1,ctx2,...>    Sweep multiple kubeconfig contexts (multi-cluster mode)
-  --model <provider/model>      Override the LLM model (default: anthropic/claude-sonnet-4-6)
-  -h, --help                    Show this help message
-
-Examples:
-  heimdall triage                                     # sweep the default namespace
-  heimdall triage -A                                  # sweep all namespaces
-  heimdall triage -n prod                             # sweep only the prod namespace
-  heimdall triage --contexts cluster-a,cluster-b      # multi-cluster sweep
-  heimdall triage --contexts=prod-us,prod-eu -A       # multi-cluster, all namespaces
-  npm run triage -- -n staging
-`);
-      process.exit(0);
     } else {
-      die(`unknown option: ${arg}`);
+      handleHelpOrUnknownOption(arg, TRIAGE_HELP_TEXT);
     }
   }
 
+  return { opts, modelFlag };
+}
+
+// --- CLI arg parsing when run directly ---
+if (isMainModule(import.meta.url)) {
+  const { opts, modelFlag } = parseTriageArgs(process.argv.slice(2));
   const resolvedModel = resolveModelOrExit(modelFlag);
 
   runTriageMode(opts, resolvedModel).catch((err: unknown) => {
