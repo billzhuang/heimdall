@@ -21,6 +21,7 @@ import {
   loadScenariosOrExit,
   runAllScenarios,
   runScenario,
+  runScenariosWithConsoleReport,
   type EvalResult,
   type EvalScenario,
 } from '../eval-runner.ts';
@@ -704,5 +705,67 @@ describe('runAllScenarios', () => {
     expect(collectedResults).toHaveLength(2);
     expect(collectedResults[0].scenario).toBe('scenario-a');
     expect(collectedResults[1].scenario).toBe('scenario-b');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runScenariosWithConsoleReport — shared console progress/tally reporting
+// ---------------------------------------------------------------------------
+
+describe('runScenariosWithConsoleReport', () => {
+  let writeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    writeSpy.mockRestore();
+  });
+
+  function stdout(): string {
+    return writeSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('');
+  }
+
+  it('returns zero counts and prints nothing for an empty scenario list', async () => {
+    const report = await runScenariosWithConsoleReport('/bin/heimdall', []);
+    expect(report).toEqual({ results: [], passed: 0, failed: 0 });
+    expect(writeSpy).not.toHaveBeenCalled();
+  });
+
+  it('prints PASS for a passing scenario and tallies it', async () => {
+    const finding = { summary: 'ok', answer: 'ok', severity: 'info', suggestedCommands: [] };
+    (spawn as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      fakeChild({ stdoutData: JSON.stringify(finding) }),
+    );
+
+    const scenarios = [{ path: 'a.yaml', scenario: { description: 'scenario-a', prompt: 'check a', mocks: {} } }];
+    const report = await runScenariosWithConsoleReport('/bin/heimdall', scenarios);
+
+    expect(report.passed).toBe(1);
+    expect(report.failed).toBe(0);
+    expect(report.results).toHaveLength(1);
+    expect(stdout()).toContain('Running: scenario-a');
+    expect(stdout()).toContain('✓ PASS  scenario-a');
+  });
+
+  it('prints FAIL and each failure reason for a failing scenario, and tallies it', async () => {
+    const finding = { summary: 'ok', answer: 'ok', severity: 'critical', suggestedCommands: [] };
+    (spawn as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      fakeChild({ stdoutData: JSON.stringify(finding) }),
+    );
+
+    const scenarios = [
+      {
+        path: 'b.yaml',
+        scenario: { description: 'scenario-b', prompt: 'check b', mocks: {}, expectedSeverity: 'info' as const },
+      },
+    ];
+    const report = await runScenariosWithConsoleReport('/bin/heimdall', scenarios);
+
+    expect(report.passed).toBe(0);
+    expect(report.failed).toBe(1);
+    expect(stdout()).toContain('✗ FAIL  scenario-b');
+    expect(stdout()).toContain('- Severity: expected "info", got "critical"');
   });
 });

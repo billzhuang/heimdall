@@ -15,7 +15,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadScenariosOrExit,
-  runAllScenarios,
+  runScenariosWithConsoleReport,
   type EvalScenario,
   type EvalResult,
 } from './lib/eval-runner.ts';
@@ -89,22 +89,7 @@ async function main(): Promise<void> {
 
   process.stdout.write(`\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'}...\n\n`);
 
-  const results = await runAllScenarios(binPath, scenarios, {
-    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
-    onResult: result => {
-      if (result.passed) {
-        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
-      } else {
-        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
-        for (const failure of result.failures) {
-          process.stdout.write(`         - ${failure}\n`);
-        }
-      }
-    },
-  });
-
-  const passed = results.filter(r => r.passed).length;
-  const failed = results.length - passed;
+  const { results, passed, failed } = await runScenariosWithConsoleReport(binPath, scenarios);
 
   process.stdout.write(`\nResults: ${passed} passed, ${failed} failed out of ${results.length} scenarios\n`);
 
