@@ -36,37 +36,45 @@ function invalidScenario(filePath: string, detail: string): never {
   throw new Error(`Invalid scenario file: ${filePath} ${detail}`);
 }
 
-function requireField(
+type ScenarioFieldKind = 'string-required' | 'string-optional' | 'array-optional' | 'object-optional';
+
+/** Declarative validation table, checked in order by `loadScenario`. */
+const SCENARIO_FIELDS: ReadonlyArray<{ field: string; kind: ScenarioFieldKind }> = [
+  { field: 'prompt', kind: 'string-required' },
+  { field: 'description', kind: 'string-optional' },
+  { field: 'mocks', kind: 'object-optional' },
+  { field: 'expectedKeywords', kind: 'array-optional' },
+  { field: 'forbiddenKeywords', kind: 'array-optional' },
+] as const;
+
+function validateScenarioField(
   parsed: Record<string, unknown>,
-  field: 'prompt' | 'description',
   filePath: string,
-  requireNonEmpty: boolean,
+  field: string,
+  kind: ScenarioFieldKind,
 ): void {
   const value = parsed[field];
-  const invalid = typeof value !== 'string' || (requireNonEmpty && !value);
-  if (invalid) {
-    invalidScenario(filePath, `— missing required field "${field}"`);
-  }
-}
-
-function requireOptionalArrayField(
-  parsed: Record<string, unknown>,
-  field: 'expectedKeywords' | 'forbiddenKeywords',
-  filePath: string,
-): void {
-  if (parsed[field] !== undefined && !Array.isArray(parsed[field])) {
-    invalidScenario(filePath, `— "${field}" must be an array if provided`);
-  }
-}
-
-function requireOptionalObjectField(
-  parsed: Record<string, unknown>,
-  field: 'mocks',
-  filePath: string,
-): void {
-  const value = parsed[field];
-  if (value !== undefined && (typeof value !== 'object' || value === null || Array.isArray(value))) {
-    invalidScenario(filePath, `— "${field}" must be an object if provided`);
+  switch (kind) {
+    case 'string-required':
+    case 'string-optional': {
+      const invalid = typeof value !== 'string' || (kind === 'string-required' && !value);
+      if (invalid) invalidScenario(filePath, `— missing required field "${field}"`);
+      return;
+    }
+    case 'array-optional':
+      if (value !== undefined && !Array.isArray(value)) {
+        invalidScenario(filePath, `— "${field}" must be an array if provided`);
+      }
+      return;
+    case 'object-optional':
+      if (value !== undefined && (typeof value !== 'object' || value === null || Array.isArray(value))) {
+        invalidScenario(filePath, `— "${field}" must be an object if provided`);
+      }
+      return;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unhandled scenario field kind: ${exhaustive}`);
+    }
   }
 }
 
@@ -76,11 +84,9 @@ export async function loadScenario(filePath: string): Promise<EvalScenario> {
   if (!parsed || typeof parsed !== 'object') {
     invalidScenario(filePath, 'is not a valid YAML object');
   }
-  requireField(parsed, 'prompt', filePath, true);
-  requireField(parsed, 'description', filePath, false);
-  requireOptionalObjectField(parsed, 'mocks', filePath);
-  requireOptionalArrayField(parsed, 'expectedKeywords', filePath);
-  requireOptionalArrayField(parsed, 'forbiddenKeywords', filePath);
+  for (const { field, kind } of SCENARIO_FIELDS) {
+    validateScenarioField(parsed, filePath, field, kind);
+  }
   return parsed as unknown as EvalScenario;
 }
 
