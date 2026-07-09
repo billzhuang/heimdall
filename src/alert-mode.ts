@@ -17,11 +17,10 @@ import { parseAlertManagerPayload, parsePagerDutyPayload, buildAlertPrompt, type
 import { runKubectl, type RunKubectlOptions } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
-import { getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { die, parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { die, parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit, runMainOrExit } from './lib/cli-args.ts';
 
 const ALERT_HELP_TEXT = `Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
 
@@ -211,8 +210,5 @@ if (isMainModule(import.meta.url)) {
   const { source, seed, input, modelFlag } = parseAlertArgs(process.argv.slice(2));
   const resolvedModel = resolveModelOrExit(modelFlag);
 
-  runAlertMode({ source, input, seed, model: resolvedModel }).catch((err: unknown) => {
-    process.stderr.write(`[heimdall-alert] Fatal: ${getStackOrMessage(err)}\n`);
-    process.exit(1);
-  });
+  runMainOrExit(runAlertMode({ source, input, seed, model: resolvedModel }), '[heimdall-alert] Fatal');
 }

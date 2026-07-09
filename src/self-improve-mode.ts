@@ -32,8 +32,7 @@ import {
 } from './lib/self-improve.ts';
 import { readTaskHistory, resolveTaskHistoryFilePath, type TaskHistoryEntry } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
-import { getStackOrMessage } from './lib/error-utils.ts';
-import { isMainModule, parseAliasedFlag } from './lib/cli-args.ts';
+import { isMainModule, parseAliasedFlag, runMainOrExit } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -230,8 +229,5 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
 }
 
 if (isMainModule(import.meta.url)) {
-  main().catch((err: unknown) => {
-    process.stderr.write(`[heimdall-self-improve] Fatal error: ${getStackOrMessage(err)}\n`);
-    process.exit(1);
-  });
+  runMainOrExit(main(), '[heimdall-self-improve] Fatal error');
 }

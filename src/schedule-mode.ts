@@ -30,12 +30,12 @@ import { loadConfig, type HeimdallConfig } from './lib/config.ts';
 import { nextFireTime, validateCronExpression } from './lib/schedule.ts';
 import { formatDurationMs } from './lib/duration.ts';
 import { buildTriagePrompt, resolveNamespaceScope, type TriageOptions } from './lib/triage.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
-import { isMainModule, handleHelpOrUnknownOption } from './lib/cli-args.ts';
+import { isMainModule, handleHelpOrUnknownOption, runMainOrExit } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes
 const SIGKILL_GRACE_MS = 10_000;   // escalate to SIGKILL if child ignores SIGTERM
@@ -211,8 +211,5 @@ export function parseScheduleArgv(argv: string[]): ScheduleCliArgs {
 if (isMainModule(import.meta.url)) {
   const { runOnce } = parseScheduleArgv(process.argv.slice(2));
 
-  runScheduleMode(runOnce).catch((err: unknown) => {
-    process.stderr.write(`[heimdall-schedule] Fatal error: ${getStackOrMessage(err)}\n`);
-    process.exit(1);
-  });
+  runMainOrExit(runScheduleMode(runOnce), '[heimdall-schedule] Fatal error');
 }

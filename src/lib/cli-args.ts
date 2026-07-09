@@ -4,7 +4,7 @@
  */
 import { fileURLToPath } from 'node:url';
 import { resolveModel } from './model.ts';
-import { getMessage } from './error-utils.ts';
+import { getMessage, getStackOrMessage } from './error-utils.ts';
 
 /**
  * True when this module was invoked directly as the process entry point
@@ -156,4 +156,19 @@ export function resolveModelOrExit(cliFlag?: string): string {
   } catch (err) {
     die(getMessage(err));
   }
+}
+
+/**
+ * Attach the fatal-error handler shared by every mode entry point's
+ * `isMainModule` dispatch block: on rejection, write `<prefix>: <stack or
+ * message>` to stderr and exit(1). `prefix` carries the per-mode tag and
+ * wording (e.g. `"[heimdall-triage] Fatal error"`) so each mode's existing
+ * message text is unchanged. Returns the resulting promise so callers
+ * (notably tests) can await completion instead of racing the microtask queue.
+ */
+export function runMainOrExit(promise: Promise<void>, prefix: string): Promise<void> {
+  return promise.catch((err: unknown): void => {
+    process.stderr.write(`${prefix}: ${getStackOrMessage(err)}\n`);
+    process.exit(1);
+  });
 }
