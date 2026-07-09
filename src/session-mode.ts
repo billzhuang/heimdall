@@ -39,8 +39,12 @@ export function formatSession(s: SessionRecord): string {
   return `  ${s.id}${label}\n    server: ${s.serverUrl}  |  created: ${new Date(s.createdAt).toLocaleString()}  |  ${last}`;
 }
 
-/** Run `fn`, or die with its thrown error's message on failure. */
-function tryOrDie<T>(fn: () => T): T {
+/**
+ * Run `fn`, or die with its thrown error's message on failure.
+ * `T` is constrained to exclude `Promise` so an async `fn` is a compile error
+ * instead of silently returning before its rejection could be caught.
+ */
+function tryOrDie<T>(fn: () => T extends Promise<unknown> ? never : T): T {
   try {
     return fn();
   } catch (err) {
