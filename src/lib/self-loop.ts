@@ -8,7 +8,7 @@
  * targeting src/lib/instructions.ts so changes are machine-parseable and reversible.
  */
 import { readFile, writeFile } from 'node:fs/promises';
-import { buildPromptSections, joinSections } from './self-improve.ts';
+import { buildFailureSentence, buildPromptSections, joinSections } from './self-improve.ts';
 import type { LearningEntry } from './self-improve.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
@@ -184,7 +184,7 @@ Rules:
 
   const sections = buildPromptSections(
     `You are the self-improvement loop for the Heimdall Kubernetes SRE agent.\n\n` +
-      `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. ` +
+      buildFailureSentence(entries.length) +
       `Propose specific text patches to \`src/lib/instructions.ts\` that would fix these failures.`,
     entries,
     historySection,
