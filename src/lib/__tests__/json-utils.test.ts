@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isPlainObject, optionalString, requireNonEmptyStringField } from '../json-utils.ts';
+import { isPlainObject, optionalString, parseJsonBody, requireNonEmptyStringField } from '../json-utils.ts';
 
 describe('isPlainObject', () => {
   it('accepts plain objects', () => {
@@ -67,5 +67,21 @@ describe('requireNonEmptyStringField', () => {
       ok: false,
       error: '"inputText" is required and must be a non-empty string',
     });
+  });
+});
+
+describe('parseJsonBody', () => {
+  it('returns the parsed value on success', async () => {
+    const req = { json: async <T>() => ({ prompt: 'hi' }) as T };
+    await expect(parseJsonBody(req)).resolves.toEqual({ ok: true, value: { prompt: 'hi' } });
+  });
+
+  it('returns ok: false when the underlying json() call rejects', async () => {
+    const req = {
+      json: async <T>(): Promise<T> => {
+        throw new SyntaxError('Unexpected token');
+      },
+    };
+    await expect(parseJsonBody(req)).resolves.toEqual({ ok: false });
   });
 });

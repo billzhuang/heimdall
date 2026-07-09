@@ -14,6 +14,21 @@ export function optionalString(v: unknown): string | undefined {
 }
 
 /**
+ * Parse a request body as JSON, catching the "not valid JSON" case. Takes a
+ * structural `{ json }` shape (rather than importing Hono's `Context`/`HonoRequest`
+ * types) so this module stays framework-agnostic.
+ */
+export async function parseJsonBody(req: { json<T>(): Promise<T> }): Promise<
+  { ok: true; value: unknown } | { ok: false }
+> {
+  try {
+    return { ok: true, value: await req.json<unknown>() };
+  } catch {
+    return { ok: false };
+  }
+}
+
+/**
  * Validate that `field` on `parsed` is a non-empty (post-trim) string.
  * Returns the trimmed value on success, or the standard "required" error
  * message shared by every request-body parser that needs this guard.
