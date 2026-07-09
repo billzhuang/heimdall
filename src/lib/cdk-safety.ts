@@ -10,6 +10,8 @@
  * Mutating subcommands (deploy, destroy, bootstrap, watch, import, migrate, gc,
  * rollback) are always blocked with a clear error message.
  */
+import { tokenizeShellArgs, findNextNonOptionToken } from './tokenizer.ts';
+import { classifySubcommand } from './subcommand-policy.ts';
 
 /**
  * CDK CLI subcommands that mutate infrastructure or environment state.
@@ -63,8 +65,6 @@ export interface CdkCommandValidationResult {
   command: string;
   subcommand: string | null;
 }
-
-import { tokenizeShellArgs, findNextNonOptionToken } from './tokenizer.ts';
 
 /**
  * CDK global options that consume the following token as their value.
@@ -155,9 +155,12 @@ export function validateCdkCommand(command: string): CdkCommandValidationResult 
 
   const sub = parsed.subcommand;
 
-  // Explicitly block known destructive subcommands for a clear error message.
-  const isDestructive = (DESTRUCTIVE_CDK_COMMANDS as ReadonlyArray<string>).includes(sub);
-  if (isDestructive) {
+  const verdict = classifySubcommand(
+    (DESTRUCTIVE_CDK_COMMANDS as ReadonlyArray<string>).includes(sub),
+    (ALLOWED_CDK_COMMANDS as ReadonlyArray<string>).includes(sub),
+  );
+
+  if (verdict === 'destructive') {
     return {
       allowed: false,
       reason: `Destructive CDK command '${sub}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
@@ -166,9 +169,7 @@ export function validateCdkCommand(command: string): CdkCommandValidationResult 
     };
   }
 
-  // Default-deny: only explicitly listed read-only subcommands are allowed.
-  const isAllowed = (ALLOWED_CDK_COMMANDS as ReadonlyArray<string>).includes(sub);
-  if (isAllowed) {
+  if (verdict === 'allowed') {
     return {
       allowed: true,
       reason: `Read-only CDK command '${sub}' is allowed`,

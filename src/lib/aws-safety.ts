@@ -12,6 +12,7 @@
  * most commonly misused destructive operations to provide clearer error messages.
  */
 import { findNextNonOptionToken } from './tokenizer.ts';
+import { classifySubcommand } from './subcommand-policy.ts';
 
 /**
  * AWS CLI subcommand prefixes (and exact names) that indicate state mutation or
@@ -142,9 +143,12 @@ export function validateAwsCommand(command: string): AwsCommandValidationResult 
   const sub = parsed.subcommand;
   const fullSub = `${parsed.service} ${sub}`;
 
-  // Explicitly block known destructive patterns for a clear error message.
-  const isDestructive = DESTRUCTIVE_AWS_PATTERNS.some((pattern) => sub.startsWith(pattern));
-  if (isDestructive) {
+  const verdict = classifySubcommand(
+    DESTRUCTIVE_AWS_PATTERNS.some((pattern) => sub.startsWith(pattern)),
+    ALLOWED_AWS_PATTERNS.some((pattern) => sub.startsWith(pattern)),
+  );
+
+  if (verdict === 'destructive') {
     return {
       allowed: false,
       reason: `Destructive AWS command '${fullSub}' is blocked. Heimdall is read-only — suggest this command to the user to run manually instead.`,
@@ -153,9 +157,7 @@ export function validateAwsCommand(command: string): AwsCommandValidationResult 
     };
   }
 
-  // Default-deny: only allow explicitly permitted read-only patterns.
-  const isAllowed = ALLOWED_AWS_PATTERNS.some((pattern) => sub.startsWith(pattern));
-  if (isAllowed) {
+  if (verdict === 'allowed') {
     return {
       allowed: true,
       reason: `Read-only AWS command '${fullSub}' is allowed`,
