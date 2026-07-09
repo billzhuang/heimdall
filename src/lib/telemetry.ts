@@ -17,6 +17,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { withTimeout } from './http.ts';
+import { resolveTimeoutMs } from './tool-config.ts';
 
 export interface TelemetryConfig {
   enabled: boolean;
@@ -372,7 +373,7 @@ export function startOtelExport(config: OtelExportConfig): void {
   const rawInterval =
     config.exportIntervalMs ??
     parseInt(process.env['OTEL_METRIC_EXPORT_INTERVAL'] ?? '', 10);
-  const intervalMs = Number.isFinite(rawInterval) && rawInterval > 0 ? rawInterval : 60_000;
+  const intervalMs = resolveTimeoutMs(rawInterval, 60_000);
 
   const serviceName = resolveOtelString(config.serviceName, 'OTEL_SERVICE_NAME', 'heimdall');
 
