@@ -21,7 +21,24 @@ import { getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { die, parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { die, parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+
+const ALERT_HELP_TEXT = `Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
+
+Options:
+  --source <type>           Alert format: grafana, prometheus, pagerduty, or raw text (default: raw)
+  --no-seed                 Skip pre-fetching kubectl data before the LLM investigation
+  --model <provider/model>  Override the LLM model (default: anthropic/claude-sonnet-4-6)
+  -h, --help                Show this help
+
+Examples:
+  heimdall alert alert.json
+  heimdall alert --source grafana grafana-alert.json
+  heimdall alert --source prometheus alertmanager-webhook.json
+  heimdall alert --source pagerduty pd-webhook.json
+  heimdall alert --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
+  npm run alert -- --source raw "high latency on api deployment in prod"
+`;
 
 const ALERT_TIMEOUT_MS = 300_000;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -140,9 +157,19 @@ export async function runAlertMode(opts: { source: AlertSource; input: string; s
   await runAgent(prompt, opts.model);
 }
 
-// ── CLI ──────────────────────────────────────────────────────────────────────
-if (isMainModule(import.meta.url)) {
-  const args = process.argv.slice(2);
+export interface AlertCliArgs {
+  source: AlertSource;
+  seed: boolean;
+  input: string;
+  modelFlag?: string;
+}
+
+/**
+ * Parse `heimdall alert` CLI flags.
+ * Exits the process directly for --help, an unrecognized option, or a missing
+ * alert input, matching this mode's historical behavior.
+ */
+export function parseAlertArgs(args: string[]): AlertCliArgs {
   let source: AlertSource = 'raw';
   let seed = true;
   let input = '';
@@ -150,10 +177,10 @@ if (isMainModule(import.meta.url)) {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if ((arg === '--source' || arg === '-s') && args[i + 1]) {
-      source = validateSourceArg(args[++i]);
-    } else if (arg.startsWith('--source=')) {
-      source = validateSourceArg(arg.slice('--source='.length));
+    const sourceFlag = parseAliasedFlag(args, i, '--source', '-s');
+    if (sourceFlag) {
+      source = validateSourceArg(sourceFlag.value);
+      i = sourceFlag.nextIndex;
     } else if (arg === '--no-seed') {
       seed = false;
     } else if (arg === '--model' || arg.startsWith('--model=')) {
@@ -161,22 +188,7 @@ if (isMainModule(import.meta.url)) {
       modelFlag = parsed.value;
       i = parsed.nextIndex;
     } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(`Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">
-
-Options:
-  --source <type>           Alert format: grafana, prometheus, pagerduty, or raw text (default: raw)
-  --no-seed                 Skip pre-fetching kubectl data before the LLM investigation
-  --model <provider/model>  Override the LLM model (default: anthropic/claude-sonnet-4-6)
-  -h, --help                Show this help
-
-Examples:
-  heimdall alert alert.json
-  heimdall alert --source grafana grafana-alert.json
-  heimdall alert --source prometheus alertmanager-webhook.json
-  heimdall alert --source pagerduty pd-webhook.json
-  heimdall alert --source raw "Pod api-xyz in namespace prod is CrashLoopBackOff"
-  npm run alert -- --source raw "high latency on api deployment in prod"
-`);
+      process.stdout.write(ALERT_HELP_TEXT);
       process.exit(0);
     } else if (!arg.startsWith('-')) {
       input = arg;
@@ -187,10 +199,16 @@ Examples:
 
   if (!input) {
     process.stderr.write('Error: alert input (file path or raw text) is required\n');
-    process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|raw] [--no-seed] <alert.json|"text">\n');
+    process.stderr.write('Usage: heimdall alert [--source grafana|prometheus|pagerduty|raw] [--no-seed] <alert.json|"text">\n');
     process.exit(1);
   }
 
+  return { source, seed, input, modelFlag };
+}
+
+// ── CLI ──────────────────────────────────────────────────────────────────────
+if (isMainModule(import.meta.url)) {
+  const { source, seed, input, modelFlag } = parseAlertArgs(process.argv.slice(2));
   const resolvedModel = resolveModelOrExit(modelFlag);
 
   runAlertMode({ source, input, seed, model: resolvedModel }).catch((err: unknown) => {
