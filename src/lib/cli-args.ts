@@ -129,6 +129,21 @@ export function parseAliasedFlag(
 }
 
 /**
+ * Handle the trailing `-h`/`--help` vs. unknown-option branch shared by
+ * several mode entry points' hand-rolled argv loops: print `helpText` to
+ * stdout and exit(0) for `-h`/`--help`, otherwise print an "unknown option"
+ * error to stderr and exit(1).
+ */
+export function handleHelpOrUnknownOption(arg: string, helpText: string): never {
+  if (arg === '-h' || arg === '--help') {
+    process.stdout.write(helpText);
+    process.exit(0);
+  } else {
+    die(`unknown option: ${arg}`);
+  }
+}
+
+/**
  * Resolve the effective model via `resolveModel`, writing an error to stderr
  * and exit(1) on an invalid specifier instead of throwing. Shared by the mode
  * entry points (alert-mode, eval-mode, triage-mode, watch-mode) that all

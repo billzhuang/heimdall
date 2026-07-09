@@ -9,6 +9,7 @@ import {
   parseAliasedFlag,
   isMainModule,
   resolveModelOrExit,
+  handleHelpOrUnknownOption,
 } from '../cli-args.ts';
 
 describe('die', () => {
@@ -289,6 +290,38 @@ describe('resolveModelOrExit', () => {
     resolveModelOrExit('badmodel');
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Error: Invalid model "badmodel"'));
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('handleHelpOrUnknownOption', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('prints the help text and exits 0 for --help', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    handleHelpOrUnknownOption('--help', 'Usage: some-mode [options]\n');
+    expect(stdoutSpy).toHaveBeenCalledWith('Usage: some-mode [options]\n');
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('prints the help text and exits 0 for -h', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    handleHelpOrUnknownOption('-h', 'Usage: some-mode [options]\n');
+    expect(stdoutSpy).toHaveBeenCalledWith('Usage: some-mode [options]\n');
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('writes an unknown-option error and exits 1, without touching stdout, for anything else', () => {
+    const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    handleHelpOrUnknownOption('--bogus', 'Usage: some-mode [options]\n');
+    expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(stdoutSpy).not.toHaveBeenCalled();
   });
 });
 
