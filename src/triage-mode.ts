@@ -35,7 +35,7 @@ import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { die, parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -250,11 +250,8 @@ export function parseTriageArgs(args: string[]): TriageCliArgs {
       const parsed = parseModelFlag(args, i);
       modelFlag = parsed.value;
       i = parsed.nextIndex;
-    } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(TRIAGE_HELP_TEXT);
-      process.exit(0);
     } else {
-      die(`unknown option: ${arg}`);
+      handleHelpOrUnknownOption(arg, TRIAGE_HELP_TEXT);
     }
   }
 
