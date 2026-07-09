@@ -83,19 +83,42 @@ export function isGetSecretCommand(argv: string[]): boolean {
   return resourceIndex !== -1 && isSecretResource(argv[resourceIndex]);
 }
 
+/** Discriminated view of a parsed kubectl object, shared by containsSecret and redactObject. */
+type SecretNode =
+  | { kind: 'secret'; obj: Record<string, unknown> }
+  | { kind: 'list'; obj: Record<string, unknown>; items: unknown[] }
+  | { kind: 'other' };
+
+/**
+ * Classify a parsed kubectl value as a Secret, a List/SecretList of items, or
+ * neither. Single source of truth for "what counts as Secret/List-shaped" so
+ * containsSecret and redactObject can't silently drift apart.
+ */
+function classifyNode(obj: unknown): SecretNode {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return { kind: 'other' };
+  const o = obj as Record<string, unknown>;
+  if (o['kind'] === 'Secret') return { kind: 'secret', obj: o };
+  if ((o['kind'] === 'List' || o['kind'] === 'SecretList') && Array.isArray(o['items'])) {
+    return { kind: 'list', obj: o, items: o['items'] as unknown[] };
+  }
+  return { kind: 'other' };
+}
+
 /**
  * Return true when the parsed JSON value is a Kubernetes Secret or a List/SecretList
  * containing at least one Secret. Returns false for arrays, primitives, and all other
  * resource types.
  */
 export function containsSecret(obj: unknown): boolean {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
-  const o = obj as Record<string, unknown>;
-  if (o['kind'] === 'Secret') return true;
-  if ((o['kind'] === 'List' || o['kind'] === 'SecretList') && Array.isArray(o['items'])) {
-    return (o['items'] as unknown[]).some(containsSecret);
+  const node = classifyNode(obj);
+  switch (node.kind) {
+    case 'secret':
+      return true;
+    case 'list':
+      return node.items.some(containsSecret);
+    case 'other':
+      return false;
   }
-  return false;
 }
 
 /**
@@ -147,13 +170,15 @@ function redactSecret(obj: Record<string, unknown>): Record<string, unknown> {
  * SecretList kinds, each item is redacted independently.
  */
 export function redactObject(obj: unknown): unknown {
-  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
-  const o = obj as Record<string, unknown>;
-  if (o['kind'] === 'Secret') return redactSecret(o);
-  if ((o['kind'] === 'List' || o['kind'] === 'SecretList') && Array.isArray(o['items'])) {
-    return { ...o, items: (o['items'] as unknown[]).map(redactObject) };
+  const node = classifyNode(obj);
+  switch (node.kind) {
+    case 'secret':
+      return redactSecret(node.obj);
+    case 'list':
+      return { ...node.obj, items: node.items.map(redactObject) };
+    case 'other':
+      return obj;
   }
-  return obj;
 }
 
 /**
