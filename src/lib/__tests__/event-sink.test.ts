@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventSink, createEventSink, type EventSinkConfig, type EventSinkRecord } from '../event-sink.ts';
 import type { WatchFinding } from '../watch.ts';
+import { mockFetchHangsUntilAbort } from './test-helpers.ts';
 
 vi.mock('../jsonl.ts', () => ({
   appendJsonlLine: vi.fn(),
@@ -205,16 +206,7 @@ describe('EventSink — webhook abort timeout', () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     // fetch hangs forever — resolves only when the AbortController fires
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const sink = new EventSink({ webhookUrl: 'https://example.com/hook' });
     const writePromise = sink.write(makeFinding());
