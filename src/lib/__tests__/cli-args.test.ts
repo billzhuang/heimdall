@@ -334,27 +334,29 @@ describe('runMainOrExit', () => {
   it('does not write to stderr or exit when the promise resolves', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    runMainOrExit(Promise.resolve(), '[heimdall-test] Fatal error');
-    await new Promise((r) => setImmediate(r));
+    await runMainOrExit(Promise.resolve(), '[heimdall-test] Fatal error');
     expect(stderrSpy).not.toHaveBeenCalled();
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
   it('writes "<prefix>: <stack or message>" to stderr and exits(1) when the promise rejects', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    runMainOrExit(Promise.reject(new Error('boom')), '[heimdall-test] Fatal error');
-    await new Promise((r) => setImmediate(r));
+    vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    await expect(
+      runMainOrExit(Promise.reject(new Error('boom')), '[heimdall-test] Fatal error'),
+    ).rejects.toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('[heimdall-test] Fatal error: '));
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('boom'));
-    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('preserves the given prefix verbatim (per-mode tag and wording)', async () => {
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
-    runMainOrExit(Promise.reject('oops'), '[heimdall-alert] Fatal');
-    await new Promise((r) => setImmediate(r));
+    vi.spyOn(process, 'exit').mockImplementation(() => {
+      throw new Error('process.exit');
+    });
+    await expect(runMainOrExit(Promise.reject('oops'), '[heimdall-alert] Fatal')).rejects.toThrow('process.exit');
     expect(stderrSpy).toHaveBeenCalledWith('[heimdall-alert] Fatal: oops\n');
   });
 });

@@ -163,10 +163,11 @@ export function resolveModelOrExit(cliFlag?: string): string {
  * `isMainModule` dispatch block: on rejection, write `<prefix>: <stack or
  * message>` to stderr and exit(1). `prefix` carries the per-mode tag and
  * wording (e.g. `"[heimdall-triage] Fatal error"`) so each mode's existing
- * message text is unchanged.
+ * message text is unchanged. Returns the resulting promise so callers
+ * (notably tests) can await completion instead of racing the microtask queue.
  */
-export function runMainOrExit(promise: Promise<unknown>, prefix: string): void {
-  promise.catch((err: unknown) => {
+export function runMainOrExit(promise: Promise<void>, prefix: string): Promise<void> {
+  return promise.catch((err: unknown): void => {
     process.stderr.write(`${prefix}: ${getStackOrMessage(err)}\n`);
     process.exit(1);
   });
