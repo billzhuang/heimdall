@@ -4,7 +4,7 @@ afterEach(() => vi.restoreAllMocks());
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { tagsMatch, readRunbook, loadRunbooks } from '../runbooks.ts';
+import { tagsMatch, readRunbook, loadRunbooks, truncateToBudget } from '../runbooks.ts';
 
 // ── tagsMatch ────────────────────────────────────────────────────────────────
 
@@ -85,6 +85,36 @@ describe('readRunbook', () => {
     const result = readRunbook(join(dir, 'empty.md'));
     // trim() of whitespace-only content → '' which is falsy
     expect(result).toBe('');
+  });
+});
+
+// ── truncateToBudget ─────────────────────────────────────────────────────────
+
+describe('truncateToBudget', () => {
+  it('returns text unchanged when it fits within budget', () => {
+    expect(truncateToBudget('hello', 10)).toBe('hello');
+  });
+
+  it('returns text unchanged when it exactly fills the budget', () => {
+    expect(truncateToBudget('hello', 5)).toBe('hello');
+  });
+
+  it('truncates and appends the marker when text exceeds the budget', () => {
+    const result = truncateToBudget('x'.repeat(100), 20);
+    expect(result.length).toBe(20);
+    expect(result.endsWith('[truncated]')).toBe(true);
+  });
+
+  it('returns a partial marker when budget is smaller than the marker itself', () => {
+    const result = truncateToBudget('x'.repeat(100), 5);
+    expect(result).toBe('\n[tru');
+    expect(result.length).toBe(5);
+  });
+
+  it('returns the full marker when budget equals the marker length', () => {
+    const marker = '\n[truncated]';
+    const result = truncateToBudget('x'.repeat(100), marker.length);
+    expect(result).toBe(marker);
   });
 });
 
