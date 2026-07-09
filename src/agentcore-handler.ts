@@ -37,7 +37,7 @@ import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
 import { invokeAgentForFinding } from './lib/agent-invoke.ts';
-import { isPlainObject, optionalString, requireNonEmptyStringField } from './lib/json-utils.ts';
+import { isPlainObject, optionalString, parseJsonBody, requireNonEmptyStringField } from './lib/json-utils.ts';
 import { isMainModule } from './lib/cli-args.ts';
 
 const AGENTCORE_PORT_DEFAULT = 8080;
@@ -131,14 +131,12 @@ export function createAgentCoreApp(
   app.get('/ping', (c) => c.text('OK', 200));
 
   app.post('/invocations', async (c) => {
-    let parsed: unknown;
-    try {
-      parsed = await c.req.json<unknown>();
-    } catch {
+    const parsedBody = await parseJsonBody(c.req);
+    if (!parsedBody.ok) {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
 
-    const result = parseAgentCoreRequestBody(parsed);
+    const result = parseAgentCoreRequestBody(parsedBody.value);
     if (!result.ok) {
       return c.json({ error: result.error }, 400);
     }

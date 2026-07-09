@@ -34,7 +34,7 @@ import { resolveModel } from './lib/model.ts';
 import { resolveApiKey, resolveMetricsServiceName } from './lib/server-config.ts';
 import { getTelemetrySnapshot, formatPrometheusMetrics } from './lib/telemetry.ts';
 import { invokeAgentForFinding } from './lib/agent-invoke.ts';
-import { isPlainObject, optionalString, requireNonEmptyStringField } from './lib/json-utils.ts';
+import { isPlainObject, optionalString, parseJsonBody, requireNonEmptyStringField } from './lib/json-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { isMainModule, handleHelpOrUnknownOption } from './lib/cli-args.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
@@ -277,14 +277,12 @@ export function createServeApp(
   });
 
   app.post('/api/diagnose', async (c) => {
-    let parsed: unknown;
-    try {
-      parsed = await c.req.json<unknown>();
-    } catch {
+    const body = await parseJsonBody(c.req);
+    if (!body.ok) {
       return c.json({ error: 'Invalid JSON body' }, 400);
     }
 
-    const result = parseDiagnoseRequestBody(parsed);
+    const result = parseDiagnoseRequestBody(body.value);
     if (!result.ok) {
       return c.json({ error: result.error }, 400);
     }
