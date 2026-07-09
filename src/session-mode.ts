@@ -39,13 +39,18 @@ export function formatSession(s: SessionRecord): string {
   return `  ${s.id}${label}\n    server: ${s.serverUrl}  |  created: ${new Date(s.createdAt).toLocaleString()}  |  ${last}`;
 }
 
-/** Load a session by id, or die with the underlying error message on failure. */
-function loadSessionOrDie(id: string): SessionRecord {
+/** Run `fn`, or die with its thrown error's message on failure. */
+function tryOrDie<T>(fn: () => T): T {
   try {
-    return loadSession(id);
+    return fn();
   } catch (err) {
     die(getMessage(err));
   }
+}
+
+/** Load a session by id, or die with the underlying error message on failure. */
+function loadSessionOrDie(id: string): SessionRecord {
+  return tryOrDie(() => loadSession(id));
 }
 
 /** Die with a formatted message when `url` is not a well-formed URL. `context` is appended after the quoted url (e.g. " configured for session <id>"). */
@@ -229,11 +234,7 @@ export function cmdEnd(args: string[]): void {
   const sessionId = resolveSessionIdArg(args);
   if (!sessionId) die('session id is required — heimdall session end <id>');
 
-  try {
-    deleteSession(sessionId);
-  } catch (err) {
-    die(getMessage(err));
-  }
+  tryOrDie(() => deleteSession(sessionId));
   process.stdout.write(`Session ${sessionId} ended.\n`);
 }
 
