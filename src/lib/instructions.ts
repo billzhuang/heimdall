@@ -126,7 +126,7 @@ function buildSloSection(slos?: SloDefinition[]): string | undefined {
  * when any listed tool key is enabled (mirrors the previous per-group `||`
  * checks, e.g. golden-signals-investigator's three-key OR).
  */
-const SUBAGENT_PROMPT_ENTRIES: ReadonlyArray<{ name: SubagentName; bullet: string; gates?: ToolConfigKey[] }> = [
+const SUBAGENT_PROMPT_ENTRIES = [
   { name: 'log-analyzer', bullet: 'pod log analysis, error correlation, pattern detection.' },
   { name: 'resource-analyzer', bullet: 'CPU/memory requests & limits, capacity, bottlenecks.' },
   { name: 'network-debugger', bullet: 'DNS, services, endpoints, ingress, connectivity.' },
@@ -151,12 +151,20 @@ const SUBAGENT_PROMPT_ENTRIES: ReadonlyArray<{ name: SubagentName; bullet: strin
   { name: 'newrelic-investigator', bullet: 'New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.', gates: ['newRelicQuery'] },
   { name: 'golden-signals-investigator', bullet: 'use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.', gates: ['prometheusQuery', 'datadogQuery', 'newRelicQuery'] },
   { name: 'cdk-investigator', bullet: 'CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.', gates: ['cdkQuery'] },
-];
+] as const satisfies ReadonlyArray<{ name: SubagentName; bullet: string; gates?: readonly ToolConfigKey[] }>;
+
+// Compile-time guarantee that every SubagentName is represented above: `as const`
+// narrows each entry's `name` to its literal, so a subagent added to the
+// SubagentName union but forgotten here shows up as a non-`never` type and
+// fails this assignment instead of silently missing from the rendered prompt.
+type MissingSubagentPromptEntry = Exclude<SubagentName, (typeof SUBAGENT_PROMPT_ENTRIES)[number]['name']>;
+const _assertAllSubagentsHavePromptEntries: MissingSubagentPromptEntry extends never ? true : ['missing SUBAGENT_PROMPT_ENTRIES for', MissingSubagentPromptEntry] = true;
+void _assertAllSubagentsHavePromptEntries;
 
 /** Render the `## Specialist subagents` bullet lines, filtered by which gated tools are enabled. */
 function buildSpecialistSubagentLines(has: (key: ToolConfigKey) => boolean): string[] {
   return SUBAGENT_PROMPT_ENTRIES
-    .filter((e) => !e.gates || e.gates.some(has))
+    .filter((e) => !('gates' in e) || e.gates.some(has))
     .map((e) => `- ${e.name} — ${e.bullet}`);
 }
 
