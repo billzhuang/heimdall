@@ -250,15 +250,17 @@ function buildHistorySection(
  * Build the "N eval scenario(s)" lead-in sentence, pluralized appropriately.
  * Shared with self-loop.ts's buildAutoReflectionPrompt, which needs the same
  * count sentence but (unlike buildFailurePart) has no zero-entries special case.
+ * Takes a plain count rather than LearningEntry[] so it stays reusable outside
+ * the learning-entry domain.
  */
-export function buildFailureSentence(entries: LearningEntry[]): string {
-  return `The agent failed ${entries.length} eval scenario${entries.length === 1 ? '' : 's'}. `;
+export function buildFailureSentence(count: number): string {
+  return `The agent failed ${count} eval scenario${count === 1 ? '' : 's'}. `;
 }
 
 /** Build the failure-summary sentence introducing the reflection prompt. */
 function buildFailurePart(entries: LearningEntry[]): string {
   if (entries.length === 0) return `No eval failures this run.`;
-  return buildFailureSentence(entries) +
+  return buildFailureSentence(entries.length) +
     `For each failure, analyze the root cause and propose the **exact text change** to ` +
     `\`src/lib/instructions.ts\` (or a specific \`SUBAGENT_INSTRUCTIONS\` entry) that would fix it. ` +
     `Be specific: quote the line(s) to change and what to replace them with.`;

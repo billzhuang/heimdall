@@ -184,7 +184,7 @@ Rules:
 
   const sections = buildPromptSections(
     `You are the self-improvement loop for the Heimdall Kubernetes SRE agent.\n\n` +
-      buildFailureSentence(entries) +
+      buildFailureSentence(entries.length) +
       `Propose specific text patches to \`src/lib/instructions.ts\` that would fix these failures.`,
     entries,
     historySection,
