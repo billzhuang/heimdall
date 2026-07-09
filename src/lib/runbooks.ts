@@ -53,6 +53,23 @@ export function readRunbook(absPath: string): string | null {
 }
 
 /**
+ * Truncate `text` to fit within `budget` characters, appending TRUNCATION_MARKER
+ * when it doesn't fit whole.
+ *
+ * Subtracts the marker length from the slice budget so the combined result
+ * never exceeds `budget`. When `budget` is smaller than the marker itself,
+ * returns a partial marker rather than using a negative slice index (which
+ * would trim from the end of `text` in JS). A non-positive budget returns ''
+ * rather than a negative-index slice of the marker.
+ */
+export function truncateToBudget(text: string, budget: number): string {
+  if (budget <= 0) return '';
+  if (text.length <= budget) return text;
+  if (budget <= TRUNCATION_MARKER.length) return TRUNCATION_MARKER.slice(0, budget);
+  return text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+}
+
+/**
  * Load and concatenate runbook files.
  *
  * @param configDir  - directory relative to which `entry.path` values are resolved.
@@ -77,15 +94,7 @@ export function loadRunbooks(configDir: string, configs: RunbookConfig[], query?
     const budget = MAX_RUNBOOK_CHARS - totalChars - header.length;
     if (budget <= 0) break;
 
-    // Subtract marker length from the slice budget so the combined body never
-    // exceeds the remaining budget when truncation is applied. When the budget
-    // is smaller than the marker itself, use a partial marker rather than a
-    // negative slice index (which would trim from the end in JS).
-    const body = text.length <= budget
-      ? text
-      : budget <= TRUNCATION_MARKER.length
-        ? TRUNCATION_MARKER.slice(0, budget)
-        : text.slice(0, budget - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+    const body = truncateToBudget(text, budget);
     parts.push(header + body);
     totalChars += header.length + body.length;
   }
