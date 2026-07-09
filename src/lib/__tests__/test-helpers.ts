@@ -28,9 +28,9 @@ export function makeAbortError(): Error {
 export function mockFetchHangsUntilAbort(): void {
   vi.stubGlobal(
     'fetch',
-    vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+    vi.fn().mockImplementation((_url: string, opts?: RequestInit) =>
       new Promise<never>((_resolve, reject) => {
-        opts.signal?.addEventListener('abort', () => reject(makeAbortError()));
+        opts?.signal?.addEventListener('abort', () => reject(makeAbortError()));
       }),
     ),
   );
