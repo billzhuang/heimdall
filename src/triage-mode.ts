@@ -31,11 +31,11 @@ import {
   type ClusterCheckpoint,
 } from './lib/drift.ts';
 import { runKubectl } from './lib/kubectl.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
-import { parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption } from './lib/cli-args.ts';
+import { parseCommaSeparatedList, parseModelFlag, parseRequiredFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption, runMainOrExit } from './lib/cli-args.ts';
 
 const TRIAGE_TIMEOUT_MS = 300_000; // 5 minutes — a full sweep needs time
 
@@ -263,8 +263,5 @@ if (isMainModule(import.meta.url)) {
   const { opts, modelFlag } = parseTriageArgs(process.argv.slice(2));
   const resolvedModel = resolveModelOrExit(modelFlag);
 
-  runTriageMode(opts, resolvedModel).catch((err: unknown) => {
-    process.stderr.write(`[heimdall-triage] Fatal error: ${getStackOrMessage(err)}\n`);
-    process.exit(1);
-  });
+  runMainOrExit(runTriageMode(opts, resolvedModel), '[heimdall-triage] Fatal error');
 }

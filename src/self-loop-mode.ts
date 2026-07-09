@@ -49,8 +49,8 @@ import {
   extractInstructionsSnippet,
   type IterationResult,
 } from './lib/self-loop.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
-import { isMainModule, parseAliasedFlag } from './lib/cli-args.ts';
+import { getMessage } from './lib/error-utils.ts';
+import { isMainModule, parseAliasedFlag, runMainOrExit } from './lib/cli-args.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -408,8 +408,5 @@ async function main(): Promise<void> {
 }
 
 if (isMainModule(import.meta.url)) {
-  main().catch((err: unknown) => {
-    process.stderr.write(`[heimdall-self-loop] Fatal error: ${getStackOrMessage(err)}\n`);
-    process.exit(1);
-  });
+  runMainOrExit(main(), '[heimdall-self-loop] Fatal error');
 }

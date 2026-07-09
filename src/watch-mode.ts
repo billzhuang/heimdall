@@ -43,9 +43,9 @@ import {
   type CooldownState,
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
-import { getMessage, getStackOrMessage } from './lib/error-utils.ts';
+import { getMessage } from './lib/error-utils.ts';
 import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
-import { parseModelFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption } from './lib/cli-args.ts';
+import { parseModelFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption, runMainOrExit } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 
@@ -307,8 +307,5 @@ if (isMainModule(import.meta.url)) {
 
   const resolvedWatchModel = resolveModelOrExit(watchModelFlag);
 
-  runWatchMode(resolvedWatchModel).catch((err: unknown) => {
-    logWatch(`Fatal error: ${getStackOrMessage(err)}`);
-    process.exit(1);
-  });
+  runMainOrExit(runWatchMode(resolvedWatchModel), '[heimdall-watch] Fatal error');
 }

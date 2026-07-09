@@ -20,8 +20,7 @@ import {
   type EvalResult,
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
-import { getStackOrMessage } from './lib/error-utils.ts';
-import { parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit, runMainOrExit } from './lib/cli-args.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -99,8 +98,5 @@ async function main(): Promise<void> {
 }
 
 if (isMainModule(import.meta.url)) {
-  main().catch((err: unknown) => {
-    process.stderr.write(`[heimdall-eval] Fatal error: ${getStackOrMessage(err)}\n`);
-    process.exit(1);
-  });
+  runMainOrExit(main(), '[heimdall-eval] Fatal error');
 }
