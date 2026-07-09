@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { runDatadogQuery, filterMonitorsByStatus } from '../datadog.ts';
 import { resolveTimeSeconds, resolveTimeISO } from '../time-resolution.ts';
 import type { DatadogConfig } from '../datadog.ts';
-import { mockFetch, restoreGlobalsAfterEach } from './test-helpers.ts';
+import { mockFetch, mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: DatadogConfig = {
   apiKey: 'test-api-key',
@@ -857,16 +857,7 @@ describe('runDatadogQuery — abort timeout', () => {
   it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
     vi.useFakeTimers();
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const queryPromise = runDatadogQuery(
       { queryType: 'metrics', query: 'avg:system.cpu.user{*}' },

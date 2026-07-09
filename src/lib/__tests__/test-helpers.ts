@@ -25,4 +25,15 @@ export function makeAbortError(): Error {
   return Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
 }
 
+export function mockFetchHangsUntilAbort(): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
+      new Promise<never>((_resolve, reject) => {
+        opts.signal?.addEventListener('abort', () => reject(makeAbortError()));
+      }),
+    ),
+  );
+}
+
 export const BLOCKED_RE = new RegExp(`^${escapeRegExpLiteral(BLOCKED_PREFIX)}`, 'i');

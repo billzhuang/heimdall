@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runLokiQuery, resolveTime, validateNamespaceLockdown } from '../loki.ts';
 import type { LokiConfig } from '../loki.ts';
-import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
+import { mockFetch, makeAbortError, mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: LokiConfig = { url: 'http://loki:3100', timeoutMs: 5_000 };
 
@@ -393,16 +393,7 @@ describe('runLokiQuery — abort timeout', () => {
   it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
     vi.useFakeTimers();
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const queryPromise = runLokiQuery(
       { query: '{app="api"}' },
