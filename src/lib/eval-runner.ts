@@ -71,6 +71,10 @@ function validateScenarioField(
         invalidScenario(filePath, `— "${field}" must be an object if provided`);
       }
       return;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unhandled scenario field kind: ${exhaustive}`);
+    }
   }
 }
 
