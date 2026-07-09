@@ -169,21 +169,12 @@ describe('main()', () => {
         return process.exit(1);
       }
     });
+    // Simplified to just run scenarios and tally — the tests below assert
+    // main()'s own "X passed, Y failed" summary, not per-scenario progress
+    // lines, so mirroring the production console printing here would be
+    // unasserted duplication.
     vi.mocked(runScenariosWithConsoleReport).mockImplementation(async (binPath, scenarios) => {
-      const results = [];
-      for (const { scenario } of scenarios) {
-        process.stdout.write(`  Running: ${scenario.description}\n`);
-        const result = await runScenario(binPath, scenario);
-        results.push(result);
-        if (result.passed) {
-          process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
-        } else {
-          process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
-          for (const failure of result.failures) {
-            process.stdout.write(`         - ${failure}\n`);
-          }
-        }
-      }
+      const results = await Promise.all(scenarios.map(({ scenario }) => runScenario(binPath, scenario)));
       const passed = results.filter(r => r.passed).length;
       return { results, passed, failed: results.length - passed };
     });
