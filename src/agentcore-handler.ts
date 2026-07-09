@@ -32,7 +32,7 @@
  */
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { runAgentDiagnose } from './serve-mode.ts';
+import { parsePortArg, runAgentDiagnose } from './serve-mode.ts';
 import { resolveModel, resolveModelOrUndefined } from './lib/model.ts';
 import { loadConfig } from './lib/config.ts';
 import type { OneShotFinding } from './lib/format-output.ts';
@@ -106,6 +106,16 @@ export function buildAgentCoreResponse(
 }
 
 /**
+ * Resolve the AgentCore listen port from `AGENTCORE_PORT`, falling back to
+ * `AGENTCORE_PORT_DEFAULT` when unset. Delegates to `parsePortArg` (the same
+ * validation `serve-mode.ts` applies to `HEIMDALL_PORT`) so an out-of-range or
+ * non-numeric value produces a friendly error instead of `NaN` reaching `serve()`.
+ */
+export function resolveAgentCorePort(rawEnvPort: string | undefined): { port: number } | { errorMessage: string } {
+  return rawEnvPort ? parsePortArg(rawEnvPort, 'AGENTCORE_PORT') : { port: AGENTCORE_PORT_DEFAULT };
+}
+
+/**
  * Create the AgentCore Hono app.
  *
  * agentFn is injectable for testing; defaults to the real subprocess runner.
@@ -152,10 +162,12 @@ if (isMainModule(import.meta.url)) {
 
   const defaultModel = resolveModelOrUndefined(process.env['HEIMDALL_MODEL']);
 
-  const envPort = process.env['AGENTCORE_PORT']
-    ? parseInt(process.env['AGENTCORE_PORT'], 10)
-    : undefined;
-  const port = envPort ?? AGENTCORE_PORT_DEFAULT;
+  const portResult = resolveAgentCorePort(process.env['AGENTCORE_PORT']);
+  if ('errorMessage' in portResult) {
+    process.stderr.write(portResult.errorMessage);
+    process.exit(1);
+  }
+  const port = portResult.port;
 
   const app = createAgentCoreApp(runAgentDiagnose, defaultModel);
 

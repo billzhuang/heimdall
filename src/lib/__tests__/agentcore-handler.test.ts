@@ -17,6 +17,7 @@ import {
   createAgentCoreApp,
   parseAgentCoreRequestBody,
   buildAgentCoreResponse,
+  resolveAgentCorePort,
 } from '../../agentcore-handler.ts';
 import { resolveModel } from '../model.ts';
 import type { OneShotFinding } from '../format-output.ts';
@@ -245,6 +246,28 @@ describe('createAgentCoreApp — POST /invocations', () => {
       }),
     );
     expect(agentFn).toHaveBeenCalledWith('Check cluster health', resolveModel(undefined));
+  });
+});
+
+describe('resolveAgentCorePort', () => {
+  it('returns the default port when AGENTCORE_PORT is unset', () => {
+    expect(resolveAgentCorePort(undefined)).toEqual({ port: 8080 });
+  });
+
+  it('parses a valid AGENTCORE_PORT', () => {
+    expect(resolveAgentCorePort('9090')).toEqual({ port: 9090 });
+  });
+
+  it('returns a friendly error instead of NaN for a non-numeric AGENTCORE_PORT', () => {
+    expect(resolveAgentCorePort('not-a-port')).toEqual({
+      errorMessage: 'Error: AGENTCORE_PORT must be an integer between 1 and 65535, got "not-a-port"\n',
+    });
+  });
+
+  it('returns a friendly error for an out-of-range AGENTCORE_PORT', () => {
+    expect(resolveAgentCorePort('99999')).toEqual({
+      errorMessage: 'Error: AGENTCORE_PORT must be an integer between 1 and 65535, got "99999"\n',
+    });
   });
 });
 
