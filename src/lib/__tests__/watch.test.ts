@@ -13,7 +13,7 @@ import {
   type WatchFilterConfig,
   type CooldownState,
 } from '../watch.ts';
-import { restoreGlobalsAfterEach } from './test-helpers.ts';
+import { mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -571,16 +571,7 @@ describe('postWebhook', () => {
   it('aborts the request after the 10-second setTimeout fires', async () => {
     vi.useFakeTimers();
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const hookPromise = postWebhook('http://example.com/hook', {});
     // Attach rejection handler before advancing timers so the rejection is

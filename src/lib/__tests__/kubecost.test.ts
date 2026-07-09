@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runKubecostQuery, resolveAllocationNamespace } from '../kubecost.ts';
 import type { KubecostConfig } from '../kubecost.ts';
-import { mockFetch, makeAbortError, restoreGlobalsAfterEach } from './test-helpers.ts';
+import { mockFetch, makeAbortError, mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: KubecostConfig = { url: 'http://kubecost:9090', timeoutMs: 5_000 };
 
@@ -337,16 +337,7 @@ describe('runKubecostQuery — abort timeout', () => {
   it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
     vi.useFakeTimers();
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const queryPromise = runKubecostQuery(
       'allocation',

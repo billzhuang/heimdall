@@ -8,6 +8,7 @@ import {
   type SlackConfig,
 } from '../slack.ts';
 import type { OneShotFinding } from '../format-output.ts';
+import { mockFetchHangsUntilAbort } from './test-helpers.ts';
 
 const BASE_CONFIG: SlackConfig = {
   webhookUrl: 'https://hooks.slack.com/services/TEST/TEST/TEST',
@@ -318,16 +319,7 @@ describe('sendSlackNotification — abort timeout', () => {
   it('fires the setTimeout abort after timeoutMs and logs a timeout message', async () => {
     vi.useFakeTimers();
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runNewRelicQuery, resolveNrqlTime, augmentNrqlClauses, effectiveNrqlLimit, nrqlUntilClause } from '../newrelic.ts';
 import type { NewRelicConfig } from '../newrelic.ts';
-import { mockFetch, restoreGlobalsAfterEach } from './test-helpers.ts';
+import { mockFetch, mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
 const BASE_CONFIG: NewRelicConfig = {
   apiKey: 'test-api-key',
@@ -442,16 +442,7 @@ describe('runNewRelicQuery — abort timeout', () => {
   it('fires the setTimeout abort after timeoutMs and returns a timeout message', async () => {
     vi.useFakeTimers();
 
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation((_url: string, opts: RequestInit) =>
-        new Promise<never>((_resolve, reject) => {
-          opts.signal?.addEventListener('abort', () =>
-            reject(Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })),
-          );
-        }),
-      ),
-    );
+    mockFetchHangsUntilAbort();
 
     const queryPromise = runNewRelicQuery(
       { queryType: 'metrics', query: 'SELECT count(*) FROM Transaction SINCE 1 hour ago' },
