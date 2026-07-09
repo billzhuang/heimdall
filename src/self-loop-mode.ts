@@ -51,6 +51,7 @@ import {
 } from './lib/self-loop.ts';
 import { getMessage } from './lib/error-utils.ts';
 import { isMainModule, parseAliasedFlag, runMainOrExit } from './lib/cli-args.ts';
+import { pluralize } from './lib/string-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -152,7 +153,7 @@ export async function runIteration(
 
   // Parse patches.
   const patches = parseProposals(llmResponse);
-  process.stdout.write(`Parsed ${patches.length} patch${patches.length === 1 ? '' : 'es'}\n`);
+  process.stdout.write(`Parsed ${patches.length} ${pluralize(patches.length, 'patch', 'patches')}\n`);
 
   if (patches.length === 0) {
     process.stdout.write('LLM proposed no changes. Stopping self-loop.\n');
