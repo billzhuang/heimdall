@@ -228,3 +228,39 @@ export async function runAllScenarios(
   }
   return results;
 }
+
+export interface ScenarioRunReport {
+  results: EvalResult[];
+  passed: number;
+  failed: number;
+}
+
+/**
+ * Run all scenarios, printing per-scenario PASS/FAIL progress (and each
+ * failure reason) to stdout, then tally the pass/fail counts.
+ *
+ * Shared by eval-mode and self-improve-mode, which both report scenario runs
+ * to the console in this exact format.
+ */
+export async function runScenariosWithConsoleReport(
+  binPath: string,
+  scenarios: Array<{ path: string; scenario: EvalScenario }>,
+): Promise<ScenarioRunReport> {
+  const results = await runAllScenarios(binPath, scenarios, {
+    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
+        for (const failure of result.failures) {
+          process.stdout.write(`         - ${failure}\n`);
+        }
+      }
+    },
+  });
+
+  const passed = results.filter(r => r.passed).length;
+  const failed = results.length - passed;
+  return { results, passed, failed };
+}

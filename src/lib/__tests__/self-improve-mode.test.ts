@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseSelfImproveArgs, main } from '../../self-improve-mode.ts';
-import { loadScenarios, runScenario, loadScenariosOrExit, runAllScenarios } from '../eval-runner.ts';
+import { loadScenarios, runScenario, loadScenariosOrExit, runScenariosWithConsoleReport } from '../eval-runner.ts';
 import { appendLearningEntry, readLearningLog } from '../self-improve.ts';
 import { readTaskHistory } from '../task-history.ts';
 import { loadConfig } from '../config.ts';
@@ -11,12 +11,13 @@ import { resolveBinPath } from '../bin-path.ts';
 import { getMessage } from '../error-utils.ts';
 
 // eval-runner.ts is auto-mocked wholesale. self-improve-mode.ts's `main()` only
-// calls loadScenariosOrExit/runAllScenarios directly, so those two are given
-// thin bridging implementations that forward to the (also mocked) loadScenarios/
-// runScenario — the same functions each test configures below. This mirrors the
-// real implementations in eval-runner.ts; it's necessary because vi.mock cannot
-// intercept a same-module call (loadScenariosOrExit calling loadScenarios), only
-// calls that cross a module boundary.
+// calls loadScenariosOrExit/runScenariosWithConsoleReport directly, so those two
+// are given thin bridging implementations that forward to the (also mocked)
+// loadScenarios/runScenario — the same functions each test configures below.
+// This mirrors the real implementations in eval-runner.ts; it's necessary
+// because vi.mock cannot intercept a same-module call (loadScenariosOrExit
+// calling loadScenarios, or runScenariosWithConsoleReport calling
+// runAllScenarios), only calls that cross a module boundary.
 vi.mock('../eval-runner.ts');
 vi.mock('../bin-path.ts');
 vi.mock('../config.ts');
@@ -168,15 +169,14 @@ describe('main()', () => {
         return process.exit(1);
       }
     });
-    vi.mocked(runAllScenarios).mockImplementation(async (binPath, scenarios, callbacks) => {
-      const results = [];
-      for (const { scenario } of scenarios) {
-        callbacks?.onBefore?.(scenario.description);
-        const result = await runScenario(binPath, scenario);
-        results.push(result);
-        callbacks?.onResult?.(result);
-      }
-      return results;
+    // Simplified to just run scenarios and tally — the tests below assert
+    // main()'s own "X passed, Y failed" summary, not per-scenario progress
+    // lines, so mirroring the production console printing here would be
+    // unasserted duplication.
+    vi.mocked(runScenariosWithConsoleReport).mockImplementation(async (binPath, scenarios) => {
+      const results = await Promise.all(scenarios.map(({ scenario }) => runScenario(binPath, scenario)));
+      const passed = results.filter(r => r.passed).length;
+      return { results, passed, failed: results.length - passed };
     });
   });
 
