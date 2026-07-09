@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mockProcessExit } from './test-helpers.ts';
 import { EventEmitter } from 'node:events';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
@@ -206,8 +207,7 @@ describe('parseScheduleArgv', () => {
   });
 
   it('exits 1 with an error for an unknown option', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
 
     parseScheduleArgv(['--bogus']);
     expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');

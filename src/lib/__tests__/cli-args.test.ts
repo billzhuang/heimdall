@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mockProcessExit } from './test-helpers.ts';
 import {
   die,
   requireNextArg,
@@ -19,16 +20,14 @@ describe('die', () => {
   });
 
   it('writes "Error: <msg>" to stderr and exits with the given code', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     die('something went wrong', 2);
     expect(stderrSpy).toHaveBeenCalledWith('Error: something went wrong\n');
     expect(exitSpy).toHaveBeenCalledWith(2);
   });
 
   it('defaults to exit code 1', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     die('boom');
     expect(stderrSpy).toHaveBeenCalledWith('Error: boom\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -47,16 +46,14 @@ describe('requireNextArg', () => {
   });
 
   it('writes error and exits when there is no next token', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requireNextArg(['--namespace'], 0, '--namespace requires a value');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace requires a value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes error and exits when the next token starts with "-"', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requireNextArg(['--namespace', '--model'], 0, '--namespace requires a value');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace requires a value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -82,8 +79,7 @@ describe('requireNonEmptyValue', () => {
   });
 
   it('writes error and exits when value is an empty string', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requireNonEmptyValue('', '--model= requires a non-empty value');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -112,8 +108,7 @@ describe('parseCommaSeparatedList', () => {
   });
 
   it('writes error and exits when nothing survives filtering', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseCommaSeparatedList(' , ,', '--contexts value produced an empty list after parsing');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --contexts value produced an empty list after parsing\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -150,24 +145,21 @@ describe('parseModelFlag', () => {
   });
 
   it('writes an alias-specific error and exits when the value is missing', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseModelFlag(['-m'], 0, ['--model', '-m']);
     expect(stderrSpy).toHaveBeenCalledWith('Error: -m requires a value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes an error and exits when the next token looks like a flag', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseModelFlag(['--model', '--other'], 0);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model requires a value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes an error and exits when "--model=" has an empty value', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseModelFlag(['--model='], 0);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --model= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -202,24 +194,21 @@ describe('parseRequiredFlag', () => {
   });
 
   it('writes the space-form error and exits when the next token is missing', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseRequiredFlag(['--namespace'], 0, '--namespace=', '--namespace requires a namespace argument', 'empty');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace requires a namespace argument\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes the space-form error and exits when the next token looks like a flag', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseRequiredFlag(['--namespace', '--other'], 0, '--namespace=', '--namespace requires a namespace argument', 'empty');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace requires a namespace argument\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes the "=" form error and exits when the value is empty', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseRequiredFlag(['--namespace='], 0, '--namespace=', 'missing', '--namespace= requires a non-empty value');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -286,8 +275,7 @@ describe('resolveModelOrExit', () => {
   });
 
   it('writes the underlying error and exits(1) for an invalid specifier', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     resolveModelOrExit('badmodel');
     expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Error: Invalid model "badmodel"'));
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -317,8 +305,7 @@ describe('handleHelpOrUnknownOption', () => {
 
   it('writes an unknown-option error and exits 1, without touching stdout, for anything else', () => {
     const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     handleHelpOrUnknownOption('--bogus', 'Usage: some-mode [options]\n');
     expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -332,8 +319,7 @@ describe('runMainOrExit', () => {
   });
 
   it('does not write to stderr or exit when the promise resolves', async () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     await runMainOrExit(Promise.resolve(), '[heimdall-test] Fatal error');
     expect(stderrSpy).not.toHaveBeenCalled();
     expect(exitSpy).not.toHaveBeenCalled();

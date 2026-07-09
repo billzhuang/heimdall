@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mockProcessExit } from './test-helpers.ts';
 import { EventEmitter } from 'node:events';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn(), execFile: vi.fn() }));
@@ -103,8 +104,7 @@ describe('validateSourceArg', () => {
   );
 
   it('writes an error and exits(1) for an unrecognized value', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     validateSourceArg('datadog');
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
@@ -113,8 +113,7 @@ describe('validateSourceArg', () => {
   });
 
   it('writes an error and exits(1) for an empty value', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     validateSourceArg('');
     expect(stderrSpy).toHaveBeenCalledWith(
       'Error: --source must be grafana, prometheus, pagerduty, or raw\n',
