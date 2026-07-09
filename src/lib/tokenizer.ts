@@ -1,4 +1,16 @@
 /**
+ * Result shape shared by every CLI safety module's command-validation
+ * function (kubectl, aws, cdk): allow/deny with a human-readable reason,
+ * plus the raw command and parsed subcommand for logging/audit.
+ */
+export interface CommandValidationResult {
+  allowed: boolean;
+  reason: string;
+  command: string;
+  subcommand: string | null;
+}
+
+/**
  * Shared shell-like argument tokenizer used by kubectl, aws, and other CLI runners.
  *
  * Honors single quotes, double quotes, and backslash escapes.

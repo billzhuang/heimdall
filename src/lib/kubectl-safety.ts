@@ -6,7 +6,9 @@
  * allowed. It is pure (no I/O) so it can be unit- and property-tested, and is
  * enforced inside the `kubectl` tool before any command is executed.
  */
-import { findNextNonOptionToken } from './tokenizer.ts';
+import { findNextNonOptionToken, type CommandValidationResult } from './tokenizer.ts';
+
+export type { CommandValidationResult };
 
 /**
  * kubectl subcommands that modify cluster state, execute code inside a
@@ -82,14 +84,6 @@ export interface ParsedKubectlCommand {
   subcommand: string | null;
   args: string[];
   rawCommand: string;
-}
-
-/** Result of validating a kubectl command against the read-only policy. */
-export interface CommandValidationResult {
-  allowed: boolean;
-  reason: string;
-  command: string;
-  subcommand: string | null;
 }
 
 /**
