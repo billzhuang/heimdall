@@ -116,6 +116,11 @@ export function parseSelfImproveArgs(args: string[]): SelfImproveCliArgs {
   return { scenarioFilter, reflect, fromLog, cliLogPath, logStdout };
 }
 
+/** Pluralize a noun by count, e.g. `pluralize(1, 'entry', 'entries')` -> 'entry'. */
+function pluralize(count: number, singular: string, plural: string = `${singular}s`): string {
+  return count === 1 ? singular : plural;
+}
+
 /** Print the reflection-prompt banner used by both the failure and all-passed flows. */
 function printReflectionPrompt(
   entries: LearningEntry[],
@@ -159,8 +164,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       process.exit(0);
     }
     process.stdout.write(
-      `\nReflecting on ${entries.length} eval entr${entries.length === 1 ? 'y' : 'ies'} and ` +
-      `${taskHistory.length} task history entr${taskHistory.length === 1 ? 'y' : 'ies'}...\n\n`,
+      `\nReflecting on ${entries.length} eval ${pluralize(entries.length, 'entry', 'entries')} and ` +
+      `${taskHistory.length} task history ${pluralize(taskHistory.length, 'entry', 'entries')}...\n\n`,
     );
     process.stdout.write('='.repeat(60) + '\n');
     process.stdout.write(buildReflectionPrompt(entries, taskHistory, useRag, ragTopK) + '\n');
@@ -172,7 +177,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   const scenarios = await loadScenariosOrExit(scenariosDir, scenarioFilter);
 
   process.stdout.write(
-    `\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'} (self-improve mode)...\n\n`,
+    `\nRunning ${scenarios.length} eval ${pluralize(scenarios.length, 'scenario')} (self-improve mode)...\n\n`,
   );
 
   const binPath = resolveBinPath(__dirname);
@@ -214,7 +219,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         await appendLearningEntry(entry, logPath);
       }
       process.stdout.write(
-        `\n${failedResults.length} learning entr${failedResults.length === 1 ? 'y' : 'ies'} written to ${logPath}\n`,
+        `\n${failedResults.length} learning ${pluralize(failedResults.length, 'entry', 'entries')} written to ${logPath}\n`,
       );
     }
 
