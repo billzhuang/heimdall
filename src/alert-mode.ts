@@ -11,13 +11,11 @@
  *   npm run alert -- --source raw "Pod api-xyz in prod is CrashLoopBackOff"
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { parseAlertManagerPayload, parsePagerDutyPayload, buildAlertPrompt, type ParsedAlert } from './lib/alert.ts';
 import { runKubectl, type RunKubectlOptions } from './lib/kubectl.ts';
 import { loadConfig } from './lib/config.ts';
 import { BLOCKED_PREFIX } from './lib/harness.ts';
-import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
+import { resolveHeimdallBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { interpretChildExit } from './lib/child-exit.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
 import { die, parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit, runMainOrExit } from './lib/cli-args.ts';
@@ -40,7 +38,6 @@ Examples:
 `;
 
 const ALERT_TIMEOUT_MS = 300_000;
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const config = loadConfig();
 
@@ -84,7 +81,7 @@ export async function seedKubectl(alert: ParsedAlert): Promise<string> {
 }
 
 export async function runAgent(prompt: string, model?: string): Promise<void> {
-  const binPath = resolveBinPath(__dirname);
+  const binPath = resolveHeimdallBinPath(import.meta.url);
   await spawnAndCollect(binPath, ['-p', prompt], {
     env: buildAgentEnv(model),
     timeoutMs: ALERT_TIMEOUT_MS,

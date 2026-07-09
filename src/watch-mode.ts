@@ -24,8 +24,6 @@
  */
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadConfig, resolveConfigDir } from './lib/config.ts';
 import type { HeimdallConfig } from './lib/config.ts';
 import { upsertBaseline, resolveBaselineFilePath, truncateSummary } from './lib/baseline.ts';
@@ -44,7 +42,7 @@ import {
 } from './lib/watch.ts';
 import { createEventSink, type EventSink } from './lib/event-sink.ts';
 import { getMessage } from './lib/error-utils.ts';
-import { resolveBinPath, buildAgentEnv } from './lib/bin-path.ts';
+import { resolveHeimdallBinPath, buildAgentEnv } from './lib/bin-path.ts';
 import { parseModelFlag, isMainModule, resolveModelOrExit, handleHelpOrUnknownOption, runMainOrExit } from './lib/cli-args.ts';
 import { abortableSleep, installShutdownController } from './lib/abortable-sleep.ts';
 import { spawnAndCollect } from './lib/spawn-collect.ts';
@@ -56,8 +54,6 @@ const BACKOFF_OPTS = { baseMs: 1_000, capMs: 30_000, jitter: 0.3 };
 // Reset the reconnect counter after a stream that was healthy for ≥ 60 s.
 const BACKOFF_RESET_THRESHOLD_MS = 60_000;
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 /** Write a status line to stderr, tagged with the `[heimdall-watch]` prefix. */
 function logWatch(msg: string): void {
   process.stderr.write(`[heimdall-watch] ${msg}\n`);
@@ -65,7 +61,7 @@ function logWatch(msg: string): void {
 
 /** Invoke the Heimdall agent with a single prompt and return its response. */
 export async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
-  const binPath = resolveBinPath(__dirname);
+  const binPath = resolveHeimdallBinPath(import.meta.url);
 
   try {
     // stdio: 'stdout' inherits stderr so the agent's diagnostic output is
