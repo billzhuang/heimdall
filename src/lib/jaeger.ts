@@ -25,12 +25,6 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a smaller limit, narrower time range, or more specific service/operation filter');
 
-/**
- * Resolve a time expression to Unix microseconds for the Jaeger /api/traces API.
- * See `resolveTimeUs` in time-resolution.ts for full semantics.
- */
-export const resolveJaegerTimeUs = resolveTimeUs;
-
 export interface JaegerQueryParams {
   service: string;
   operation?: string | null;
@@ -66,11 +60,11 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
     if (params.tags) searchParams.set('tags', params.tags);
 
     if (params.start) {
-      const startUs = resolveJaegerTimeUs(params.start, nowMs);
+      const startUs = resolveTimeUs(params.start, nowMs);
       if (startUs !== null) searchParams.set('start', String(startUs));
     }
     if (params.end) {
-      const endUs = resolveJaegerTimeUs(params.end, nowMs);
+      const endUs = resolveTimeUs(params.end, nowMs);
       if (endUs !== null) searchParams.set('end', String(endUs));
     }
   });
