@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { mockProcessExit } from './test-helpers.ts';
 import { spawnSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -139,8 +140,7 @@ describe('parseSelfLoopArgs', () => {
   });
 
   it('exits 1 and writes an error for an unrecognized flag', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseSelfLoopArgs(['--bogus']);
     expect(stderrSpy).toHaveBeenCalledWith("Error: unknown option '--bogus'\nRun with --help for usage.\n");
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -169,32 +169,28 @@ describe('requirePositiveInt', () => {
   });
 
   it('writes the error message and exits for NaN', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requirePositiveInt(NaN, 'flag must be a positive integer');
     expect(stderrSpy).toHaveBeenCalledWith('Error: flag must be a positive integer\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes the error message and exits for zero', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requirePositiveInt(0, 'flag must be a positive integer');
     expect(stderrSpy).toHaveBeenCalledWith('Error: flag must be a positive integer\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('writes the error message and exits for a negative integer', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requirePositiveInt(-3, 'flag must be a positive integer');
     expect(stderrSpy).toHaveBeenCalledWith('Error: flag must be a positive integer\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('includes the "(seconds)" suffix in the error message when provided', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     requirePositiveInt(NaN, '--timeout must be a positive integer (seconds)');
     expect(stderrSpy).toHaveBeenCalledWith('Error: --timeout must be a positive integer (seconds)\n');
     expect(exitSpy).toHaveBeenCalledWith(1);

@@ -36,4 +36,10 @@ export function mockFetchHangsUntilAbort(): void {
   );
 }
 
+export function mockProcessExit() {
+  const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+  return { stderrSpy, exitSpy };
+}
+
 export const BLOCKED_RE = new RegExp(`^${escapeRegExpLiteral(BLOCKED_PREFIX)}`, 'i');

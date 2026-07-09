@@ -18,6 +18,7 @@ vi.mock('../config.ts', () => ({
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
+import { mockProcessExit } from './test-helpers.ts';
 import {
   createServeApp,
   parsePortValue,
@@ -625,8 +626,7 @@ describe('parseServeArgv', () => {
   });
 
   it('exits 1 with a single error when --port is missing a value', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseServeArgv(['--port']);
     expect(stderrSpy).toHaveBeenCalledTimes(1);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --port requires a value\n');
@@ -635,8 +635,7 @@ describe('parseServeArgv', () => {
   });
 
   it('exits 1 with a labeled error when --port is out of range', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseServeArgv(['--port', '99999']);
     expect(stderrSpy).toHaveBeenCalledWith('Error: --port must be an integer between 1 and 65535, got "99999"\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
@@ -654,8 +653,7 @@ describe('parseServeArgv', () => {
   });
 
   it('exits 1 with an error for an unknown option', () => {
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const { stderrSpy, exitSpy } = mockProcessExit();
     parseServeArgv(['--bogus']);
     expect(stderrSpy).toHaveBeenCalledWith('Error: unknown option: --bogus\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
