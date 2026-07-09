@@ -41,18 +41,10 @@ Remediation Steps:
 
 Do not reveal hidden chain-of-thought or internal scratch work beyond the Thinking Summary.`;
 
-/**
- * Format a conditional list of subagent description lines as a newline-prefixed
- * block. Returns '\n' + the joined lines when the array is non-empty, or '' when
- * empty. Used to append optional tool-gated subagent groups to the specialist
- * subagents section without repeating the same ternary in the template literal.
- */
-function optionalLines(lines: string[]): string {
-  return lines.length > 0 ? '\n' + lines.join('\n') : '';
-}
-
 /** Config-schema keys for the tools block — mirrors the keys in HeimdallConfig['tools']. */
 export type ToolConfigKey = 'kubectl' | 'listContexts' | 'listNamespaces' | 'helmRelease' | 'prometheusQuery' | 'awsCli' | 'trivyScan' | 'kubecostQuery' | 'lokiQuery' | 'jaegerQuery' | 'datadogQuery' | 'newRelicQuery' | 'cdkQuery';
+
+export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator' | 'cdk-investigator' | 'certificate-inspector';
 
 /** Config-gated connection/discovery notes (namespace lockdown, context/namespace discovery). */
 function buildConnectionLines(has: (key: ToolConfigKey) => boolean, lockedNamespace?: string | null): string[] {
@@ -124,38 +116,48 @@ function buildSloSection(slos?: SloDefinition[]): string | undefined {
   return `## Configured SLOs\nThe following Service Level Objectives are defined for this cluster.\nUse the \`slo-evaluator\` subagent to query each metric, compute burn rates, and report breaching SLOs.\n\n${sloTable}`;
 }
 
-/** Tool-gated specialist subagent groups appended to the `## Specialist subagents` section. */
-function buildConditionalSubagentGroups(has: (key: ToolConfigKey) => boolean): Array<{ enabled: boolean; lines: string[] }> {
-  return [
-    {
-      enabled: has('awsCli'),
-      lines: [
-        '- eks-troubleshooter — EKS cluster issues, node groups, managed node scaling, EKS add-ons.',
-        '- iam-auditor — IAM policies, roles, permissions, trust relationships, least-privilege review.',
-        '- aws-resource-analyzer — AWS resource inventory, configuration checks, quota/limit inspection.',
-      ],
-    },
-    {
-      enabled: has('kubecostQuery'),
-      lines: ['- cost-analyzer — FinOps deep-dive: namespace/workload cost attribution, cost trend analysis, rightsizing recommendations using Kubecost data.'],
-    },
-    {
-      enabled: has('datadogQuery'),
-      lines: ['- datadog-investigator — Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.'],
-    },
-    {
-      enabled: has('newRelicQuery'),
-      lines: ['- newrelic-investigator — New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.'],
-    },
-    {
-      enabled: has('prometheusQuery') || has('datadogQuery') || has('newRelicQuery'),
-      lines: ['- golden-signals-investigator — use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.'],
-    },
-    {
-      enabled: has('cdkQuery'),
-      lines: ['- cdk-investigator — CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.'],
-    },
-  ];
+/**
+ * Single ordered source of truth for the `## Specialist subagents` prompt
+ * bullets — both the always-on entries and the tool-gated ones. Previously
+ * these lived in two separate hand-typed places (a literal block inside
+ * `buildInstructions` plus `buildConditionalSubagentGroups`), which could
+ * silently drift out of order or go stale when a subagent was added. `gates`
+ * is omitted for always-on entries; when present, the bullet is included
+ * when any listed tool key is enabled (mirrors the previous per-group `||`
+ * checks, e.g. golden-signals-investigator's three-key OR).
+ */
+const SUBAGENT_PROMPT_ENTRIES: ReadonlyArray<{ name: SubagentName; bullet: string; gates?: ToolConfigKey[] }> = [
+  { name: 'log-analyzer', bullet: 'pod log analysis, error correlation, pattern detection.' },
+  { name: 'resource-analyzer', bullet: 'CPU/memory requests & limits, capacity, bottlenecks.' },
+  { name: 'network-debugger', bullet: 'DNS, services, endpoints, ingress, connectivity.' },
+  { name: 'security-auditor', bullet: 'RBAC, service accounts, security contexts, exposed secrets, image CVE scanning (when trivy_scan enabled).' },
+  { name: 'netpol-auditor', bullet: 'NetworkPolicy coverage audit: detect pods with no ingress/egress policy and suggest minimal NetworkPolicy templates.' },
+  { name: 'kyverno-auditor', bullet: 'Kyverno policy audit: list ClusterPolicies/Policies, read PolicyReport/ClusterPolicyReport objects, cross-reference failing pods, and summarise compliance posture.' },
+  { name: 'triage', bullet: 'whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.' },
+  { name: 'crashloop-analyzer', bullet: 'deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.' },
+  { name: 'oomkill-analyzer', bullet: 'deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.' },
+  { name: 'deployment-analyzer', bullet: 'deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.' },
+  { name: 'gitops-investigator', bullet: 'ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.' },
+  { name: 'multi-cluster-investigator', bullet: 'cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.' },
+  { name: 'resilience-advisor', bullet: 'chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.' },
+  { name: 'capi-investigator', bullet: 'Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.' },
+  { name: 'slo-evaluator', bullet: 'SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.' },
+  { name: 'certificate-inspector', bullet: 'TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.' },
+  { name: 'eks-troubleshooter', bullet: 'EKS cluster issues, node groups, managed node scaling, EKS add-ons.', gates: ['awsCli'] },
+  { name: 'iam-auditor', bullet: 'IAM policies, roles, permissions, trust relationships, least-privilege review.', gates: ['awsCli'] },
+  { name: 'aws-resource-analyzer', bullet: 'AWS resource inventory, configuration checks, quota/limit inspection.', gates: ['awsCli'] },
+  { name: 'cost-analyzer', bullet: 'FinOps deep-dive: namespace/workload cost attribution, cost trend analysis, rightsizing recommendations using Kubecost data.', gates: ['kubecostQuery'] },
+  { name: 'datadog-investigator', bullet: 'Datadog deep-dive: correlate Kubernetes issues with Datadog metrics, logs, events, and monitor state.', gates: ['datadogQuery'] },
+  { name: 'newrelic-investigator', bullet: 'New Relic deep-dive: correlate Kubernetes issues with New Relic APM metrics, NRQL queries, and open alert violations.', gates: ['newRelicQuery'] },
+  { name: 'golden-signals-investigator', bullet: 'use this for a structured four-signal (latency p50/p99, RPS, error rate, CPU/memory saturation) report for a specific service; it abstracts over whichever metrics backends are enabled. Prefer over datadog-investigator for golden-signals queries.', gates: ['prometheusQuery', 'datadogQuery', 'newRelicQuery'] },
+  { name: 'cdk-investigator', bullet: 'CDK/CloudFormation deep-dive: list CDK stacks, inspect stack diff and drift, correlate recent CDK deploys with Kubernetes issues.', gates: ['cdkQuery'] },
+];
+
+/** Render the `## Specialist subagents` bullet lines, filtered by which gated tools are enabled. */
+function buildSpecialistSubagentLines(has: (key: ToolConfigKey) => boolean): string[] {
+  return SUBAGENT_PROMPT_ENTRIES
+    .filter((e) => !e.gates || e.gates.some(has))
+    .map((e) => `- ${e.name} — ${e.bullet}`);
 }
 
 /**
@@ -213,27 +215,9 @@ diagnose cluster issues quickly by combining kubectl with disciplined reasoning.
 
   sections.push(READ_ONLY_POLICY);
 
-  const conditionalSubagentGroups = buildConditionalSubagentGroups(has);
-
   sections.push(`## Specialist subagents
 Delegate with your task capability when a problem needs deep, focused analysis:
-- log-analyzer — pod log analysis, error correlation, pattern detection.
-- resource-analyzer — CPU/memory requests & limits, capacity, bottlenecks.
-- network-debugger — DNS, services, endpoints, ingress, connectivity.
-- security-auditor — RBAC, service accounts, security contexts, exposed secrets, image CVE scanning (when trivy_scan enabled).
-- netpol-auditor — NetworkPolicy coverage audit: detect pods with no ingress/egress policy and suggest minimal NetworkPolicy templates.
-- kyverno-auditor — Kyverno policy audit: list ClusterPolicies/Policies, read PolicyReport/ClusterPolicyReport objects, cross-reference failing pods, and summarise compliance posture.
-- triage — whole-cluster health sweep: nodes, pods, workloads, events, PVCs, jobs with severity ranking.
-- crashloop-analyzer — deep diagnosis of CrashLoopBackOff pods: logs, exit codes, probe config.
-- oomkill-analyzer — deep diagnosis of OOMKilled pods: memory limits, node pressure, usage trends.
-- deployment-analyzer — deep Deployment inspection: replica counts, rollout status/history, HPA, update strategy, image versions.
-- gitops-investigator — ArgoCD/FluxCD sync-state diagnosis: detect OutOfSync applications, failed reconciliations, source fetch errors, and drift between desired and live state.
-- multi-cluster-investigator — cross-cluster investigation: query multiple contexts, correlate findings across cluster boundaries, surface shared service mesh, cross-cluster DNS, and hub/spoke topology issues.
-- resilience-advisor — chaos engineering readiness: spot single points of failure, missing PodDisruptionBudgets, and absent anti-affinity rules; produce LitmusChaos experiment YAML suggestions for human review.
-- capi-investigator — Cluster API infrastructure inspection: detect CAPI presence, list Machines and MachineDeployments, check Machine phase lifecycle, correlate failed Machines with unhealthy nodes.
-- slo-evaluator — SLO compliance check: query configured SLO metrics via prometheus_query, compute burn rates, and report breaching SLOs with name, burn rate, and remaining budget.
-- certificate-inspector — TLS certificate health check: detect expired and soon-to-expire certificates via cert-manager Certificate CRDs and Kubernetes TLS Secrets; surface renewal failures and Ingress TLS misconfigurations.${
-  optionalLines(conditionalSubagentGroups.flatMap((g) => g.enabled ? g.lines : []))}`);
+${buildSpecialistSubagentLines(has).join('\n')}`);
 
   sections.push(RESPONSE_FORMAT);
 
@@ -255,8 +239,6 @@ destructive subcommands are blocked. Never suggest running destructive commands 
 Lead with the most important finding. Include a brief high-level "Thinking Summary"
 followed by your "Answer". Do not reveal hidden chain-of-thought.`;
 }
-
-export type SubagentName = 'log-analyzer' | 'resource-analyzer' | 'network-debugger' | 'security-auditor' | 'netpol-auditor' | 'kyverno-auditor' | 'triage' | 'crashloop-analyzer' | 'oomkill-analyzer' | 'eks-troubleshooter' | 'iam-auditor' | 'aws-resource-analyzer' | 'deployment-analyzer' | 'gitops-investigator' | 'multi-cluster-investigator' | 'cost-analyzer' | 'resilience-advisor' | 'datadog-investigator' | 'newrelic-investigator' | 'capi-investigator' | 'golden-signals-investigator' | 'slo-evaluator' | 'cdk-investigator' | 'certificate-inspector';
 
 /** Short agent-facing description for each specialist, keyed by subagent name. */
 export const SUBAGENT_DESCRIPTIONS: Record<SubagentName, string> = {
