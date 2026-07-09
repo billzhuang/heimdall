@@ -12,6 +12,7 @@
  * strips the shell.
  */
 import { findNextNonOptionToken } from './tokenizer.ts';
+import { classifySubcommand } from './subcommand-policy.ts';
 
 /** Trivy scan types that Heimdall permits. */
 export const ALLOWED_TRIVY_SCAN_TYPES = ['image', 'fs', 'config', 'sbom'] as const;
@@ -104,7 +105,12 @@ export function validateTrivyCommand(command: string): TrivyCommandValidationRes
     return { allowed: true, reason: 'Bare trivy invocation (prints help).', scanType: null };
   }
 
-  if ((BLOCKED_TRIVY_SUBCOMMANDS as readonly string[]).includes(scanType)) {
+  const verdict = classifySubcommand(
+    (BLOCKED_TRIVY_SUBCOMMANDS as readonly string[]).includes(scanType),
+    (ALLOWED_TRIVY_SCAN_TYPES as readonly string[]).includes(scanType),
+  );
+
+  if (verdict === 'destructive') {
     return {
       allowed: false,
       reason: `Trivy subcommand '${scanType}' is not permitted. Heimdall only allows passive scans (${ALLOWED_TRIVY_SCAN_TYPES.join(', ')}).`,
@@ -112,7 +118,7 @@ export function validateTrivyCommand(command: string): TrivyCommandValidationRes
     };
   }
 
-  if (!(ALLOWED_TRIVY_SCAN_TYPES as readonly string[]).includes(scanType)) {
+  if (verdict === 'unknown') {
     return {
       allowed: false,
       reason: `Unknown Trivy scan type '${scanType}'. Permitted types: ${ALLOWED_TRIVY_SCAN_TYPES.join(', ')}.`,
