@@ -21,11 +21,38 @@ vi.mock('../cdk-safety.ts', async (importOriginal) => {
   return { ...original, validateCdkCommand: vi.fn(original.validateCdkCommand) };
 });
 
-import { tokenizeCdkArgs, runCdk, NO_OUTPUT_MESSAGE } from '../cdk.ts';
+import { tokenizeCdkArgs, runCdk, ensureCdkPrefix, NO_OUTPUT_MESSAGE } from '../cdk.ts';
 import { validateCdkCommand } from '../cdk-safety.ts';
 import { BLOCKED_RE } from './test-helpers.ts';
 import { stubExec, resetExec } from './execfile-helpers.ts';
 import { compileRules } from '../regex-redact.ts';
+
+describe('ensureCdkPrefix', () => {
+  it('leaves an already-lowercase cdk prefix unchanged', () => {
+    expect(ensureCdkPrefix('cdk synth')).toBe('cdk synth');
+  });
+
+  it('normalizes an uppercase CDK prefix to lowercase', () => {
+    expect(ensureCdkPrefix('CDK synth')).toBe('cdk synth');
+  });
+
+  it('normalizes a mixed-case Cdk prefix to lowercase', () => {
+    expect(ensureCdkPrefix('Cdk diff MyStack')).toBe('cdk diff MyStack');
+  });
+
+  it('prepends "cdk " when no prefix is present', () => {
+    expect(ensureCdkPrefix('synth')).toBe('cdk synth');
+  });
+
+  it('leaves a bare "cdk" with no subcommand unchanged', () => {
+    expect(ensureCdkPrefix('cdk')).toBe('cdk');
+  });
+
+  it('does not treat a cdk-prefixed word as the binary token', () => {
+    // 'cdk-real' is not followed by whitespace/end, so it is not the "cdk" prefix.
+    expect(ensureCdkPrefix('cdk-real synth')).toBe('cdk cdk-real synth');
+  });
+});
 
 describe('tokenizeCdkArgs', () => {
   it('strips a leading cdk token (lowercase)', () => {
