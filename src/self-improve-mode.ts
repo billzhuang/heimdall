@@ -33,6 +33,7 @@ import {
 import { readTaskHistory, resolveTaskHistoryFilePath, type TaskHistoryEntry } from './lib/task-history.ts';
 import { loadConfig } from './lib/config.ts';
 import { isMainModule, parseAliasedFlag, runMainOrExit } from './lib/cli-args.ts';
+import { pluralize } from './lib/string-utils.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -113,11 +114,6 @@ export function parseSelfImproveArgs(args: string[]): SelfImproveCliArgs {
   }
 
   return { scenarioFilter, reflect, fromLog, cliLogPath, logStdout };
-}
-
-/** Pluralize a noun by count, e.g. `pluralize(1, 'entry', 'entries')` -> 'entry'. */
-function pluralize(count: number, singular: string, plural: string = `${singular}s`): string {
-  return count === 1 ? singular : plural;
 }
 
 /** Print the reflection-prompt banner used by both the failure and all-passed flows. */

@@ -21,6 +21,7 @@ import {
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit, runMainOrExit } from './lib/cli-args.ts';
+import { pluralize } from './lib/string-utils.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -86,7 +87,7 @@ async function main(): Promise<void> {
 
   const scenarios = await loadScenariosOrExit(scenariosDir, scenarioFilter);
 
-  process.stdout.write(`\nRunning ${scenarios.length} eval scenario${scenarios.length === 1 ? '' : 's'}...\n\n`);
+  process.stdout.write(`\nRunning ${scenarios.length} eval ${pluralize(scenarios.length, 'scenario')}...\n\n`);
 
   const { results, passed, failed } = await runScenariosWithConsoleReport(binPath, scenarios);
 

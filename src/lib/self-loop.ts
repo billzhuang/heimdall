@@ -12,6 +12,7 @@ import { buildFailureSentence, buildPromptSections, joinSections } from './self-
 import type { LearningEntry } from './self-improve.ts';
 import type { TaskHistoryEntry } from './task-history.ts';
 import { buildTaskHistoryContext } from './task-history.ts';
+import { pluralize } from './string-utils.ts';
 
 export interface SelfLoopPatch {
   find: string;
@@ -54,7 +55,7 @@ export function buildStartupBanner(
   dryRun: boolean,
 ): string {
   return (
-    `\nHeimdall Self-Loop (max ${maxIterations} iteration${maxIterations === 1 ? '' : 's'})\n` +
+    `\nHeimdall Self-Loop (max ${maxIterations} ${pluralize(maxIterations, 'iteration')})\n` +
     `Backend: ${backend} | Scenarios: ${scenarioCount} | Mode: ${dryRun ? 'dry-run' : 'apply'}\n` +
     '='.repeat(60) + '\n\n'
   );
@@ -118,7 +119,7 @@ export function buildSummaryReport(
       const status = r.reverted ? 'REVERTED' : r.improved ? 'KEPT' : 'NO_CHANGE';
       parts.push(
         `  Iteration ${r.iteration}: ${formatPct(r.baselineScore)} → ${formatPct(r.newScore)}` +
-          ` (${delta.startsWith('-') ? '' : '+'}${delta}pp) | ${r.appliedCount} patch${r.appliedCount === 1 ? '' : 'es'} | ${status}\n`,
+          ` (${delta.startsWith('-') ? '' : '+'}${delta}pp) | ${r.appliedCount} ${pluralize(r.appliedCount, 'patch', 'patches')} | ${status}\n`,
       );
     }
     parts.push(`\nFinal score: ${formatPct(currentScore)}\n`);
