@@ -13,12 +13,7 @@ restoreGlobalsAfterEach();
 
 describe('runKubecostQuery — allocation', () => {
   it('calls /model/allocation with the correct query params', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{"data":[]}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{"data":[]}');
 
     await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, BASE_CONFIG);
 
@@ -31,12 +26,7 @@ describe('runKubecostQuery — allocation', () => {
   });
 
   it('appends filterNamespaces when namespace is provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery(
       'allocation',
@@ -49,12 +39,7 @@ describe('runKubecostQuery — allocation', () => {
   });
 
   it('omits filterNamespaces when namespace is not provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, BASE_CONFIG);
 
@@ -63,12 +48,7 @@ describe('runKubecostQuery — allocation', () => {
   });
 
   it('sets accumulate=false when explicitly requested', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery(
       'allocation',
@@ -89,8 +69,7 @@ describe('runKubecostQuery — allocation', () => {
   });
 
   it('strips trailing slash from the base URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery(
       'allocation',
@@ -110,12 +89,7 @@ describe('runKubecostQuery — allocation', () => {
 
 describe('runKubecostQuery — assets', () => {
   it('calls /model/assets for the assets endpoint', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery('assets', { window: '7d', aggregate: 'cluster' }, BASE_CONFIG);
 
@@ -140,8 +114,7 @@ describe('runKubecostQuery — assets', () => {
   });
 
   it('treats null namespace as absent for assets queries (no error, no filterNamespaces)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     const result = await runKubecostQuery(
       'assets',
@@ -164,8 +137,7 @@ describe('runKubecostQuery — namespace lockdown', () => {
   const LOCKED_CONFIG: KubecostConfig = { ...BASE_CONFIG, lockedNamespace: 'prod' };
 
   it('forces filterNamespaces to the locked namespace for allocation queries', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery('allocation', { window: '7d', aggregate: 'namespace' }, LOCKED_CONFIG);
 
@@ -174,8 +146,7 @@ describe('runKubecostQuery — namespace lockdown', () => {
   });
 
   it('allows allocation queries that explicitly match the locked namespace', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     const result = await runKubecostQuery(
       'allocation',
@@ -203,8 +174,7 @@ describe('runKubecostQuery — namespace lockdown', () => {
   });
 
   it('allows assets queries even when namespace is locked (lockdown only applies to allocation)', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runKubecostQuery('assets', { window: '7d', aggregate: 'cluster' }, LOCKED_CONFIG);
 

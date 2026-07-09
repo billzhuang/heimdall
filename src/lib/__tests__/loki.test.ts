@@ -102,12 +102,7 @@ describe('validateNamespaceLockdown', () => {
 
 describe('runLokiQuery — success', () => {
   it('calls /loki/api/v1/query_range with the LogQL query', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{"status":"success","data":{"result":[]}}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{"status":"success","data":{"result":[]}}');
 
     await runLokiQuery({ query: '{namespace="prod"} |= "ERROR"' }, BASE_CONFIG);
 
@@ -127,12 +122,7 @@ describe('runLokiQuery — success', () => {
   });
 
   it('defaults start to "-1h" and direction to "backward"', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}' }, BASE_CONFIG);
 
@@ -143,8 +133,7 @@ describe('runLokiQuery — success', () => {
   });
 
   it('uses the provided limit', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}', limit: 500 }, BASE_CONFIG);
 
@@ -153,8 +142,7 @@ describe('runLokiQuery — success', () => {
   });
 
   it('resolves relative start/end times to ISO8601 in the URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}', start: '-2h', end: '-30m' }, BASE_CONFIG);
 
@@ -166,8 +154,7 @@ describe('runLokiQuery — success', () => {
   });
 
   it('passes ISO8601 start through unchanged', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     const start = '2024-01-01T00:00:00.000Z';
     await runLokiQuery({ query: '{app="api"}', start }, BASE_CONFIG);
@@ -178,8 +165,7 @@ describe('runLokiQuery — success', () => {
   });
 
   it('strips trailing slash from base URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}' }, { ...BASE_CONFIG, url: 'http://loki:3100/' });
 
@@ -195,8 +181,7 @@ describe('runLokiQuery — success', () => {
 
 describe('runLokiQuery — limit clamping', () => {
   it('clamps limit to MAX_LIMIT (5000) when exceeded', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}', limit: 999_999 }, BASE_CONFIG);
 
@@ -206,8 +191,7 @@ describe('runLokiQuery — limit clamping', () => {
   });
 
   it('clamps limit to 1 when zero or negative', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}', limit: 0 }, BASE_CONFIG);
 
@@ -216,8 +200,7 @@ describe('runLokiQuery — limit clamping', () => {
   });
 
   it('uses DEFAULT_LIMIT when limit is null', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runLokiQuery({ query: '{app="api"}', limit: null }, BASE_CONFIG);
 
@@ -234,8 +217,7 @@ describe('runLokiQuery — namespace lockdown', () => {
   const LOCKED_CONFIG: LokiConfig = { ...BASE_CONFIG, lockedNamespace: 'prod' };
 
   it('allows queries that include the locked namespace', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     const result = await runLokiQuery(
       { query: '{namespace="prod", app="api"} |= "ERROR"' },

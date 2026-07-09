@@ -13,12 +13,7 @@ restoreGlobalsAfterEach();
 
 describe('runPrometheusQuery — instant', () => {
   it('calls /api/v1/query with the PromQL expression', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{"status":"success","data":{}}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{"status":"success","data":{}}');
 
     await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
 
@@ -29,12 +24,7 @@ describe('runPrometheusQuery — instant', () => {
   });
 
   it('appends the time parameter when provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runPrometheusQuery('instant', { query: 'up', time: '2024-01-01T00:00:00Z' }, BASE_CONFIG);
 
@@ -43,12 +33,7 @@ describe('runPrometheusQuery — instant', () => {
   });
 
   it('omits the time parameter when not provided', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: () => Promise.resolve('{}'),
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
 
@@ -65,8 +50,7 @@ describe('runPrometheusQuery — instant', () => {
   });
 
   it('strips trailing slash from the base URL', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runPrometheusQuery('instant', { query: 'up' }, { ...BASE_CONFIG, url: 'http://prometheus:9090/' });
 
@@ -82,8 +66,7 @@ describe('runPrometheusQuery — instant', () => {
 
 describe('runPrometheusQuery — range', () => {
   it('calls /api/v1/query_range with start, end, step', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve('{}') });
-    vi.stubGlobal('fetch', fetchMock);
+    const fetchMock = mockFetch('{}');
 
     await runPrometheusQuery(
       'range',
