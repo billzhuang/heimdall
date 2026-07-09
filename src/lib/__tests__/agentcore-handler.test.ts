@@ -254,6 +254,10 @@ describe('resolveAgentCorePort', () => {
     expect(resolveAgentCorePort(undefined)).toEqual({ port: 8080 });
   });
 
+  it('returns the default port when AGENTCORE_PORT is an empty string', () => {
+    expect(resolveAgentCorePort('')).toEqual({ port: 8080 });
+  });
+
   it('parses a valid AGENTCORE_PORT', () => {
     expect(resolveAgentCorePort('9090')).toEqual({ port: 9090 });
   });
