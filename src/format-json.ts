@@ -21,6 +21,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseOneShotOutput, type OneShotFinding } from './lib/format-output.ts';
 import { loadConfig, type HeimdallConfig } from './lib/config.ts';
+import { DEFAULT_MODEL } from './lib/model.ts';
 import { sendSlackNotification } from './lib/slack.ts';
 import { buildTaskHistoryEntry, appendTaskHistoryEntry, resolveTaskHistoryFilePath } from './lib/task-history.ts';
 import { isMainModule } from './lib/cli-args.ts';
@@ -92,7 +93,7 @@ export function dispatchOneShotSideEffects(
 }
 
 if (isMainModule(import.meta.url)) {
-  const model = process.env.HEIMDALL_MODEL ?? 'anthropic/claude-sonnet-4-6';
+  const model = DEFAULT_MODEL;
 
   let raw = '';
   process.stdin.setEncoding('utf-8');

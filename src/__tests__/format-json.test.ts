@@ -92,6 +92,15 @@ describe('format-json.ts (characterization)', () => {
     expect(finding.model).toBe('anthropic/claude-opus-4-8');
   });
 
+  it('falls back to the default model when HEIMDALL_MODEL is empty/whitespace', () => {
+    const { stdout } = runFormatJson('Thinking Summary:\n- x\n\nAnswer:\ny\n', {
+      HEIMDALL_EVAL_MODE: '1',
+      HEIMDALL_MODEL: '   ',
+    });
+    const finding = JSON.parse(stdout.trim());
+    expect(finding.model).toBe('anthropic/claude-sonnet-4-6');
+  });
+
   it('exits cleanly without HEIMDALL_EVAL_MODE when slack/learning are unconfigured and no prompt is set', () => {
     const { status, stdout } = runFormatJson('Thinking Summary:\n- x\n\nAnswer:\ny\n');
     expect(status).toBe(0);
