@@ -21,7 +21,7 @@ import {
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import { getStackOrMessage } from './lib/error-utils.ts';
-import { parseModelFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
+import { parseModelFlag, parseAliasedFlag, isMainModule, resolveModelOrExit } from './lib/cli-args.ts';
 
 export type { EvalScenario, EvalResult };
 
@@ -55,10 +55,10 @@ export function parseEvalArgs(args: string[]): EvalCliArgs {
   let modelFlag: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
-    if ((args[i] === '--scenario' || args[i] === '-s') && args[i + 1]) {
-      scenarioFilter = args[++i];
-    } else if (args[i].startsWith('--scenario=')) {
-      scenarioFilter = args[i].slice('--scenario='.length);
+    const scenarioFlag = parseAliasedFlag(args, i, '--scenario', '-s');
+    if (scenarioFlag) {
+      scenarioFilter = scenarioFlag.value;
+      i = scenarioFlag.nextIndex;
     } else if (args[i] === '--model' || args[i] === '-m' || args[i].startsWith('--model=')) {
       const parsed = parseModelFlag(args, i, ['--model', '-m']);
       modelFlag = parsed.value;
