@@ -57,6 +57,11 @@ const BACKOFF_RESET_THRESHOLD_MS = 60_000;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Write a status line to stderr, tagged with the `[heimdall-watch]` prefix. */
+function logWatch(msg: string): void {
+  process.stderr.write(`[heimdall-watch] ${msg}\n`);
+}
+
 /** Invoke the Heimdall agent with a single prompt and return its response. */
 export async function diagnoseEvent(prompt: string, model?: string): Promise<string> {
   const binPath = resolveBinPath(__dirname);
@@ -112,7 +117,7 @@ export async function runWatchStream(
   });
 
   kubectl.on('close', (code: number | null) => {
-    process.stderr.write(`[heimdall-watch] kubectl exited with code ${code ?? 'null'}\n`);
+    logWatch(`kubectl exited with code ${code ?? 'null'}`);
   });
 
   if (!kubectl.stdout) {
@@ -149,15 +154,11 @@ export async function runWatchStream(
     const objRef = `${event.involvedObject.kind ?? 'unknown'}/${event.involvedObject.name ?? 'unknown'}`;
 
     if (!shouldDiagnose(event, cooldownState, Date.now(), cooldownSeconds)) {
-      process.stderr.write(
-        `[heimdall-watch] Cooldown: suppressing repeat ${event.reason} on ${objRef} in ${ns}\n`,
-      );
+      logWatch(`Cooldown: suppressing repeat ${event.reason} on ${objRef} in ${ns}`);
       continue;
     }
 
-    process.stderr.write(
-      `[heimdall-watch] Warning: ${event.reason} on ${objRef} in ${ns}\n`,
-    );
+    logWatch(`Warning: ${event.reason} on ${objRef} in ${ns}`);
 
     const prompt = buildDiagnosticPrompt(event);
     const diagnosis = await diagnoseEvent(prompt, model);
@@ -173,19 +174,19 @@ export async function runWatchStream(
       try {
         await upsertBaseline(clusterName, ns, baselineKind, baselineName, summary, baselineFile);
       } catch (err: unknown) {
-        process.stderr.write(`[heimdall-watch] Warning: could not write baseline: ${getMessage(err)}\n`);
+        logWatch(`Warning: could not write baseline: ${getMessage(err)}`);
       }
     }
 
     if (watchCfg?.webhook) {
       postWebhook(watchCfg.webhook, finding).catch((err: unknown) => {
-        process.stderr.write(`[heimdall-watch] Webhook error: ${String(err)}\n`);
+        logWatch(`Webhook error: ${getMessage(err)}`);
       });
     }
 
     if (eventSink) {
       eventSink.write(finding).catch((err: unknown) => {
-        process.stderr.write(`[heimdall-watch] EventSink error: ${String(err)}\n`);
+        logWatch(`EventSink error: ${getMessage(err)}`);
       });
     }
   }
@@ -212,14 +213,14 @@ export async function runWatchMode(model?: string): Promise<void> {
       ? ['get', 'events', '--watch', '-o', 'json', '-n', namespaces[0]]
       : ['get', 'events', '--watch', '-o', 'json', '-A'];
 
-  process.stderr.write('[heimdall-watch] Starting Kubernetes Warning event monitor...\n');
+  logWatch('Starting Kubernetes Warning event monitor...');
   if (namespaces.length > 0) {
-    process.stderr.write(`[heimdall-watch] Watching namespaces: ${namespaces.join(', ')}\n`);
+    logWatch(`Watching namespaces: ${namespaces.join(', ')}`);
   }
   if (watchCfg?.reasons?.length) {
-    process.stderr.write(`[heimdall-watch] Filtering reasons: ${watchCfg.reasons.join(', ')}\n`);
+    logWatch(`Filtering reasons: ${watchCfg.reasons.join(', ')}`);
   }
-  process.stderr.write(`[heimdall-watch] Cooldown: ${cooldownSeconds}s per (object, reason)\n`);
+  logWatch(`Cooldown: ${cooldownSeconds}s per (object, reason)`);
 
   const eventSink = createEventSink(watchCfg?.eventSink);
   if (eventSink) {
@@ -228,7 +229,7 @@ export async function runWatchMode(model?: string): Promise<void> {
       watchCfg?.eventSink?.webhookUrl ? 'webhook' : null,
       watchCfg?.eventSink?.s3Bucket ? `s3:${watchCfg.eventSink.s3Bucket}` : null,
     ].filter(Boolean);
-    process.stderr.write(`[heimdall-watch] EventSink enabled: ${sinkParts.join(', ')}\n`);
+    logWatch(`EventSink enabled: ${sinkParts.join(', ')}`);
   }
 
   let attempt = 0;
@@ -241,7 +242,7 @@ export async function runWatchMode(model?: string): Promise<void> {
       await runWatchStream(kubectlArgs, watchCfg, cooldownState, cooldownSeconds, signal, eventSink, baselineFile, model);
     } catch (err: unknown) {
       if (signal.aborted) break;
-      process.stderr.write(`[heimdall-watch] Stream error: ${getMessage(err)}\n`);
+      logWatch(`Stream error: ${getMessage(err)}`);
     }
 
     if (signal.aborted) break;
@@ -249,18 +250,18 @@ export async function runWatchMode(model?: string): Promise<void> {
     const uptimeMs = Date.now() - streamStartMs;
     if (shouldResetBackoff(uptimeMs, BACKOFF_RESET_THRESHOLD_MS)) {
       attempt = 0;
-      process.stderr.write('[heimdall-watch] Stream was healthy; resetting reconnect counter.\n');
+      logWatch('Stream was healthy; resetting reconnect counter.');
     }
 
     if (maxAttempts !== null && attempt >= maxAttempts) {
-      process.stderr.write(`[heimdall-watch] Max reconnect attempts (${maxAttempts}) reached. Exiting.\n`);
+      logWatch(`Max reconnect attempts (${maxAttempts}) reached. Exiting.`);
       process.exit(1);
     }
 
     const delayMs = computeBackoffMs(attempt, BACKOFF_OPTS);
-    process.stderr.write(
-      `[heimdall-watch] Stream ended. Reconnecting in ${delayMs}ms` +
-      ` (attempt ${attempt + 1}${maxAttempts !== null ? `/${maxAttempts}` : ''})...\n`,
+    logWatch(
+      `Stream ended. Reconnecting in ${delayMs}ms` +
+      ` (attempt ${attempt + 1}${maxAttempts !== null ? `/${maxAttempts}` : ''})...`,
     );
 
     await abortableSleep(delayMs, signal);
@@ -268,7 +269,7 @@ export async function runWatchMode(model?: string): Promise<void> {
     attempt++;
   }
 
-  process.stderr.write('[heimdall-watch] Shutting down cleanly.\n');
+  logWatch('Shutting down cleanly.');
   cleanup();
 }
 
@@ -306,7 +307,7 @@ if (isMainModule(import.meta.url)) {
   const resolvedWatchModel = resolveModelOrExit(watchModelFlag);
 
   runWatchMode(resolvedWatchModel).catch((err: unknown) => {
-    process.stderr.write(`[heimdall-watch] Fatal error: ${getStackOrMessage(err)}\n`);
+    logWatch(`Fatal error: ${getStackOrMessage(err)}`);
     process.exit(1);
   });
 }
