@@ -197,10 +197,38 @@ export async function runTriageMode(opts: TriageOptions = {}, model?: string): P
   await recordBaselines(config, output);
 }
 
-// --- CLI arg parsing when run directly ---
-if (isMainModule(import.meta.url)) {
-  const args = process.argv.slice(2);
-  const opts: { namespace?: string; allNamespaces?: boolean; contexts?: string[] } = {};
+const TRIAGE_HELP_TEXT = `Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
+
+Run a structured whole-cluster health sweep and report findings by severity.
+
+Options:
+  -n, --namespace <ns>          Scope the sweep to a single namespace
+  -A, --all-namespaces          Sweep all namespaces
+  --contexts <ctx1,ctx2,...>    Sweep multiple kubeconfig contexts (multi-cluster mode)
+  --model <provider/model>      Override the LLM model (default: anthropic/claude-sonnet-4-6)
+  -h, --help                    Show this help message
+
+Examples:
+  heimdall triage                                     # sweep the default namespace
+  heimdall triage -A                                  # sweep all namespaces
+  heimdall triage -n prod                             # sweep only the prod namespace
+  heimdall triage --contexts cluster-a,cluster-b      # multi-cluster sweep
+  heimdall triage --contexts=prod-us,prod-eu -A       # multi-cluster, all namespaces
+  npm run triage -- -n staging
+`;
+
+export interface TriageCliArgs {
+  opts: TriageOptions;
+  modelFlag?: string;
+}
+
+/**
+ * Parse `heimdall triage` CLI flags.
+ * Exits the process directly for --help or an unrecognized option, matching
+ * this mode's historical behavior.
+ */
+export function parseTriageArgs(args: string[]): TriageCliArgs {
+  const opts: TriageOptions = {};
   let modelFlag: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
@@ -223,31 +251,19 @@ if (isMainModule(import.meta.url)) {
       modelFlag = parsed.value;
       i = parsed.nextIndex;
     } else if (arg === '-h' || arg === '--help') {
-      process.stdout.write(`Usage: heimdall triage [-n <namespace>] [-A] [--contexts <ctx1,ctx2,...>]
-
-Run a structured whole-cluster health sweep and report findings by severity.
-
-Options:
-  -n, --namespace <ns>          Scope the sweep to a single namespace
-  -A, --all-namespaces          Sweep all namespaces
-  --contexts <ctx1,ctx2,...>    Sweep multiple kubeconfig contexts (multi-cluster mode)
-  --model <provider/model>      Override the LLM model (default: anthropic/claude-sonnet-4-6)
-  -h, --help                    Show this help message
-
-Examples:
-  heimdall triage                                     # sweep the default namespace
-  heimdall triage -A                                  # sweep all namespaces
-  heimdall triage -n prod                             # sweep only the prod namespace
-  heimdall triage --contexts cluster-a,cluster-b      # multi-cluster sweep
-  heimdall triage --contexts=prod-us,prod-eu -A       # multi-cluster, all namespaces
-  npm run triage -- -n staging
-`);
+      process.stdout.write(TRIAGE_HELP_TEXT);
       process.exit(0);
     } else {
       die(`unknown option: ${arg}`);
     }
   }
 
+  return { opts, modelFlag };
+}
+
+// --- CLI arg parsing when run directly ---
+if (isMainModule(import.meta.url)) {
+  const { opts, modelFlag } = parseTriageArgs(process.argv.slice(2));
   const resolvedModel = resolveModelOrExit(modelFlag);
 
   runTriageMode(opts, resolvedModel).catch((err: unknown) => {
