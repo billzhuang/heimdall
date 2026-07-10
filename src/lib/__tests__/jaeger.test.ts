@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runJaegerQuery } from '../jaeger.ts';
+import { runJaegerQuery, parseTagsToJson } from '../jaeger.ts';
 import type { JaegerConfig } from '../jaeger.ts';
 import { mockFetch, makeAbortError, mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
@@ -51,14 +51,33 @@ describe('runJaegerQuery — success', () => {
     expect(url).toContain('minDuration=500ms');
   });
 
-  it('includes tags when provided', async () => {
+  it('encodes tags as a JSON object, matching Jaeger tags query parser', async () => {
     const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'orders', tags: 'error=true' }, BASE_CONFIG);
 
     const url = fetchMock.mock.calls[0][0] as string;
     const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
-    expect(decoded).toContain('tags=error=true');
+    expect(decoded).toContain('tags={"error":"true"}');
+  });
+
+  it('encodes multiple space-separated tags into a single JSON object', async () => {
+    const fetchMock = mockFetch('{}');
+
+    await runJaegerQuery({ service: 'orders', tags: 'http.status_code=500 error=true' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
+    expect(decoded).toContain('tags={"http.status_code":"500","error":"true"}');
+  });
+
+  it('omits the tags param when the tag filter has no key=value pairs', async () => {
+    const fetchMock = mockFetch('{}');
+
+    await runJaegerQuery({ service: 'orders', tags: '   ' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain('tags=');
   });
 
   it('resolves relative start/end to Unix microseconds in the URL', async () => {
@@ -114,6 +133,38 @@ describe('runJaegerQuery — success', () => {
     expect(url).toContain('http://jaeger:16686/api/traces');
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// parseTagsToJson
+// ---------------------------------------------------------------------------
+
+describe('parseTagsToJson', () => {
+  it('converts a single key=value pair to a JSON object', () => {
+    expect(parseTagsToJson('error=true')).toBe('{"error":"true"}');
+  });
+
+  it('converts multiple space-separated pairs to a single JSON object', () => {
+    expect(parseTagsToJson('http.status_code=500 error=true')).toBe(
+      '{"http.status_code":"500","error":"true"}',
+    );
+  });
+
+  it('collapses repeated whitespace between pairs', () => {
+    expect(parseTagsToJson('a=1   b=2')).toBe('{"a":"1","b":"2"}');
+  });
+
+  it('splits only on the first "=" so values may contain "="', () => {
+    expect(parseTagsToJson('query=a=b')).toBe('{"query":"a=b"}');
+  });
+
+  it('ignores tokens without an "="', () => {
+    expect(parseTagsToJson('error=true malformed')).toBe('{"error":"true"}');
+  });
+
+  it('returns an empty object for blank input', () => {
+    expect(parseTagsToJson('   ')).toBe('{}');
+  });
 });
 
 // ---------------------------------------------------------------------------

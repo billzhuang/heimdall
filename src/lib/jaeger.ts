@@ -36,6 +36,21 @@ export interface JaegerQueryParams {
 }
 
 /**
+ * Convert the tool's documented "key=value key2=value2" tag filter syntax into
+ * the JSON-encoded object Jaeger's `/api/traces?tags=` actually expects (Jaeger's
+ * query_parser.go unmarshals `tags` as JSON, not logfmt).
+ */
+export function parseTagsToJson(tags: string): string {
+  const entries: Record<string, string> = {};
+  for (const pair of tags.trim().split(/\s+/).filter(Boolean)) {
+    const eq = pair.indexOf('=');
+    if (eq === -1) continue;
+    entries[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+  return JSON.stringify(entries);
+}
+
+/**
  * Query the Jaeger HTTP API for recent distributed traces and return the raw
  * JSON response as a string.
  *
@@ -57,7 +72,10 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
 
     if (params.operation) searchParams.set('operation', params.operation);
     if (params.minDuration) searchParams.set('minDuration', params.minDuration);
-    if (params.tags) searchParams.set('tags', params.tags);
+    if (params.tags) {
+      const tagsJson = parseTagsToJson(params.tags);
+      if (tagsJson !== '{}') searchParams.set('tags', tagsJson);
+    }
 
     if (params.start) {
       const startUs = resolveTimeUs(params.start, nowMs);
