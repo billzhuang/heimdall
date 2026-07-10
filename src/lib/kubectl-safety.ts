@@ -6,7 +6,7 @@
  * allowed. It is pure (no I/O) so it can be unit- and property-tested, and is
  * enforced inside the `kubectl` tool before any command is executed.
  */
-import { findNextNonOptionToken, type CommandValidationResult } from './tokenizer.ts';
+import { findNextNonOptionToken, tokenizeShellArgs, type CommandValidationResult } from './tokenizer.ts';
 
 export type { CommandValidationResult };
 
@@ -126,6 +126,13 @@ export const OPTIONS_WITH_VALUE = new Set([
  * flags that take a value (e.g. `kubectl --context=prod -n kube-system get`)
  * so that an attacker cannot smuggle a destructive subcommand past the parser
  * with something like `kubectl --v 5 delete pods`.
+ *
+ * Uses quote-aware tokenization (not a naive whitespace split) so that a
+ * multi-word flag value rebuilt with quotes by `buildShellCommand` (e.g.
+ * `--namespace 'a get b'`) is parsed back as the single token it actually is
+ * at execution time — a naive split would re-fragment it into bare words,
+ * one of which could land on the subcommand slot and validate a different
+ * (and potentially destructive) subcommand than the one that actually runs.
  */
 export function parseKubectlCommand(command: string): ParsedKubectlCommand {
   const trimmed = command.trim();
@@ -140,7 +147,7 @@ export function parseKubectlCommand(command: string): ParsedKubectlCommand {
     return result;
   }
 
-  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const parts = tokenizeShellArgs(trimmed);
   if (parts[0].toLowerCase() !== 'kubectl') {
     return result;
   }

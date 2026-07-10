@@ -106,6 +106,20 @@ describe('parseAwsCommand', () => {
     expect(result.service).toBe('ec2');
     expect(result.subcommand).toBe('describe-instances');
   });
+
+  it('treats a quoted multi-word --query value as a single token, not several bare words', () => {
+    // Regression test: buildShellCommand re-quotes a tokenized multi-word value
+    // as e.g. `--query 'x ec2 describe-instances y'`. A naive whitespace split
+    // would re-fragment that quoted value into bare words, letting one of them
+    // ('ec2', 'describe-instances') land on the service/subcommand slot and
+    // validate as read-only while the real argv still contains the actual
+    // service/subcommand ('rds delete-db-instance') the model supplied.
+    const result = parseAwsCommand(
+      "aws --query 'x ec2 describe-instances y' rds delete-db-instance",
+    );
+    expect(result.service).toBe('rds');
+    expect(result.subcommand).toBe('delete-db-instance');
+  });
 });
 
 describe('validateAwsCommand', () => {
@@ -227,6 +241,14 @@ describe('validateAwsCommand', () => {
 
   it('blocks a destructive subcommand with --query option between service and subcommand', () => {
     const result = validateAwsCommand('aws ec2 --query "Instances[*]" terminate-instances --instance-ids i-123');
+    expect(result?.allowed).toBe(false);
+  });
+
+  it('blocks a destructive command hidden inside a quoted multi-word --query value', () => {
+    const result = validateAwsCommand(
+      "aws --query 'x ec2 describe-instances y' rds delete-db-instance --db-instance-identifier prod-db",
+    );
+    expect(result?.subcommand).toBe('rds delete-db-instance');
     expect(result?.allowed).toBe(false);
   });
 
