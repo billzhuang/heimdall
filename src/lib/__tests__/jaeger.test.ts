@@ -254,14 +254,14 @@ describe('runJaegerQuery — validation', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps the query when at least one tag token is well-formed, dropping only the malformed ones', async () => {
-    const fetchMock = mockFetch('{}');
+  it('returns an error when only some tag tokens are malformed, rather than silently dropping them', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
 
-    await runJaegerQuery({ service: 'orders', tags: 'error=true malformed' }, BASE_CONFIG);
-
-    const url = fetchMock.mock.calls[0][0] as string;
-    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
-    expect(decoded).toContain('tags={"error":"true"}');
+    const result = await runJaegerQuery({ service: 'orders', tags: 'error=true malformed' }, BASE_CONFIG);
+    expect(result).toMatch(/error/i);
+    expect(result).toContain('malformed');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

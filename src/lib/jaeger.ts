@@ -35,16 +35,25 @@ export interface JaegerQueryParams {
   tags?: string | null;
 }
 
+function tagTokens(tags: string): string[] {
+  return tags.trim().split(/\s+/).filter(Boolean);
+}
+
+function isMalformedTagToken(token: string): boolean {
+  return token.indexOf('=') <= 0;
+}
+
 /**
  * Convert the tool's documented "key=value key2=value2" tag filter syntax into
  * the JSON-encoded object Jaeger's `/api/traces?tags=` actually expects (Jaeger's
- * query_parser.go unmarshals `tags` as JSON, not logfmt).
+ * query_parser.go unmarshals `tags` as JSON, not logfmt). Assumes `tags` has
+ * already been validated (see `runJaegerQuery`) to contain no malformed tokens.
  */
 export function parseTagsToJson(tags: string): string {
   const entries: Record<string, string> = Object.create(null);
-  for (const pair of tags.trim().split(/\s+/).filter(Boolean)) {
+  for (const pair of tagTokens(tags)) {
+    if (isMalformedTagToken(pair)) continue;
     const eq = pair.indexOf('=');
-    if (eq <= 0) continue;
     entries[pair.slice(0, eq)] = pair.slice(eq + 1);
   }
   return JSON.stringify(entries);
@@ -64,10 +73,14 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
 
   let tagsJson: string | undefined;
   if (params.tags && params.tags.trim()) {
-    tagsJson = parseTagsToJson(params.tags);
-    if (tagsJson === '{}') {
-      return `Error: tags must be one or more "key=value" pairs separated by spaces (e.g. "http.status_code=500 error=true"). Got: "${params.tags}".`;
+    const malformed = tagTokens(params.tags).filter(isMalformedTagToken);
+    if (malformed.length > 0) {
+      return (
+        'Error: tags must be one or more "key=value" pairs separated by spaces ' +
+        `(e.g. "http.status_code=500 error=true"). Malformed token(s): ${malformed.join(', ')}.`
+      );
     }
+    tagsJson = parseTagsToJson(params.tags);
   }
 
   const effectiveLimit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
