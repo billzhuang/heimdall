@@ -41,10 +41,10 @@ export interface JaegerQueryParams {
  * query_parser.go unmarshals `tags` as JSON, not logfmt).
  */
 export function parseTagsToJson(tags: string): string {
-  const entries: Record<string, string> = {};
+  const entries: Record<string, string> = Object.create(null);
   for (const pair of tags.trim().split(/\s+/).filter(Boolean)) {
     const eq = pair.indexOf('=');
-    if (eq === -1) continue;
+    if (eq <= 0) continue;
     entries[pair.slice(0, eq)] = pair.slice(eq + 1);
   }
   return JSON.stringify(entries);

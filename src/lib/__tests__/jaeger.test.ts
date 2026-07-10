@@ -162,8 +162,18 @@ describe('parseTagsToJson', () => {
     expect(parseTagsToJson('error=true malformed')).toBe('{"error":"true"}');
   });
 
+  it('ignores tokens with an empty key (leading "=")', () => {
+    expect(parseTagsToJson('=value error=true')).toBe('{"error":"true"}');
+  });
+
   it('returns an empty object for blank input', () => {
     expect(parseTagsToJson('   ')).toBe('{}');
+  });
+
+  it('does not let a __proto__ key pollute the prototype or get dropped from output', () => {
+    const json = parseTagsToJson('__proto__=evil error=true');
+    expect(json).toBe('{"__proto__":"evil","error":"true"}');
+    expect(Object.prototype).not.toHaveProperty('evil');
   });
 });
 
