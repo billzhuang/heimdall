@@ -187,6 +187,18 @@ describe('postJsonWithTimeout', () => {
     });
   });
 
+  it('replaces the default Content-Type when extraHeaders has a differently-cased content-type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await postJsonWithTimeout('http://example.com', {}, 5_000, async (res) => res, {
+      'content-type': 'application/x-protobuf',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toEqual({ 'content-type': 'application/x-protobuf' });
+  });
+
   it('aborts and throws AbortError after timeoutMs', async () => {
     vi.useFakeTimers();
     try {
