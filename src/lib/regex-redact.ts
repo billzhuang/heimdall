@@ -21,9 +21,6 @@ export interface CompiledRedactionRule {
   re: RegExp;
 }
 
-/** A compiled, single-argument redaction function produced by {@link createRedactor}. */
-export type Redactor = (text: string) => string;
-
 /** Matches a single leading inline-flag group, e.g. `(?im)`. */
 const INLINE_FLAG_RE = /^\(\?([gimsuy]+)\)/;
 
@@ -129,14 +126,4 @@ export function applyRedaction(text: string, rules: CompiledRedactionRule[]): st
     result = result.replace(re, `[REDACTED:${name}]`);
   }
   return result;
-}
-
-/**
- * Compile rules once and return a single-argument redaction function.
- * Prefer this over calling compileRules + applyRedaction separately when the
- * same rule set is applied to many strings — the rules are compiled exactly once.
- */
-export function createRedactor(rules: RedactionRule[]): Redactor {
-  const compiled = compileRules(rules);
-  return (text: string) => applyRedaction(text, compiled);
 }
