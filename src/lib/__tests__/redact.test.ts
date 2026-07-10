@@ -374,6 +374,15 @@ describe('redactSecretValues — other formats', () => {
     expect(result).toBe(REDACTED_FORMAT_MESSAGE);
   });
 
+  it('blocks jsonpath on get secrets.v1 (dotted TYPE.VERSION qualifier) with REDACTED_FORMAT_MESSAGE', () => {
+    // Without recognising the dotted qualifier form, this would slip past the
+    // guard and leak the raw base64 secret value in a non-JSON/YAML format.
+    const result = redactSecretValues('dGVzdA==', [
+      'get', 'secrets.v1', 'db-creds', '-o', 'jsonpath={.data.password}',
+    ]);
+    expect(result).toBe(REDACTED_FORMAT_MESSAGE);
+  });
+
   it('passes through non-secret non-JSON/YAML output unchanged', () => {
     const output = 'NAME   READY   STATUS\nweb    1/1     Running';
     const result = redactSecretValues(output, ['get', 'pods', '-o', 'wide']);
@@ -507,6 +516,24 @@ describe('isSecretResource', () => {
   it('does not match a token that merely contains "secret" as a substring', () => {
     // "supersecret" should not match — it's not exactly "secret"
     expect(isSecretResource('supersecret')).toBe(false);
+  });
+
+  it('matches kubectl\'s dotted TYPE.VERSION.GROUP qualifier form', () => {
+    expect(isSecretResource('secrets.v1')).toBe(true);
+    expect(isSecretResource('secret.v1')).toBe(true);
+    expect(isSecretResource('secrets.v1.')).toBe(true);
+  });
+
+  it('matches dotted qualifier combined with a slash-prefixed name', () => {
+    expect(isSecretResource('secrets.v1/db-creds')).toBe(true);
+  });
+
+  it('matches dotted qualifier within a comma-separated list', () => {
+    expect(isSecretResource('secrets.v1,configmap')).toBe(true);
+  });
+
+  it('does not match an unrelated dotted resource type', () => {
+    expect(isSecretResource('pods.v1')).toBe(false);
   });
 });
 
