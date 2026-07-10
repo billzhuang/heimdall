@@ -28,6 +28,35 @@ export function fetchWithTimeout<T>(
   return withTimeout(timeoutMs, (signal) => fetch(url, { signal }).then(handler));
 }
 
+/**
+ * Issue a JSON POST with a hard timeout; body consumption inside `handler` is
+ * covered by the same timer. `extraHeaders` is merged case-insensitively so a
+ * differently-cased `content-type` entry replaces the default instead of
+ * producing two Content-Type headers on the wire.
+ */
+export function postJsonWithTimeout<T>(
+  url: string,
+  payload: unknown,
+  timeoutMs: number,
+  handler: (response: Response) => Promise<T>,
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  for (const [key, value] of Object.entries(extraHeaders ?? {})) {
+    if (key.toLowerCase() === 'content-type') delete headers['Content-Type'];
+    headers[key] = value;
+  }
+
+  return withTimeout(timeoutMs, (signal) =>
+    fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal,
+    }).then(handler),
+  );
+}
+
 /** Cap a body string at 200 characters and format it as a `: <body>` suffix (empty string when blank). */
 export function truncatedDetail(body: string): string {
   return body ? `: ${body.slice(0, 200)}` : '';

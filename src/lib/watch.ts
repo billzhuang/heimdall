@@ -6,7 +6,7 @@
  * unit-tested without a cluster.
  */
 
-import { withTimeout } from './http.ts';
+import { postJsonWithTimeout } from './http.ts';
 
 /** A Kubernetes Event object as returned by kubectl get events -o json --watch. */
 export interface K8sEventObject {
@@ -304,13 +304,7 @@ export function formatFinding(
  * Throws on network error or non-2xx response.
  */
 export async function postWebhook(webhookUrl: string, payload: unknown): Promise<void> {
-  await withTimeout(10_000, async (signal) => {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal,
-    });
+  await postJsonWithTimeout(webhookUrl, payload, 10_000, async (res) => {
     // Consume body to free the connection, even on a non-2xx response.
     await res.text();
     if (!res.ok) {
