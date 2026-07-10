@@ -36,7 +36,7 @@ function invalidScenario(filePath: string, detail: string): never {
   throw new Error(`Invalid scenario file: ${filePath} ${detail}`);
 }
 
-type ScenarioFieldKind = 'string-required' | 'string-optional' | 'array-optional' | 'object-optional';
+export type ScenarioFieldKind = 'string-required' | 'string-optional' | 'array-optional' | 'object-optional';
 
 /** Declarative validation table, checked in order by `loadScenario`. */
 const SCENARIO_FIELDS: ReadonlyArray<{ field: string; kind: ScenarioFieldKind }> = [
@@ -47,7 +47,7 @@ const SCENARIO_FIELDS: ReadonlyArray<{ field: string; kind: ScenarioFieldKind }>
   { field: 'forbiddenKeywords', kind: 'array-optional' },
 ] as const;
 
-function validateScenarioField(
+export function validateScenarioField(
   parsed: Record<string, unknown>,
   filePath: string,
   field: string,

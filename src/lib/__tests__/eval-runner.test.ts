@@ -22,8 +22,10 @@ import {
   runAllScenarios,
   runScenario,
   runScenariosWithConsoleReport,
+  validateScenarioField,
   type EvalResult,
   type EvalScenario,
+  type ScenarioFieldKind,
 } from '../eval-runner.ts';
 
 // ---------------------------------------------------------------------------
@@ -285,6 +287,18 @@ mocks:
     const filePath = join(tmpDir, 'str-forbidden.yaml');
     await writeFile(filePath, content);
     await expect(loadScenario(filePath)).rejects.toThrow(/"forbiddenKeywords" must be an array/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateScenarioField — exhaustiveness guard
+// ---------------------------------------------------------------------------
+
+describe('validateScenarioField', () => {
+  it('throws for an unhandled field kind (exhaustiveness guard)', () => {
+    expect(() =>
+      validateScenarioField({ prompt: 'p' }, 'some.yaml', 'prompt', 'not-a-real-kind' as ScenarioFieldKind),
+    ).toThrow(/unhandled scenario field kind/i);
   });
 });
 
