@@ -145,7 +145,7 @@ describe('dispatchOneShotSideEffects', () => {
     const deps = makeDeps();
     const config = { slack: { enabled: true, webhookUrl: 'https://hooks.example/x' } } as HeimdallConfig;
 
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { HEIMDALL_EVAL_MODE: '1', HEIMDALL_PROMPT: 'why' }, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { HEIMDALL_EVAL_MODE: '1', HEIMDALL_PROMPT: 'why' }, '/scenarios', '/config', deps);
 
     expect(deps.sendSlack).not.toHaveBeenCalled();
     expect(deps.appendHistory).not.toHaveBeenCalled();
@@ -157,7 +157,7 @@ describe('dispatchOneShotSideEffects', () => {
       slack: { enabled: true, webhookUrl: 'https://hooks.example/x', channel: '#sre', minSeverity: 'warning', timeoutMs: 5000 },
     } as HeimdallConfig;
 
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, {}, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, {}, '/scenarios', '/config', deps);
 
     expect(deps.sendSlack).toHaveBeenCalledTimes(1);
     expect(deps.sendSlack).toHaveBeenCalledWith(FINDING, {
@@ -172,7 +172,7 @@ describe('dispatchOneShotSideEffects', () => {
     const deps = makeDeps();
     const config = { slack: { enabled: true } } as HeimdallConfig;
 
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { SLACK_WEBHOOK_URL: 'https://hooks.example/env' }, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { SLACK_WEBHOOK_URL: 'https://hooks.example/env' }, '/scenarios', '/config', deps);
 
     expect(deps.sendSlack).toHaveBeenCalledWith(FINDING, expect.objectContaining({ webhookUrl: 'https://hooks.example/env' }));
   });
@@ -181,7 +181,7 @@ describe('dispatchOneShotSideEffects', () => {
     const deps = makeDeps();
     const config = { slack: { enabled: true } } as HeimdallConfig;
 
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, {}, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, {}, '/scenarios', '/config', deps);
 
     expect(deps.sendSlack).not.toHaveBeenCalled();
   });
@@ -190,7 +190,7 @@ describe('dispatchOneShotSideEffects', () => {
     const deps = makeDeps();
     const config = { slack: { enabled: false, webhookUrl: 'https://hooks.example/x' } } as HeimdallConfig;
 
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, {}, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, {}, '/scenarios', '/config', deps);
 
     expect(deps.sendSlack).not.toHaveBeenCalled();
   });
@@ -199,7 +199,7 @@ describe('dispatchOneShotSideEffects', () => {
     const deps = makeDeps();
     const config = {} as HeimdallConfig;
 
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { HEIMDALL_PROMPT: 'why is my pod crashing' }, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { HEIMDALL_PROMPT: 'why is my pod crashing' }, '/scenarios', '/config', deps);
 
     expect(deps.appendHistory).toHaveBeenCalledTimes(1);
     const [entry, logPath] = (deps.appendHistory as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -214,7 +214,7 @@ describe('dispatchOneShotSideEffects', () => {
 
   it('skips history logging when no prompt is set', () => {
     const deps = makeDeps();
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', {} as HeimdallConfig, {}, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', {} as HeimdallConfig, {}, '/scenarios', '/config', deps);
     expect(deps.appendHistory).not.toHaveBeenCalled();
   });
 
@@ -226,6 +226,7 @@ describe('dispatchOneShotSideEffects', () => {
       {} as HeimdallConfig,
       { HEIMDALL_PROMPT: 'why', HEIMDALL_NO_LEARN: '1' },
       '/scenarios',
+      '/config',
       deps,
     );
     expect(deps.appendHistory).not.toHaveBeenCalled();
@@ -234,7 +235,7 @@ describe('dispatchOneShotSideEffects', () => {
   it('skips history logging when learning.enabled is false', () => {
     const deps = makeDeps();
     const config = { learning: { enabled: false } } as HeimdallConfig;
-    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { HEIMDALL_PROMPT: 'why' }, '/scenarios', deps);
+    dispatchOneShotSideEffects(FINDING, 'anthropic/claude-sonnet-4-6', config, { HEIMDALL_PROMPT: 'why' }, '/scenarios', '/config', deps);
     expect(deps.appendHistory).not.toHaveBeenCalled();
   });
 });

@@ -20,7 +20,7 @@
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseOneShotOutput, type OneShotFinding } from './lib/format-output.ts';
-import { loadConfig, type HeimdallConfig } from './lib/config.ts';
+import { loadConfig, resolveConfigDir, type HeimdallConfig } from './lib/config.ts';
 import { DEFAULT_MODEL } from './lib/model.ts';
 import { sendSlackNotification } from './lib/slack.ts';
 import { buildTaskHistoryEntry, appendTaskHistoryEntry, resolveTaskHistoryFilePath } from './lib/task-history.ts';
@@ -52,6 +52,7 @@ export function dispatchOneShotSideEffects(
   config: HeimdallConfig,
   env: NodeJS.ProcessEnv,
   scenariosDir: string,
+  baseDir: string,
   deps: OneShotSideEffectDeps = defaultSideEffectDeps,
 ): void {
   if (env['HEIMDALL_EVAL_MODE'] === '1') return;
@@ -78,7 +79,7 @@ export function dispatchOneShotSideEffects(
   if (learningEnabled && env['HEIMDALL_NO_LEARN'] !== '1') {
     const prompt = env['HEIMDALL_PROMPT'] ?? '';
     if (prompt) {
-      const logPath = resolveTaskHistoryFilePath(config.learning?.file, scenariosDir);
+      const logPath = resolveTaskHistoryFilePath(config.learning?.file, scenariosDir, baseDir);
       const entry = buildTaskHistoryEntry(
         prompt,
         model,
@@ -105,6 +106,13 @@ if (isMainModule(import.meta.url)) {
     process.stdout.write(JSON.stringify(finding) + '\n');
 
     const config = loadConfig();
-    dispatchOneShotSideEffects(finding, model, config, process.env, resolve(__dirname, '..', 'scenarios'));
+    dispatchOneShotSideEffects(
+      finding,
+      model,
+      config,
+      process.env,
+      resolve(__dirname, '..', 'scenarios'),
+      resolveConfigDir(),
+    );
   });
 }

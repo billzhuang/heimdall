@@ -46,7 +46,7 @@ function loadTaskHistorySync(logPath: string): TaskHistoryEntry[] {
 
 const ragContext = (() => {
   if (config.learning?.rag?.enabled !== true) return undefined;
-  const logPath = resolveTaskHistoryFilePath(config.learning.file, resolve(configDir, 'scenarios'));
+  const logPath = resolveTaskHistoryFilePath(config.learning.file, resolve(configDir, 'scenarios'), configDir);
   const history = loadTaskHistorySync(logPath);
   if (history.length === 0) return undefined;
   const topK = config.learning.rag.topK ?? 5;

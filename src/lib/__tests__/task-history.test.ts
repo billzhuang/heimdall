@@ -17,17 +17,19 @@ import {
 // ---------------------------------------------------------------------------
 describe('resolveTaskHistoryFilePath', () => {
   it('joins scenariosDir with task-history.jsonl when no file is configured', () => {
-    expect(resolveTaskHistoryFilePath(undefined, '/scenarios')).toBe(join('/scenarios', 'task-history.jsonl'));
-    expect(resolveTaskHistoryFilePath(null, '/scenarios')).toBe(join('/scenarios', 'task-history.jsonl'));
-    expect(resolveTaskHistoryFilePath('', '/scenarios')).toBe(join('/scenarios', 'task-history.jsonl'));
+    expect(resolveTaskHistoryFilePath(undefined, '/scenarios', '/config')).toBe(join('/scenarios', 'task-history.jsonl'));
+    expect(resolveTaskHistoryFilePath(null, '/scenarios', '/config')).toBe(join('/scenarios', 'task-history.jsonl'));
+    expect(resolveTaskHistoryFilePath('', '/scenarios', '/config')).toBe(join('/scenarios', 'task-history.jsonl'));
   });
 
-  it('resolves a configured absolute path as-is, ignoring scenariosDir', () => {
-    expect(resolveTaskHistoryFilePath('/custom/history.jsonl', '/scenarios')).toBe('/custom/history.jsonl');
+  it('resolves a configured absolute path as-is, ignoring scenariosDir and baseDir', () => {
+    expect(resolveTaskHistoryFilePath('/custom/history.jsonl', '/scenarios', '/config')).toBe('/custom/history.jsonl');
   });
 
-  it('resolves a configured relative path against the current working directory, not scenariosDir', () => {
-    expect(resolveTaskHistoryFilePath('custom/history.jsonl', '/scenarios')).toBe(resolve('custom/history.jsonl'));
+  it('resolves a configured relative path against baseDir, not scenariosDir or cwd', () => {
+    expect(resolveTaskHistoryFilePath('custom/history.jsonl', '/scenarios', '/config')).toBe(
+      resolve('/config', 'custom/history.jsonl'),
+    );
   });
 });
 
