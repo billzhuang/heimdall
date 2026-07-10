@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { withTimeout, fetchWithTimeout, readErrorDetail, formatHttpErrorMessage, formatQueryError, makeResponseHandler, truncatedDetail } from '../http.ts';
+import { withTimeout, fetchWithTimeout, postJsonWithTimeout, readErrorDetail, formatHttpErrorMessage, formatQueryError, makeResponseHandler, truncatedDetail } from '../http.ts';
 import { makeAbortError } from './test-helpers.ts';
 
 afterEach(() => {
@@ -139,6 +139,70 @@ describe('fetchWithTimeout', () => {
       await vi.advanceTimersByTimeAsync(1_000);
       await assertion;
       expect(handlerAborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// postJsonWithTimeout
+// ---------------------------------------------------------------------------
+
+describe('postJsonWithTimeout', () => {
+  it('POSTs JSON with Content-Type, body, and an AbortSignal, returns handler result', async () => {
+    const mockResponse = { ok: true, status: 200 };
+    const fetchMock = vi.fn().mockResolvedValue(mockResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await postJsonWithTimeout(
+      'http://example.com',
+      { hello: 'world' },
+      5_000,
+      async (res) => res,
+    );
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { signal: AbortSignal }];
+    expect(url).toBe('http://example.com');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(init.body).toBe(JSON.stringify({ hello: 'world' }));
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(result).toBe(mockResponse);
+  });
+
+  it('merges extraHeaders on top of Content-Type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await postJsonWithTimeout('http://example.com', {}, 5_000, async (res) => res, {
+      Authorization: 'Bearer token',
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer token',
+    });
+  });
+
+  it('aborts and throws AbortError after timeoutMs', async () => {
+    vi.useFakeTimers();
+    try {
+      const abortErr = makeAbortError();
+      const fetchMock = vi.fn().mockImplementation(
+        (_url: unknown, { signal }: { signal: AbortSignal }) =>
+          new Promise<never>((_, reject) => {
+            signal.addEventListener('abort', () => reject(abortErr));
+          }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const promise = postJsonWithTimeout('http://slow.example.com', {}, 3_000, async (res) => res);
+      const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await assertion;
     } finally {
       vi.useRealTimers();
     }

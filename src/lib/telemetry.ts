@@ -16,7 +16,7 @@
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { withTimeout } from './http.ts';
+import { postJsonWithTimeout } from './http.ts';
 import { resolveTimeoutMs } from './tool-config.ts';
 
 export interface TelemetryConfig {
@@ -328,18 +328,12 @@ export async function pushOtlpMetrics(
   const payload = buildOtlpPayload(snapshot, serviceName, startTimeMs, nowTimeMs);
   const url = endpoint.endsWith('/') ? `${endpoint}v1/metrics` : `${endpoint}/v1/metrics`;
   try {
-    await withTimeout(10_000, async (signal) => {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify(payload),
-        signal,
-      });
+    await postJsonWithTimeout(url, payload, 10_000, async (res) => {
       if (!res.ok) {
         process.stderr.write(`[heimdall-otel] OTLP push failed: HTTP ${res.status}\n`);
       }
       await res.text(); // drain body to release the socket
-    });
+    }, headers);
   } catch (err) {
     process.stderr.write(`[heimdall-otel] OTLP push error: ${String(err)}\n`);
   }

@@ -9,7 +9,7 @@
  * without throwing so the calling code can emit its result normally.
  */
 import type { OneShotFinding } from './format-output.ts';
-import { withTimeout, truncatedDetail } from './http.ts';
+import { postJsonWithTimeout, truncatedDetail } from './http.ts';
 import { getMessage, isAbortError } from './error-utils.ts';
 
 export interface SlackConfig {
@@ -101,14 +101,7 @@ export async function sendSlackNotification(
   const payload = buildBlockKitPayload(finding, config.channel);
 
   try {
-    await withTimeout(config.timeoutMs, async (signal) => {
-      const response = await fetch(config.webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal,
-      });
-
+    await postJsonWithTimeout(config.webhookUrl, payload, config.timeoutMs, async (response) => {
       if (!response.ok) {
         const body = await response.text().catch(() => '');
         process.stderr.write(

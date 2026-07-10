@@ -28,6 +28,24 @@ export function fetchWithTimeout<T>(
   return withTimeout(timeoutMs, (signal) => fetch(url, { signal }).then(handler));
 }
 
+/** Issue a JSON POST with a hard timeout; body consumption inside `handler` is covered by the same timer. */
+export function postJsonWithTimeout<T>(
+  url: string,
+  payload: unknown,
+  timeoutMs: number,
+  handler: (response: Response) => Promise<T>,
+  extraHeaders?: Record<string, string>,
+): Promise<T> {
+  return withTimeout(timeoutMs, (signal) =>
+    fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
+      body: JSON.stringify(payload),
+      signal,
+    }).then(handler),
+  );
+}
+
 /** Cap a body string at 200 characters and format it as a `: <body>` suffix (empty string when blank). */
 export function truncatedDetail(body: string): string {
   return body ? `: ${body.slice(0, 200)}` : '';
