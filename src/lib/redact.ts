@@ -54,19 +54,17 @@ export function estimateBase64Bytes(encoded: string): number {
 
 /**
  * Return true when a single resource-type token refers to a Kubernetes Secret.
- * Handles singular/plural forms and slash-prefixed name forms (e.g. `secret/my-creds`).
- * Also handles comma-separated resource lists where secret appears alongside other kinds
- * (e.g. `secret,configmap`).
+ * Handles singular/plural forms, slash-prefixed name forms (e.g. `secret/my-creds`),
+ * and kubectl's dotted `TYPE.VERSION.GROUP` resource-qualifier syntax (e.g.
+ * `secrets.v1`, `secrets.v1.`). Also handles comma-separated resource lists where
+ * secret appears alongside other kinds (e.g. `secret,configmap`).
  */
 export function isSecretResource(token: string): boolean {
   const lower = token.toLowerCase();
-  return lower.split(',').some(
-    (part) =>
-      part === 'secret' ||
-      part === 'secrets' ||
-      part.startsWith('secret/') ||
-      part.startsWith('secrets/'),
-  );
+  return lower.split(',').some((part) => {
+    const kind = part.split('/')[0].split('.')[0];
+    return kind === 'secret' || kind === 'secrets';
+  });
 }
 
 /**
