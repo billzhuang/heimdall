@@ -619,6 +619,12 @@ describe('inferDiagnosisSeverity', () => {
   it('does not let a negation in an earlier clause suppress a critical mention in a later clause', () => {
     expect(inferDiagnosisSeverity('No fallback is working; critical outage persists.')).toBe('critical');
   });
+
+  it('treats "and" as a clause boundary between an unrelated negation and a critical mention', () => {
+    expect(
+      inferDiagnosisSeverity('No workaround exists and this critical outage needs immediate remediation'),
+    ).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------

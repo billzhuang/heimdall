@@ -234,8 +234,13 @@ export function parseTriageFindings(text: string): TriageFinding[] {
 const CRITICAL_MENTION_RE = /\b(non-?)?critical\b/gi;
 /** A negation word shortly before a "critical" mention (e.g. "not critical", "no critical condition"). */
 const NEGATION_WORD_RE = /\b(?:not|no|isn['’]?t|aren['’]?t|without)\b/i;
-/** Clause boundary — a negation on one side must not suppress a "critical" mention on the other. */
-const CLAUSE_BOUNDARY_RE = /[.;:,!?]/;
+/**
+ * Clause boundary — a negation on one side must not suppress a "critical"
+ * mention on the other. Covers punctuation and the coordinating conjunctions
+ * ("and"/"but") that commonly join independent clauses without punctuation
+ * (e.g. "No workaround exists and this critical outage needs remediation").
+ */
+const CLAUSE_BOUNDARY_RE = /[.;:,!?]|\b(?:and|but)\b/gi;
 
 /**
  * Infer severity from a free-form diagnosis string (used in watch mode where
@@ -246,17 +251,19 @@ const CLAUSE_BOUNDARY_RE = /[.;:,!?]/;
  * critical, but the database outage is critical" still classifies as
  * critical, and an unrelated negation in an earlier clause (e.g. "No fallback
  * is working; critical outage persists") doesn't suppress it.
+ *
+ * This is a best-effort heuristic, not a parser: constructs like the
+ * correlative "not only critical but also X" (where "not" doesn't actually
+ * negate "critical") can still misclassify. Fixing that would need real
+ * phrase-level parsing, which is out of scope for a free-text severity guess.
  */
 export function inferDiagnosisSeverity(diagnosis: string): 'critical' | 'warning' {
   for (const match of diagnosis.matchAll(CRITICAL_MENTION_RE)) {
     if (match[1]) continue; // "non-critical" / "noncritical" — negated by its own prefix
     const matchIndex = match.index ?? 0;
     let clauseStart = 0;
-    for (let i = matchIndex - 1; i >= 0; i--) {
-      if (CLAUSE_BOUNDARY_RE.test(diagnosis[i] as string)) {
-        clauseStart = i + 1;
-        break;
-      }
+    for (const boundary of diagnosis.slice(0, matchIndex).matchAll(CLAUSE_BOUNDARY_RE)) {
+      clauseStart = (boundary.index ?? 0) + boundary[0].length;
     }
     const precedingClause = diagnosis.slice(clauseStart, matchIndex);
     if (NEGATION_WORD_RE.test(precedingClause)) continue; // e.g. "not critical", "no critical condition"
