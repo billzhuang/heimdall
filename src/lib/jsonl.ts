@@ -1,7 +1,24 @@
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
+import { isAbsolute, resolve } from 'node:path';
 import { withMkdirRetry } from './fs-retry.ts';
+
+/**
+ * Resolve a configured file path against a base directory: an explicit
+ * configured value wins (returned as-is if absolute, else resolved against
+ * baseDir), otherwise falls back to defaultPath. Shared by baseline.ts and
+ * task-history.ts, whose JSONL store paths both follow this "explicit config
+ * wins, else package-relative default" shape.
+ */
+export function resolveConfiguredPath(
+  configuredPath: string | null | undefined,
+  baseDir: string,
+  defaultPath: string,
+): string {
+  if (!configuredPath) return defaultPath;
+  return isAbsolute(configuredPath) ? configuredPath : resolve(baseDir, configuredPath);
+}
 
 /** Generate a unique JSONL log entry id (`<unix-ms>-<12 hex chars>`) and ISO-8601 timestamp. */
 export function generateEntryId(): { id: string; timestamp: string } {

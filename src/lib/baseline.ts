@@ -11,8 +11,8 @@
  * - File path: configurable via `learning.baselineFile` in heimdall.config.yaml,
  *   defaulting to `scenarios/baselines.jsonl` alongside task-history.jsonl.
  */
-import { readJsonlFile, writeJsonlFile } from './jsonl.ts';
-import { isAbsolute, resolve } from 'node:path';
+import { readJsonlFile, resolveConfiguredPath, writeJsonlFile } from './jsonl.ts';
+import { resolve } from 'node:path';
 import { buildContextBlock } from './context-block.ts';
 
 export interface BaselineEntry {
@@ -146,8 +146,7 @@ export function resolveBaselineFilePath(
   configuredPath: string | null | undefined,
   defaultDir: string,
 ): string {
-  if (!configuredPath) return resolve(defaultDir, 'scenarios', 'baselines.jsonl');
-  return isAbsolute(configuredPath) ? configuredPath : resolve(defaultDir, configuredPath);
+  return resolveConfiguredPath(configuredPath, defaultDir, resolve(defaultDir, 'scenarios', 'baselines.jsonl'));
 }
 
 // ---------------------------------------------------------------------------
