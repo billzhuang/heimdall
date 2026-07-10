@@ -142,6 +142,24 @@ describe('validateCommand', () => {
   it('allows auth can-i with extra flags', () => {
     expect(validateCommand('kubectl auth can-i --list -n prod').allowed).toBe(true);
   });
+
+  it('does not let a quoted multi-word flag value re-fragment into the subcommand slot', () => {
+    // Regression test: buildShellCommand re-quotes a tokenized multi-word value
+    // (e.g. `--namespace "a get b"`) as `--namespace 'a get b'`. A naive
+    // whitespace split would then re-split that quoted value into bare words,
+    // one of which ('get') could land on the subcommand slot and validate as
+    // read-only while the real argv still contains the actual subcommand
+    // ('delete') the model supplied — a read-only-policy bypass.
+    const result = validateCommand("kubectl --namespace 'a get b' delete pods");
+    expect(result.subcommand).toBe('delete');
+    expect(result.allowed).toBe(false);
+  });
+
+  it('does not let a quoted multi-word --as value hide an exec subcommand', () => {
+    const result = validateCommand("kubectl --as 'x describe y' exec mypod -- sh");
+    expect(result.subcommand).toBe('exec');
+    expect(result.allowed).toBe(false);
+  });
 });
 
 describe('parseKubectlCommand — edge cases', () => {
@@ -185,6 +203,12 @@ describe('parseKubectlCommand — edge cases', () => {
   it('does not set skipNext for flags not in OPTIONS_WITH_VALUE before subcommand', () => {
     const result = parseKubectlCommand('kubectl --dry-run get pods');
     expect(result.subcommand).toBe('get');
+  });
+
+  it('treats a quoted multi-word flag value as a single token, not several bare words', () => {
+    const result = parseKubectlCommand("kubectl --namespace 'a get b' delete pods");
+    expect(result.subcommand).toBe('delete');
+    expect(result.args).toEqual(['pods']);
   });
 });
 

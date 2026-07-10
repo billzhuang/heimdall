@@ -11,7 +11,7 @@
  * Everything else is blocked, with an additional explicit block list for the
  * most commonly misused destructive operations to provide clearer error messages.
  */
-import { findNextNonOptionToken, type CommandValidationResult } from './tokenizer.ts';
+import { findNextNonOptionToken, tokenizeShellArgs, type CommandValidationResult } from './tokenizer.ts';
 import { classifySubcommand } from './subcommand-policy.ts';
 
 /**
@@ -87,6 +87,14 @@ export const AWS_OPTIONS_WITH_VALUE = new Set([
  * Parse an AWS CLI command string to extract the service and subcommand.
  * Handles global flags that take a value (e.g. `aws --region us-east-1 ec2 describe-instances`)
  * so that an attacker cannot smuggle a destructive subcommand past the parser.
+ *
+ * Uses quote-aware tokenization (not a naive whitespace split) so that a
+ * multi-word flag value rebuilt with quotes by `buildShellCommand` (e.g.
+ * `--query 'x ec2 y'`) is parsed back as the single token it actually is at
+ * execution time — a naive split would re-fragment it into bare words, one
+ * of which could land on the service/subcommand slot and validate a
+ * different (and potentially destructive) command than the one that
+ * actually runs.
  */
 export function parseAwsCommand(command: string): ParsedAwsCommand {
   const trimmed = command.trim();
@@ -100,7 +108,7 @@ export function parseAwsCommand(command: string): ParsedAwsCommand {
 
   if (!trimmed) return result;
 
-  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const parts = tokenizeShellArgs(trimmed);
   if (parts[0].toLowerCase() !== 'aws') return result;
   result.isAws = true;
 
