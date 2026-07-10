@@ -21,8 +21,8 @@ import { fileURLToPath } from 'node:url';
 import {
   loadScenariosOrExit,
   runAllScenarios,
+  buildConsoleReportCallbacks,
   type EvalResult,
-  type RunCallbacks,
 } from './lib/eval-runner.ts';
 import { resolveBinPath } from './lib/bin-path.ts';
 import {
@@ -356,17 +356,7 @@ async function main(): Promise<void> {
 
   const iterationHistory: IterationResult[] = [];
 
-  const callbacks: RunCallbacks = {
-    onBefore: name => process.stdout.write(`    Running: ${name}\n`),
-    onResult: result => {
-      if (result.passed) {
-        process.stdout.write(`    ✓ PASS  ${result.scenario}\n`);
-      } else {
-        process.stdout.write(`    ✗ FAIL  ${result.scenario}\n`);
-        for (const f of result.failures) process.stdout.write(`           - ${f}\n`);
-      }
-    },
-  };
+  const callbacks = buildConsoleReportCallbacks('    ');
 
   const runAndPrint = async (label: string) => {
     process.stdout.write(`${label}\n`);
