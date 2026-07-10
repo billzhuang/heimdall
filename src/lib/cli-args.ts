@@ -78,7 +78,9 @@ export function parseModelFlag(
  * `args[i]`. Call only when the caller has already matched `args[i]` against
  * the flag's aliases or the `equalsPrefix` (e.g. `--namespace=`). Writes an
  * error to stderr and exit(1) when the value is missing (`spaceMissingMsg`)
- * or empty in the `=` form (`equalsEmptyMsg`).
+ * or, if `equalsEmptyMsg` is given, empty in the `=` form. Omit
+ * `equalsEmptyMsg` to accept an empty `=`-form value (lenient flags like
+ * `--name=`/`--session=` that have no "must be non-empty" rule).
  *
  * Returns the parsed value, the loop index to resume from (`i` unchanged for
  * the `=` form, `i + 1` after consuming the following token), and
@@ -90,12 +92,12 @@ export function parseRequiredFlag(
   i: number,
   equalsPrefix: string,
   spaceMissingMsg: string,
-  equalsEmptyMsg: string,
+  equalsEmptyMsg?: string,
 ): { value: string; nextIndex: number; usedEquals: boolean } {
   const arg = args[i];
   if (arg.startsWith(equalsPrefix)) {
     const value = arg.slice(equalsPrefix.length);
-    requireNonEmptyValue(value, equalsEmptyMsg);
+    if (equalsEmptyMsg) requireNonEmptyValue(value, equalsEmptyMsg);
     return { value, nextIndex: i, usedEquals: true };
   }
   requireNextArg(args, i, spaceMissingMsg);

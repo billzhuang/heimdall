@@ -27,7 +27,7 @@ import {
   type SessionRecord,
 } from './lib/session.ts';
 import { getMessage } from './lib/error-utils.ts';
-import { die, isMainModule } from './lib/cli-args.ts';
+import { die, isMainModule, parseRequiredFlag } from './lib/cli-args.ts';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -64,31 +64,6 @@ function dieOnInvalidServerUrl(url: string, context = ''): void {
   } catch (err) {
     die(`Invalid server URL "${url}"${context}: ${getMessage(err)}`);
   }
-}
-
-/**
- * Parse a `--flag <value>` / `--flag=<value>` style option at `args[i]`. Call
- * only when the caller has already matched `args[i]` against `prefix` (the
- * `=` form) or one of the flag's own aliases (the space form).
- *
- * Note: the `=` form is not validated for emptiness here (matching each
- * call site's pre-existing behavior) while the space form dies via `die()`
- * when the following token is absent, same as the hand-rolled blocks this
- * replaces.
- */
-function parseFlagValue(
-  args: string[],
-  i: number,
-  prefix: string,
-  requireMsg: string,
-): { value: string; nextIndex: number } {
-  const a = args[i];
-  if (a.startsWith(prefix)) {
-    return { value: a.slice(prefix.length), nextIndex: i };
-  }
-  const value = args[++i];
-  if (!value) die(requireMsg);
-  return { value, nextIndex: i };
 }
 
 /** Resolve a session id from --session/-s, --session=<id>, or the first positional arg. */
@@ -149,9 +124,9 @@ export function cmdStart(args: string[]): void {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--name' || a === '-n' || a.startsWith('--name=')) {
-      ({ value: name, nextIndex: i } = parseFlagValue(args, i, '--name=', '--name requires a value'));
+      ({ value: name, nextIndex: i } = parseRequiredFlag(args, i, '--name=', '--name requires a value'));
     } else if (a === '--server' || a.startsWith('--server=')) {
-      ({ value: serverUrl, nextIndex: i } = parseFlagValue(args, i, '--server=', '--server requires a value'));
+      ({ value: serverUrl, nextIndex: i } = parseRequiredFlag(args, i, '--server=', '--server requires a value'));
     } else if (a === '-h' || a === '--help') {
       showHelp(); process.exit(0);
     } else {
@@ -172,7 +147,7 @@ export async function cmdPrompt(args: string[]): Promise<void> {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--session' || a === '-s' || a.startsWith('--session=')) {
-      ({ value: sessionId, nextIndex: i } = parseFlagValue(args, i, '--session=', '--session requires a value'));
+      ({ value: sessionId, nextIndex: i } = parseRequiredFlag(args, i, '--session=', '--session requires a value'));
     } else if (a === '-h' || a === '--help') {
       showHelp(); process.exit(0);
     } else if (!message && !a.startsWith('-')) {
