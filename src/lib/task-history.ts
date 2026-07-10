@@ -8,7 +8,7 @@
  * Disable logging per-invocation with --no-learn, or globally via
  * `learning.enabled: false` in heimdall.config.yaml.
  */
-import { resolve, join } from 'node:path';
+import { resolve, join, isAbsolute } from 'node:path';
 import { appendJsonlLine, generateEntryId, readJsonlFile } from './jsonl.ts';
 import { buildContextBlock } from './context-block.ts';
 
@@ -29,13 +29,16 @@ export interface TaskHistoryEntry {
 
 /**
  * Resolve the task-history JSONL file path: an explicitly configured file
- * (resolved against cwd) wins, else `<scenariosDir>/task-history.jsonl`.
+ * (resolved against baseDir, same as resolveBaselineFilePath) wins, else
+ * `<scenariosDir>/task-history.jsonl`.
  */
 export function resolveTaskHistoryFilePath(
   configuredFile: string | null | undefined,
   scenariosDir: string,
+  baseDir: string,
 ): string {
-  return configuredFile ? resolve(configuredFile) : join(scenariosDir, 'task-history.jsonl');
+  if (!configuredFile) return join(scenariosDir, 'task-history.jsonl');
+  return isAbsolute(configuredFile) ? configuredFile : resolve(baseDir, configuredFile);
 }
 
 /** Build a TaskHistoryEntry from investigation metadata. */

@@ -31,7 +31,7 @@ import {
   resolveLogPath,
 } from './lib/self-improve.ts';
 import { readTaskHistory, resolveTaskHistoryFilePath } from './lib/task-history.ts';
-import { loadConfig } from './lib/config.ts';
+import { loadConfig, resolveConfigDir } from './lib/config.ts';
 import { callClaudeCli, isClaudeCliAvailable } from './lib/claude-cli-llm.ts';
 import { callCodexCli, isCodexCliAvailable } from './lib/codex-cli-llm.ts';
 import {
@@ -346,7 +346,7 @@ async function main(): Promise<void> {
   const proposalsDir = join(scenariosDir, 'self-loop-proposals');
   const config = loadConfig();
   const logPath = resolveLogPath(cliLogPath, config.learning?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
-  const taskHistoryPath = resolveTaskHistoryFilePath(config.learning?.file, scenariosDir);
+  const taskHistoryPath = resolveTaskHistoryFilePath(config.learning?.file, scenariosDir, resolveConfigDir());
   const instructionsPath = resolve(__dirname, '..', 'src', 'lib', 'instructions.ts');
   const binPath = resolveBinPath(__dirname);
 

@@ -31,7 +31,7 @@ import {
   type LearningEntry,
 } from './lib/self-improve.ts';
 import { readTaskHistory, resolveTaskHistoryFilePath, type TaskHistoryEntry } from './lib/task-history.ts';
-import { loadConfig } from './lib/config.ts';
+import { loadConfig, resolveConfigDir } from './lib/config.ts';
 import { isMainModule, parseAliasedFlag, runMainOrExit } from './lib/cli-args.ts';
 import { pluralize } from './lib/string-utils.ts';
 
@@ -139,7 +139,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
   const scenariosDir = resolve(__dirname, '..', 'scenarios');
   const config = loadConfig();
   const logPath = resolveLogPath(cliLogPath, config.learning?.logFile, join(scenariosDir, LEARNING_LOG_NAME));
-  const taskHistoryPath = resolveTaskHistoryFilePath(config.learning?.file, scenariosDir);
+  const taskHistoryPath = resolveTaskHistoryFilePath(config.learning?.file, scenariosDir, resolveConfigDir());
   const { useRag, ragTopK } = resolveRagOptions(config.learning);
 
   // --from-log: skip running evals; reflect on existing log entries instead.
