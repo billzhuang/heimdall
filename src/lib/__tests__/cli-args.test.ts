@@ -213,6 +213,16 @@ describe('parseRequiredFlag', () => {
     expect(stderrSpy).toHaveBeenCalledWith('Error: --namespace= requires a non-empty value\n');
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  it('accepts an empty "=" form value when equalsEmptyMsg is omitted', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    expect(parseRequiredFlag(['--name='], 0, '--name=', 'missing')).toEqual({
+      value: '',
+      nextIndex: 0,
+      usedEquals: true,
+    });
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('parseAliasedFlag', () => {
