@@ -234,20 +234,32 @@ export function parseTriageFindings(text: string): TriageFinding[] {
 const CRITICAL_MENTION_RE = /\b(non-?)?critical\b/gi;
 /** A negation word shortly before a "critical" mention (e.g. "not critical", "no critical condition"). */
 const NEGATION_WORD_RE = /\b(?:not|no|isn['’]?t|aren['’]?t|without)\b/i;
+/** Clause boundary — a negation on one side must not suppress a "critical" mention on the other. */
+const CLAUSE_BOUNDARY_RE = /[.;:,!?]/;
 
 /**
  * Infer severity from a free-form diagnosis string (used in watch mode where
  * the agent response is prose, not structured triage output).
- * Returns 'critical' as soon as any mention of "critical" isn't negated (e.g.
- * "not critical", "no critical condition", "non-critical" don't count on
- * their own) — a mixed diagnosis like "the sidecar is not critical, but the
- * database outage is critical" still classifies as critical.
+ * Returns 'critical' as soon as any mention of "critical" isn't negated within
+ * its own clause (e.g. "not critical", "no critical condition", "non-critical"
+ * don't count on their own) — a mixed diagnosis like "the sidecar is not
+ * critical, but the database outage is critical" still classifies as
+ * critical, and an unrelated negation in an earlier clause (e.g. "No fallback
+ * is working; critical outage persists") doesn't suppress it.
  */
 export function inferDiagnosisSeverity(diagnosis: string): 'critical' | 'warning' {
   for (const match of diagnosis.matchAll(CRITICAL_MENTION_RE)) {
     if (match[1]) continue; // "non-critical" / "noncritical" — negated by its own prefix
-    const precedingWindow = diagnosis.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
-    if (NEGATION_WORD_RE.test(precedingWindow)) continue; // e.g. "not critical", "no critical condition"
+    const matchIndex = match.index ?? 0;
+    let clauseStart = 0;
+    for (let i = matchIndex - 1; i >= 0; i--) {
+      if (CLAUSE_BOUNDARY_RE.test(diagnosis[i] as string)) {
+        clauseStart = i + 1;
+        break;
+      }
+    }
+    const precedingClause = diagnosis.slice(clauseStart, matchIndex);
+    if (NEGATION_WORD_RE.test(precedingClause)) continue; // e.g. "not critical", "no critical condition"
     return 'critical';
   }
   return 'warning';

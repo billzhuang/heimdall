@@ -615,6 +615,10 @@ describe('inferDiagnosisSeverity', () => {
       inferDiagnosisSeverity('The sidecar is not critical, but the database outage is critical.'),
     ).toBe('critical');
   });
+
+  it('does not let a negation in an earlier clause suppress a critical mention in a later clause', () => {
+    expect(inferDiagnosisSeverity('No fallback is working; critical outage persists.')).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------
