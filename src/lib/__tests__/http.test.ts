@@ -219,6 +219,32 @@ describe('postJsonWithTimeout', () => {
       vi.useRealTimers();
     }
   });
+
+  it('aborts handler body consumption after timeoutMs', async () => {
+    vi.useFakeTimers();
+    try {
+      const abortErr = makeAbortError();
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          new Promise<string>((_, reject) => {
+            // simulate a slow body read that the same timer should abort
+            setTimeout(() => reject(abortErr), 1_000);
+          }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const promise = postJsonWithTimeout('http://example.com', {}, 500, async (res) => {
+        await res.text();
+      });
+      const assertion = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
