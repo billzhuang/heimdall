@@ -65,6 +65,28 @@ export function buildLockdownNote(
   return lockedNamespace ? ` NAMESPACE LOCKDOWN ACTIVE: ${message(lockedNamespace)}` : '';
 }
 
+/** Result of {@link resolveNamespaceLockdown}: whether the request is blocked, and the namespace to use if not. */
+export type NamespaceLockdownResult =
+  | { blocked: true }
+  | { blocked: false; namespace: string | undefined };
+
+/**
+ * Core namespace-lockdown decision shared by tools that take a single
+ * namespace parameter (Kubecost allocation queries, Helm release lookups):
+ * when no namespace is locked, `requested` passes through unchanged; when
+ * locked, `requested` must be unset or match the locked namespace, and the
+ * locked namespace is the default. Callers own their own blocked-response
+ * wording, since it varies by tool.
+ */
+export function resolveNamespaceLockdown(
+  requested: string | null | undefined,
+  lockedNamespace: string | null | undefined,
+): NamespaceLockdownResult {
+  if (!lockedNamespace) return { blocked: false, namespace: requested ?? undefined };
+  if (requested != null && requested !== lockedNamespace) return { blocked: true };
+  return { blocked: false, namespace: lockedNamespace };
+}
+
 /**
  * Build the valibot input schema for a tool that accepts a single free-form
  * `args` string covering everything after the binary name — the shape shared

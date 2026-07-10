@@ -1,6 +1,13 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as v from 'valibot';
-import { resolveTimeoutMs, clampLimit, buildLockdownNote, resolveConfigString, buildArgsInputSchema } from '../tool-config.ts';
+import {
+  resolveTimeoutMs,
+  clampLimit,
+  buildLockdownNote,
+  resolveConfigString,
+  buildArgsInputSchema,
+  resolveNamespaceLockdown,
+} from '../tool-config.ts';
 
 describe('resolveTimeoutMs', () => {
   it('returns the provided value when it is a positive finite number', () => {
@@ -146,6 +153,30 @@ describe('buildArgsInputSchema', () => {
       type: 'description',
       description: 'Arguments passed to the AWS CLI, excluding the leading "aws".',
     });
+  });
+});
+
+describe('resolveNamespaceLockdown', () => {
+  it('passes the requested namespace through unchanged when nothing is locked', () => {
+    expect(resolveNamespaceLockdown('staging', undefined)).toEqual({ blocked: false, namespace: 'staging' });
+  });
+
+  it('resolves to undefined when nothing is locked and no namespace is requested', () => {
+    expect(resolveNamespaceLockdown(undefined, undefined)).toEqual({ blocked: false, namespace: undefined });
+    expect(resolveNamespaceLockdown(null, undefined)).toEqual({ blocked: false, namespace: undefined });
+  });
+
+  it('resolves to the locked namespace when none is requested', () => {
+    expect(resolveNamespaceLockdown(undefined, 'prod')).toEqual({ blocked: false, namespace: 'prod' });
+    expect(resolveNamespaceLockdown(null, 'prod')).toEqual({ blocked: false, namespace: 'prod' });
+  });
+
+  it('resolves to the locked namespace when the request matches it', () => {
+    expect(resolveNamespaceLockdown('prod', 'prod')).toEqual({ blocked: false, namespace: 'prod' });
+  });
+
+  it('blocks when the request differs from the locked namespace', () => {
+    expect(resolveNamespaceLockdown('staging', 'prod')).toEqual({ blocked: true });
   });
 });
 

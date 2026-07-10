@@ -12,6 +12,7 @@
  */
 import { makeTruncate } from './output-truncation.ts';
 import { execAndReport, DEFAULT_NO_OUTPUT_MESSAGE } from './cli-exec.ts';
+import { resolveNamespaceLockdown } from './tool-config.ts';
 
 const EXEC_TIMEOUT_MS = 30_000;
 const MAX_BUFFER_BYTES = 16 * 1024 * 1024;
@@ -57,13 +58,14 @@ export function resolveHelmNamespaceLockdown(
       reason: `namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`,
     };
   }
-  if (namespace && namespace !== lockedNamespace) {
+  const result = resolveNamespaceLockdown(namespace, lockedNamespace);
+  if (result.blocked) {
     return {
       blocked: true,
       reason: `namespace lockdown is active — only '${lockedNamespace}' is accessible; '${namespace}' is not allowed`,
     };
   }
-  return { blocked: false, namespace: lockedNamespace, allNamespaces: false };
+  return { blocked: false, namespace: result.namespace, allNamespaces: false };
 }
 
 /** Returns an error string if `value` starts with a hyphen (option injection), else null. */
