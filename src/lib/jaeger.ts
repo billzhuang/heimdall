@@ -62,6 +62,14 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
     return 'Error: service must be a non-empty string (e.g. "checkout", "payments").';
   }
 
+  let tagsJson: string | undefined;
+  if (params.tags && params.tags.trim()) {
+    tagsJson = parseTagsToJson(params.tags);
+    if (tagsJson === '{}') {
+      return `Error: tags must be one or more "key=value" pairs separated by spaces (e.g. "http.status_code=500 error=true"). Got: "${params.tags}".`;
+    }
+  }
+
   const effectiveLimit = clampLimit(params.limit, DEFAULT_LIMIT, MAX_LIMIT);
 
   const nowMs = Date.now();
@@ -72,10 +80,7 @@ export async function runJaegerQuery(params: JaegerQueryParams, config: JaegerCo
 
     if (params.operation) searchParams.set('operation', params.operation);
     if (params.minDuration) searchParams.set('minDuration', params.minDuration);
-    if (params.tags) {
-      const tagsJson = parseTagsToJson(params.tags);
-      if (tagsJson !== '{}') searchParams.set('tags', tagsJson);
-    }
+    if (tagsJson) searchParams.set('tags', tagsJson);
 
     if (params.start) {
       const startUs = resolveTimeUs(params.start, nowMs);

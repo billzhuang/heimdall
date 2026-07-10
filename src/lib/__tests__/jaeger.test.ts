@@ -71,7 +71,7 @@ describe('runJaegerQuery — success', () => {
     expect(decoded).toContain('tags={"http.status_code":"500","error":"true"}');
   });
 
-  it('omits the tags param when the tag filter has no key=value pairs', async () => {
+  it('omits the tags param when tags is whitespace-only', async () => {
     const fetchMock = mockFetch('{}');
 
     await runJaegerQuery({ service: 'orders', tags: '   ' }, BASE_CONFIG);
@@ -242,6 +242,26 @@ describe('runJaegerQuery — validation', () => {
     const result = await runJaegerQuery({ service: '   ' }, BASE_CONFIG);
     expect(result).toMatch(/error/i);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an error instead of silently searching unfiltered when every tag token is malformed', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runJaegerQuery({ service: 'orders', tags: 'error:true' }, BASE_CONFIG);
+    expect(result).toMatch(/error/i);
+    expect(result).toMatch(/key=value/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the query when at least one tag token is well-formed, dropping only the malformed ones', async () => {
+    const fetchMock = mockFetch('{}');
+
+    await runJaegerQuery({ service: 'orders', tags: 'error=true malformed' }, BASE_CONFIG);
+
+    const url = fetchMock.mock.calls[0][0] as string;
+    const decoded = decodeURIComponent(url.replace(/\+/g, ' '));
+    expect(decoded).toContain('tags={"error":"true"}');
   });
 });
 
