@@ -58,7 +58,10 @@ export function resolveHelmNamespaceLockdown(
       reason: `namespace lockdown is active — 'allNamespaces' is not allowed; only '${lockedNamespace}' is accessible`,
     };
   }
-  const result = resolveNamespaceLockdown(namespace, lockedNamespace);
+  // Empty string is treated as omitted, matching how some LLM providers send
+  // "" rather than omitting an optional field (see getType handling in
+  // tools/helm.ts).
+  const result = resolveNamespaceLockdown(namespace || undefined, lockedNamespace);
   if (result.blocked) {
     return {
       blocked: true,
