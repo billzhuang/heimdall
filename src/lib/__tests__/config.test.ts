@@ -351,6 +351,16 @@ describe('loadConfig', () => {
       const config = loadConfig(configPath);
       expect(config.tools.kubecostQuery).toBe(true);
     });
+
+    it('accepts newrelic_query as a snake_case alias for newRelicQuery (actually works, not just warned)', () => {
+      const configPath = join(tmpDir, 'heimdall.config.yaml');
+      writeFileSync(configPath, `tools:\n  newrelic_query: true\n`);
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const config = loadConfig(configPath);
+      expect(config.tools.newRelicQuery).toBe(true);
+      expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('unknown tools key'));
+      warnSpy.mockRestore();
+    });
   });
 
   describe('newRelic config block', () => {

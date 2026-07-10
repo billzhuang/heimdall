@@ -393,7 +393,7 @@ const TOOL_KEY_TO_SNAKE_ALIAS: Record<keyof NonNullable<HeimdallConfig['tools']>
   lokiQuery: 'loki_query',
   jaegerQuery: 'jaeger_query',
   datadogQuery: 'datadog_query',
-  newRelicQuery: 'new_relic_query',
+  newRelicQuery: 'newrelic_query',
   cdkQuery: 'cdk_query',
 };
 
