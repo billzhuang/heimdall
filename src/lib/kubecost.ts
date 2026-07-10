@@ -10,6 +10,7 @@ import type { CompiledRedactionRule } from './regex-redact.ts';
 import { makeTruncate } from './output-truncation.ts';
 import { runJsonQuery } from './http.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
+import { resolveNamespaceLockdown } from './tool-config.ts';
 
 export interface KubecostConfig {
   url: string;
@@ -65,13 +66,13 @@ export function resolveAllocationNamespace(
   requested: string | null | undefined,
   lockedNamespace: string | undefined,
 ): AllocationNamespaceResolution {
-  if (!lockedNamespace) return { namespace: requested ?? undefined };
-  if (requested != null && requested !== lockedNamespace) {
+  const result = resolveNamespaceLockdown(requested, lockedNamespace);
+  if (result.blocked) {
     return {
       blockedMessage: `${BLOCKED_PREFIX}namespace lockdown is active — queries are restricted to namespace '${lockedNamespace}'. Remove the namespace parameter or set it to '${lockedNamespace}'.`,
     };
   }
-  return { namespace: lockedNamespace };
+  return { namespace: result.namespace };
 }
 
 /**

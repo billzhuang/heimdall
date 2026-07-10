@@ -227,4 +227,12 @@ describe('resolveHelmNamespaceLockdown', () => {
       allNamespaces: false,
     });
   });
+
+  it('treats an empty-string namespace as omitted, not a mismatch, when lockdown is active', () => {
+    expect(resolveHelmNamespaceLockdown('', undefined, 'prod-payments')).toEqual({
+      blocked: false,
+      namespace: 'prod-payments',
+      allNamespaces: false,
+    });
+  });
 });
