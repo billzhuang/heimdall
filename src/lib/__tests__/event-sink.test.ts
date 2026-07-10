@@ -91,6 +91,22 @@ describe('EventSink — file sink', () => {
     expect(record.severity).toBe('warning');
   });
 
+  it('classifies severity as critical when the diagnosis text calls out a critical condition', async () => {
+    const sink = new EventSink({ filePath: '/tmp/events.jsonl' });
+    await sink.write(makeFinding({ diagnosis: 'This is a critical failure requiring immediate action.' }));
+
+    const [record] = mockAppendJsonlLine.mock.calls[0] as [EventSinkRecord, string];
+    expect(record.severity).toBe('critical');
+  });
+
+  it('falls back to warning severity when there is no diagnosis', async () => {
+    const sink = new EventSink({ filePath: '/tmp/events.jsonl' });
+    await sink.write(makeFinding({ diagnosis: undefined }));
+
+    const [record] = mockAppendJsonlLine.mock.calls[0] as [EventSinkRecord, string];
+    expect(record.severity).toBe('warning');
+  });
+
   it('logs to stderr and continues when appendJsonlLine throws', async () => {
     mockAppendJsonlLine.mockRejectedValue(new Error('disk full'));
     const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);

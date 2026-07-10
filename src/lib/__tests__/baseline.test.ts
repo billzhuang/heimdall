@@ -593,6 +593,38 @@ describe('inferDiagnosisSeverity', () => {
   it('is case-insensitive', () => {
     expect(inferDiagnosisSeverity('CRITICAL: cluster-impacting failure')).toBe('critical');
   });
+
+  it('returns warning when "critical" is explicitly negated ("not critical")', () => {
+    expect(inferDiagnosisSeverity('This is not critical, just a transient blip.')).toBe('warning');
+  });
+
+  it('returns warning for "no critical condition"', () => {
+    expect(inferDiagnosisSeverity('There is no critical condition detected here.')).toBe('warning');
+  });
+
+  it('returns warning for "non-critical"', () => {
+    expect(inferDiagnosisSeverity('This is a non-critical issue that can wait.')).toBe('warning');
+  });
+
+  it('returns warning for negation with a filler word ("not a critical")', () => {
+    expect(inferDiagnosisSeverity('This is not a critical issue.')).toBe('warning');
+  });
+
+  it('returns critical when a negated mention is followed by a genuine critical mention', () => {
+    expect(
+      inferDiagnosisSeverity('The sidecar is not critical, but the database outage is critical.'),
+    ).toBe('critical');
+  });
+
+  it('does not let a negation in an earlier clause suppress a critical mention in a later clause', () => {
+    expect(inferDiagnosisSeverity('No fallback is working; critical outage persists.')).toBe('critical');
+  });
+
+  it('treats "and" as a clause boundary between an unrelated negation and a critical mention', () => {
+    expect(
+      inferDiagnosisSeverity('No workaround exists and this critical outage needs immediate remediation'),
+    ).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------
