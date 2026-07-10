@@ -5,6 +5,7 @@
  * each diagnosis completes. Failures are logged to stderr and never propagate
  * so the watch loop continues uninterrupted.
  */
+import { inferDiagnosisSeverity } from './baseline.ts';
 import { appendJsonlLine } from './jsonl.ts';
 import { postWebhook, type WatchFinding } from './watch.ts';
 
@@ -42,7 +43,7 @@ function findingToRecord(finding: WatchFinding): EventSinkRecord {
       message: finding.message,
     },
     diagnosis: finding.diagnosis,
-    severity: 'warning',
+    severity: finding.diagnosis ? inferDiagnosisSeverity(finding.diagnosis) : 'warning',
   };
 }
 
