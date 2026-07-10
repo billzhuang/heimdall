@@ -15,6 +15,7 @@ vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 
 import { spawn } from 'node:child_process';
 import {
+  buildConsoleReportCallbacks,
   checkFinding,
   loadScenario,
   loadScenarios,
@@ -781,5 +782,58 @@ describe('runScenariosWithConsoleReport', () => {
     expect(report.failed).toBe(1);
     expect(stdout()).toContain('✗ FAIL  scenario-b');
     expect(stdout()).toContain('- Severity: expected "info", got "critical"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildConsoleReportCallbacks — indent-parameterized console reporting,
+// shared by runScenariosWithConsoleReport (2-space) and self-loop-mode
+// (4-space).
+// ---------------------------------------------------------------------------
+
+describe('buildConsoleReportCallbacks', () => {
+  let writeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    writeSpy.mockRestore();
+  });
+
+  function stdout(): string {
+    return writeSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('');
+  }
+
+  it('prints onBefore with the given indent', () => {
+    const callbacks = buildConsoleReportCallbacks('    ');
+    callbacks.onBefore?.('scenario-a');
+    expect(stdout()).toBe('    Running: scenario-a\n');
+  });
+
+  it('prints PASS with the given indent', () => {
+    const callbacks = buildConsoleReportCallbacks('    ');
+    const result: EvalResult = { scenario: 's1', prompt: 'p', passed: true, failures: [] };
+    callbacks.onResult?.(result);
+    expect(stdout()).toBe('    ✓ PASS  s1\n');
+  });
+
+  it('prints FAIL and each failure reason indented under the given indent', () => {
+    const indent = '    ';
+    const callbacks = buildConsoleReportCallbacks(indent);
+    const result: EvalResult = { scenario: 's1', prompt: 'p', passed: false, failures: ['boom', 'bang'] };
+    callbacks.onResult?.(result);
+    expect(stdout()).toBe(
+      `${indent}✗ FAIL  s1\n${indent}       - boom\n${indent}       - bang\n`,
+    );
+  });
+
+  it('honors a different indent (matching runScenariosWithConsoleReport)', () => {
+    const indent = '  ';
+    const callbacks = buildConsoleReportCallbacks(indent);
+    const result: EvalResult = { scenario: 's1', prompt: 'p', passed: false, failures: ['boom'] };
+    callbacks.onResult?.(result);
+    expect(stdout()).toBe(`${indent}✗ FAIL  s1\n${indent}       - boom\n`);
   });
 });

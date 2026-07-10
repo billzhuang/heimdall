@@ -242,6 +242,30 @@ export interface ScenarioRunReport {
 }
 
 /**
+ * Build the {@link RunCallbacks} that print per-scenario PASS/FAIL progress
+ * (and each failure reason) to stdout, indented by `indent`.
+ *
+ * Shared by eval-mode, self-improve-mode, and self-loop-mode, which each
+ * report scenario runs to the console in this exact format at their own
+ * indentation depth.
+ */
+export function buildConsoleReportCallbacks(indent: string): RunCallbacks {
+  return {
+    onBefore: name => process.stdout.write(`${indent}Running: ${name}\n`),
+    onResult: result => {
+      if (result.passed) {
+        process.stdout.write(`${indent}✓ PASS  ${result.scenario}\n`);
+      } else {
+        process.stdout.write(`${indent}✗ FAIL  ${result.scenario}\n`);
+        for (const failure of result.failures) {
+          process.stdout.write(`${indent}       - ${failure}\n`);
+        }
+      }
+    },
+  };
+}
+
+/**
  * Run all scenarios, printing per-scenario PASS/FAIL progress (and each
  * failure reason) to stdout, then tally the pass/fail counts.
  *
@@ -252,19 +276,7 @@ export async function runScenariosWithConsoleReport(
   binPath: string,
   scenarios: Array<{ path: string; scenario: EvalScenario }>,
 ): Promise<ScenarioRunReport> {
-  const results = await runAllScenarios(binPath, scenarios, {
-    onBefore: name => process.stdout.write(`  Running: ${name}\n`),
-    onResult: result => {
-      if (result.passed) {
-        process.stdout.write(`  ✓ PASS  ${result.scenario}\n`);
-      } else {
-        process.stdout.write(`  ✗ FAIL  ${result.scenario}\n`);
-        for (const failure of result.failures) {
-          process.stdout.write(`         - ${failure}\n`);
-        }
-      }
-    },
-  });
+  const results = await runAllScenarios(binPath, scenarios, buildConsoleReportCallbacks('  '));
 
   const passed = results.filter(r => r.passed).length;
   const failed = results.length - passed;
