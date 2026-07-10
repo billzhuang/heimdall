@@ -593,6 +593,22 @@ describe('inferDiagnosisSeverity', () => {
   it('is case-insensitive', () => {
     expect(inferDiagnosisSeverity('CRITICAL: cluster-impacting failure')).toBe('critical');
   });
+
+  it('returns warning when "critical" is explicitly negated ("not critical")', () => {
+    expect(inferDiagnosisSeverity('This is not critical, just a transient blip.')).toBe('warning');
+  });
+
+  it('returns warning for "no critical condition"', () => {
+    expect(inferDiagnosisSeverity('There is no critical condition detected here.')).toBe('warning');
+  });
+
+  it('returns warning for "non-critical"', () => {
+    expect(inferDiagnosisSeverity('This is a non-critical issue that can wait.')).toBe('warning');
+  });
+
+  it('returns warning for negation with a filler word ("not a critical")', () => {
+    expect(inferDiagnosisSeverity('This is not a critical issue.')).toBe('warning');
+  });
 });
 
 // ---------------------------------------------------------------------------

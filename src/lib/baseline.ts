@@ -230,13 +230,19 @@ export function parseTriageFindings(text: string): TriageFinding[] {
   return findings;
 }
 
+/** Matches "critical" ruled out by a nearby negation (e.g. "not critical", "no critical condition", "non-critical"). */
+const NEGATED_CRITICAL_RE =
+  /\bnon-?critical\b|\b(?:not|no|isn['’]?t|aren['’]?t|without)\b(?:\s+\S+){0,2}?\s+critical\b/i;
+
 /**
  * Infer severity from a free-form diagnosis string (used in watch mode where
  * the agent response is prose, not structured triage output).
- * Returns 'critical' only when the text explicitly calls out a critical condition.
+ * Returns 'critical' only when the text explicitly calls out a critical condition
+ * that isn't negated (e.g. "not critical" or "no critical condition" stay 'warning').
  */
 export function inferDiagnosisSeverity(diagnosis: string): 'critical' | 'warning' {
-  return /\bcritical\b/i.test(diagnosis) ? 'critical' : 'warning';
+  if (!/\bcritical\b/i.test(diagnosis)) return 'warning';
+  return NEGATED_CRITICAL_RE.test(diagnosis) ? 'warning' : 'critical';
 }
 
 /** Truncate a diagnosis string to a safe summary length for baseline storage. */
