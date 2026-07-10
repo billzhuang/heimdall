@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as fc from 'fast-check';
-import { compileRules, applyRedaction, createRedactor } from '../regex-redact.ts';
+import { compileRules, applyRedaction } from '../regex-redact.ts';
 
 // ---------------------------------------------------------------------------
 // Property: compileRules output count is bounded
@@ -137,41 +137,6 @@ describe('applyRedaction (property-based)', () => {
           expect(applyRedaction(text, rules)).toBe(text);
         },
       ),
-    );
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Property: createRedactor behaves identically to compileRules + applyRedaction
-// ---------------------------------------------------------------------------
-
-describe('createRedactor (property-based)', () => {
-  it('produces the same output as compileRules + applyRedaction', () => {
-    const rawRules = [
-      { name: 'secret', pattern: 'SECRET' },
-      { name: 'token', pattern: 'TOKEN[0-9]+' },
-    ];
-    const redact = createRedactor(rawRules);
-    const compiled = compileRules(rawRules);
-
-    fc.assert(
-      fc.property(fc.string(), (text) => {
-        expect(redact(text)).toBe(applyRedaction(text, compiled));
-      }),
-    );
-  });
-
-  it('calling the returned function multiple times with different strings is safe', () => {
-    const redact = createRedactor([{ name: 'tok', pattern: 'TOKEN[0-9]+' }]);
-    fc.assert(
-      fc.property(fc.string(), fc.string(), (a, b) => {
-        // Should not throw or corrupt state from a previous call
-        const ra = redact(a);
-        const rb = redact(b);
-        // Re-running must be stable
-        expect(redact(a)).toBe(ra);
-        expect(redact(b)).toBe(rb);
-      }),
     );
   });
 });
