@@ -609,6 +609,12 @@ describe('inferDiagnosisSeverity', () => {
   it('returns warning for negation with a filler word ("not a critical")', () => {
     expect(inferDiagnosisSeverity('This is not a critical issue.')).toBe('warning');
   });
+
+  it('returns critical when a negated mention is followed by a genuine critical mention', () => {
+    expect(
+      inferDiagnosisSeverity('The sidecar is not critical, but the database outage is critical.'),
+    ).toBe('critical');
+  });
 });
 
 // ---------------------------------------------------------------------------

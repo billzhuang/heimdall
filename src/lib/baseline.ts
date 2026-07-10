@@ -230,19 +230,27 @@ export function parseTriageFindings(text: string): TriageFinding[] {
   return findings;
 }
 
-/** Matches "critical" ruled out by a nearby negation (e.g. "not critical", "no critical condition", "non-critical"). */
-const NEGATED_CRITICAL_RE =
-  /\bnon-?critical\b|\b(?:not|no|isn['’]?t|aren['’]?t|without)\b(?:\s+\S+){0,2}?\s+critical\b/i;
+/** Every occurrence of "critical" (or the hyphenated "non-critical"), with the negation prefix captured. */
+const CRITICAL_MENTION_RE = /\b(non-?)?critical\b/gi;
+/** A negation word shortly before a "critical" mention (e.g. "not critical", "no critical condition"). */
+const NEGATION_WORD_RE = /\b(?:not|no|isn['’]?t|aren['’]?t|without)\b/i;
 
 /**
  * Infer severity from a free-form diagnosis string (used in watch mode where
  * the agent response is prose, not structured triage output).
- * Returns 'critical' only when the text explicitly calls out a critical condition
- * that isn't negated (e.g. "not critical" or "no critical condition" stay 'warning').
+ * Returns 'critical' as soon as any mention of "critical" isn't negated (e.g.
+ * "not critical", "no critical condition", "non-critical" don't count on
+ * their own) — a mixed diagnosis like "the sidecar is not critical, but the
+ * database outage is critical" still classifies as critical.
  */
 export function inferDiagnosisSeverity(diagnosis: string): 'critical' | 'warning' {
-  if (!/\bcritical\b/i.test(diagnosis)) return 'warning';
-  return NEGATED_CRITICAL_RE.test(diagnosis) ? 'warning' : 'critical';
+  for (const match of diagnosis.matchAll(CRITICAL_MENTION_RE)) {
+    if (match[1]) continue; // "non-critical" / "noncritical" — negated by its own prefix
+    const precedingWindow = diagnosis.slice(Math.max(0, (match.index ?? 0) - 24), match.index ?? 0);
+    if (NEGATION_WORD_RE.test(precedingWindow)) continue; // e.g. "not critical", "no critical condition"
+    return 'critical';
+  }
+  return 'warning';
 }
 
 /** Truncate a diagnosis string to a safe summary length for baseline storage. */
