@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { runPrometheusQuery } from '../prometheus.ts';
+import { runPrometheusQuery, validateNamespaceLockdown } from '../prometheus.ts';
 import type { PrometheusConfig } from '../prometheus.ts';
 import { mockFetch, makeAbortError, mockFetchHangsUntilAbort, restoreGlobalsAfterEach } from './test-helpers.ts';
 
@@ -117,6 +117,109 @@ describe('runPrometheusQuery — range', () => {
 
     await runPrometheusQuery('range', { query: 'up' }, BASE_CONFIG);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Namespace lockdown
+// ---------------------------------------------------------------------------
+//
+// validateNamespaceLockdown layers a PromQL-specific bare-metric-reference
+// scan on top of the shared selector parser in selector-lockdown.ts (see
+// loki.test.ts for exhaustive selector/quote-parsing edge cases); these cover
+// PromQL-shaped selectors, the bare-reference gap, and runPrometheusQuery
+// integration.
+
+describe('validateNamespaceLockdown — PromQL selectors', () => {
+  it('accepts a vector selector with an exact namespace matcher', () => {
+    expect(validateNamespaceLockdown('up{namespace="prod"}', 'prod')).toBe(true);
+  });
+
+  it('accepts a single-quoted namespace matcher (PromQL supports single-quoted strings)', () => {
+    expect(validateNamespaceLockdown("up{namespace='prod'}", 'prod')).toBe(true);
+  });
+
+  it('rejects a bare metric name with no selector', () => {
+    expect(validateNamespaceLockdown('up', 'prod')).toBe(false);
+  });
+
+  it('rejects a selector targeting a different namespace', () => {
+    expect(validateNamespaceLockdown('up{namespace="staging"}', 'prod')).toBe(false);
+  });
+
+  it('requires every selector in a multi-selector expression to match', () => {
+    const query = 'sum(rate(http_requests_total{namespace="prod"}[5m])) / sum(rate(http_requests_total{namespace="evil"}[5m]))';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+  });
+
+  it('accepts a histogram_quantile query using a "by (le)" aggregation modifier', () => {
+    // Regression: `le` here is a label name in the `by (...)` grouping clause,
+    // not a bare metric reference, and must not be flagged.
+    const query = 'histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{namespace="prod"}[5m])) by (le))';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(true);
+  });
+
+  it('rejects a bare metric name combined with a locked selector via a binary operator', () => {
+    // Regression for a real bypass: the extracted selector matches, but the
+    // bare `up` term has no selector at all and would read every namespace.
+    expect(validateNamespaceLockdown('up{namespace="prod"} + up', 'prod')).toBe(false);
+  });
+
+  it('rejects a bare metric name combined with a locked selector via a set operator', () => {
+    expect(
+      validateNamespaceLockdown('container_memory_usage_bytes or kube_pod_info{namespace="prod"}', 'prod'),
+    ).toBe(false);
+  });
+
+  it('rejects a bare range-vector reference alongside a properly scoped one', () => {
+    expect(validateNamespaceLockdown('rate(up{namespace="prod"}[5m]) + rate(up[5m])', 'prod')).toBe(false);
+  });
+
+  it('accepts a bare-looking metric name that is entirely covered by its own selector', () => {
+    expect(validateNamespaceLockdown('sum(rate(a{namespace="prod"}[5m])) / sum(rate(b{namespace="prod"}[5m]))', 'prod')).toBe(true);
+  });
+});
+
+describe('runPrometheusQuery — namespace lockdown', () => {
+  const LOCKED_CONFIG: PrometheusConfig = { ...BASE_CONFIG, lockedNamespace: 'prod' };
+
+  it('allows queries whose selector includes the locked namespace', async () => {
+    const fetchMock = mockFetch('{}');
+
+    const result = await runPrometheusQuery('instant', { query: 'up{namespace="prod"}' }, LOCKED_CONFIG);
+
+    expect(result).not.toMatch(/BLOCKED/);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it('blocks queries with no selector', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runPrometheusQuery('instant', { query: 'up' }, LOCKED_CONFIG);
+
+    expect(result).toMatch(/BLOCKED/);
+    expect(result).toContain('prod');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks queries targeting a different namespace', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await runPrometheusQuery('instant', { query: 'up{namespace="staging"}' }, LOCKED_CONFIG);
+
+    expect(result).toMatch(/BLOCKED/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not enforce lockdown when lockedNamespace is unset', async () => {
+    const fetchMock = mockFetch('{}');
+
+    const result = await runPrometheusQuery('instant', { query: 'up' }, BASE_CONFIG);
+
+    expect(result).not.toMatch(/BLOCKED/);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
 

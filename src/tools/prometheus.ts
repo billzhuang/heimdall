@@ -7,24 +7,32 @@ import { runPrometheusQuery } from '../lib/prometheus.ts';
 import type { PrometheusConfig } from '../lib/prometheus.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
-import { resolveConfigString, resolveTimeoutMs } from '../lib/tool-config.ts';
+import { buildLockdownNote, resolveConfigString, resolveTimeoutMs } from '../lib/tool-config.ts';
 
 const DEFAULT_PROMETHEUS_URL = 'http://prometheus-operated.monitoring:9090';
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 /**
- * Factory that bakes the Prometheus base URL and timeout into the tool closure.
- * The URL is resolved from config → env → in-cluster default, never from the model.
+ * Factory that bakes the Prometheus base URL, timeout, and optional namespace
+ * lockdown into the tool closure. The URL is resolved from config → env →
+ * in-cluster default, never from the model.
  */
 export function makePrometheusQuery(
   prometheusConfig?: { url?: string | null; timeoutMs?: number | null } | null,
   regexRedactionRules?: CompiledRedactionRule[],
+  lockedNamespace?: string | null,
 ) {
   const config: PrometheusConfig = {
     url: resolveConfigString(prometheusConfig?.url, 'PROMETHEUS_URL', DEFAULT_PROMETHEUS_URL),
     timeoutMs: resolveTimeoutMs(prometheusConfig?.timeoutMs, DEFAULT_TIMEOUT_MS),
     regexRedactionRules,
+    lockedNamespace: lockedNamespace ?? undefined,
   };
+
+  const lockdownNote = buildLockdownNote(
+    lockedNamespace,
+    (ns) => `every vector selector must include namespace="${ns}"; queries without it are blocked.`,
+  );
 
   return defineTool({
     name: 'prometheus_query',
@@ -32,7 +40,8 @@ export function makePrometheusQuery(
       'Query Prometheus for time-series metrics using PromQL. Two query types:\n' +
       '- instant: evaluate a PromQL expression at a single point in time (defaults to now).\n' +
       '- range: evaluate a PromQL expression over a time window with a resolution step.\n' +
-      'Use this to inspect golden signals (request rate, error rate, latency, saturation) and resource trends that kubectl cannot show.',
+      'Use this to inspect golden signals (request rate, error rate, latency, saturation) and resource trends that kubectl cannot show.' +
+      lockdownNote,
     input: v.object({
       queryType: v.pipe(
         v.picklist(['instant', 'range']),
@@ -75,5 +84,5 @@ export function makePrometheusQuery(
 
 export const prometheusPlugin: ToolPlugin = {
   key: 'prometheusQuery',
-  factory: (config, rules) => makePrometheusQuery(config.prometheus, rules),
+  factory: (config, rules) => makePrometheusQuery(config.prometheus, rules, config.namespace?.locked),
 };
