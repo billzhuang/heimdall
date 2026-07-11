@@ -10,14 +10,10 @@
  * kubectl or other tools. Use this backend when the Flue/Anthropic stack is
  * unavailable but the Codex CLI is present and authenticated.
  */
-import { makeCliLlm } from './cli-llm.ts';
+import { makeCliLlm, type CliLlmOptions } from './cli-llm.ts';
 
-export interface CodexCliOptions {
-  /** Max execution time in milliseconds. Defaults to 120 000. */
-  timeoutMs?: number;
-  /** Model name, e.g. `o4-mini` or `gpt-4o`. */
-  model?: string;
-}
+/** Options for `callCodexCli`. `model` e.g. `o4-mini` or `gpt-4o`. */
+export type CodexCliOptions = CliLlmOptions;
 
 const { callCli, isCliAvailable } = makeCliLlm('codex', '-q');
 
