@@ -163,6 +163,19 @@ describe('validateNamespaceLockdown', () => {
     const query = 'sum(rate({namespace="prod"}[5m])) / sum(rate({namespace="prod", app="api"}[5m]))';
     expect(validateNamespaceLockdown(query, 'prod')).toBe(true);
   });
+
+  it('rejects a selector with a non-simple escape sequence rather than mis-decoding it', () => {
+    // Loki decodes `p` as "p" (a real LogQL string-literal unicode escape), but a naive
+    // per-character scan would read it as the literal text "u0070" — fail closed instead of
+    // guessing wrong in either direction.
+    const query = '{namespace="\\u0070rod"} |= "error"';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+    expect(validateNamespaceLockdown(query, 'u0070rod')).toBe(false);
+  });
+
+  it('still decodes simple `\\"` and `\\\\` escapes in matcher values', () => {
+    expect(validateNamespaceLockdown('{namespace="prod\\\\"} |= "error"', 'prod\\')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

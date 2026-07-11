@@ -197,6 +197,13 @@ function parseSelectorMatchers(selector: string): LabelMatcher[] | null {
     if (quote === '"') {
       while (i < n && inner[i] !== '"') {
         if (inner[i] === '\\' && i + 1 < n) {
+          // Only `\"` and `\\` decode to themselves under this naive scan.
+          // Any other escape (`\n`, `p`, octal, ...) needs real LogQL
+          // string-literal decoding to get the right value — since we don't
+          // implement that, fail closed rather than silently mis-decoding
+          // (e.g. treating `prod` as literal "u0070rod" instead of the
+          // "prod" Loki would actually parse it as).
+          if (inner[i + 1] !== '"' && inner[i + 1] !== '\\') return null;
           value += inner[i + 1];
           i += 2;
         } else {
