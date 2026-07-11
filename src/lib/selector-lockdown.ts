@@ -17,10 +17,11 @@ function stripHashComments(query: string): string {
   const n = query.length;
   while (i < n) {
     const ch = query[i];
-    if (ch === '"') {
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
       out += ch;
       i++;
-      while (i < n && query[i] !== '"') {
+      while (i < n && query[i] !== quote) {
         if (query[i] === '\\' && i + 1 < n) {
           out += query[i] + query[i + 1];
           i += 2;
@@ -59,20 +60,21 @@ function stripHashComments(query: string): string {
 }
 
 /**
- * Find the index of the `}` that closes the brace opened at `start` in
- * `query[start]`. String literals (double-quoted, with backslash escapes, or
- * backtick-delimited raw strings) are skipped as opaque spans so that a brace
- * or quote inside a label value can't be mistaken for the real boundary.
- * Returns -1 if unterminated.
+ * Find the index of the `close` delimiter that matches the `open` delimiter
+ * at `query[start]` (e.g. `{`/`}`, `[`/`]`, `(`/`)`). String literals
+ * (double-quoted, with backslash escapes, or backtick-delimited raw strings)
+ * are skipped as opaque spans so that a delimiter or quote inside a label
+ * value can't be mistaken for the real boundary. Returns -1 if unterminated.
  */
-function findMatchingBrace(query: string, start: number): number {
+export function findMatchingDelimiter(query: string, start: number, open: string, close: string): number {
   let depth = 0;
   let i = start;
   while (i < query.length) {
     const ch = query[i];
-    if (ch === '"') {
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
       i++;
-      while (i < query.length && query[i] !== '"') {
+      while (i < query.length && query[i] !== quote) {
         i += query[i] === '\\' ? 2 : 1;
       }
       i++;
@@ -84,8 +86,8 @@ function findMatchingBrace(query: string, start: number): number {
       i++;
       continue;
     }
-    if (ch === '{') depth++;
-    else if (ch === '}') {
+    if (ch === open) depth++;
+    else if (ch === close) {
       depth--;
       if (depth === 0) return i;
     }
@@ -106,9 +108,10 @@ function extractAllSelectors(query: string): string[] | null {
   let i = 0;
   while (i < query.length) {
     const ch = query[i];
-    if (ch === '"') {
+    if (ch === '"' || ch === "'") {
+      const quote = ch;
       i++;
-      while (i < query.length && query[i] !== '"') {
+      while (i < query.length && query[i] !== quote) {
         i += query[i] === '\\' ? 2 : 1;
       }
       i++;
@@ -121,7 +124,7 @@ function extractAllSelectors(query: string): string[] | null {
       continue;
     }
     if (ch === '{') {
-      const end = findMatchingBrace(query, i);
+      const end = findMatchingDelimiter(query, i, '{', '}');
       if (end === -1) return null;
       selectors.push(query.slice(i, end + 1));
       i = end + 1;
@@ -166,17 +169,17 @@ function parseSelectorMatchers(selector: string): LabelMatcher[] | null {
     while (i < n && /\s/.test(inner[i])) i++;
 
     const quote = inner[i];
-    if (quote !== '"' && quote !== '`') return null;
+    if (quote !== '"' && quote !== "'" && quote !== '`') return null;
     i++;
     let value = '';
-    if (quote === '"') {
-      while (i < n && inner[i] !== '"') {
+    if (quote === '"' || quote === "'") {
+      while (i < n && inner[i] !== quote) {
         if (inner[i] === '\\' && i + 1 < n) {
-          // Only `\"` and `\\` decode to themselves under this naive scan.
-          // Any other escape needs real string-literal decoding to get the
-          // right value — since we don't implement that, fail closed rather
-          // than silently mis-decoding in either direction.
-          if (inner[i + 1] !== '"' && inner[i + 1] !== '\\') return null;
+          // Only `\<quote>` and `\\` decode to themselves under this naive
+          // scan. Any other escape needs real string-literal decoding to get
+          // the right value — since we don't implement that, fail closed
+          // rather than silently mis-decoding in either direction.
+          if (inner[i + 1] !== quote && inner[i + 1] !== '\\') return null;
           value += inner[i + 1];
           i += 2;
         } else {

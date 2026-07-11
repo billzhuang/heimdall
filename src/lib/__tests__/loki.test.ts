@@ -134,6 +134,16 @@ describe('validateNamespaceLockdown', () => {
     expect(validateNamespaceLockdown('{namespace=`prod`} |= "error"', 'prod')).toBe(true);
   });
 
+  it('accepts a single-quoted namespace matcher value', () => {
+    expect(validateNamespaceLockdown("{namespace='prod'} |= \"error\"", 'prod')).toBe(true);
+  });
+
+  it('rejects a mismatched selector even when a single-quoted line filter contains the locked namespace text', () => {
+    expect(
+      validateNamespaceLockdown("{namespace=\"evil\"} |= 'namespace=\"prod\"'", 'prod'),
+    ).toBe(false);
+  });
+
   it('rejects a negated namespace matcher even when the value matches', () => {
     expect(validateNamespaceLockdown('{namespace!="prod"} |= "error"', 'prod')).toBe(false);
     expect(validateNamespaceLockdown('{namespace!~"prod"} |= "error"', 'prod')).toBe(false);
