@@ -94,6 +94,88 @@ describe('validateNamespaceLockdown', () => {
     expect(validateNamespaceLockdown('{namespace="my.ns"} |= "error"', 'my.ns')).toBe(true);
     expect(validateNamespaceLockdown('{namespace="myzns"} |= "error"', 'my.ns')).toBe(false);
   });
+
+  it('rejects a mismatched selector even when a raw-string line filter contains the locked namespace text', () => {
+    expect(
+      validateNamespaceLockdown('{namespace="evil"} |= `namespace="prod"`', 'prod'),
+    ).toBe(false);
+  });
+
+  it('rejects a mismatched selector even when the locked namespace text appears outside the selector', () => {
+    expect(
+      validateNamespaceLockdown('{app="api"} |= "namespace=\\"prod\\""', 'prod'),
+    ).toBe(false);
+  });
+
+  it('rejects a query with no selector at all', () => {
+    expect(validateNamespaceLockdown('namespace="prod"', 'prod')).toBe(false);
+  });
+
+  it('ignores braces inside quoted regex values when locating the selector boundary', () => {
+    expect(
+      validateNamespaceLockdown('{namespace=~"prod-[0-9]{3}"} |= "error"', 'prod-[0-9]{3}'),
+    ).toBe(true);
+  });
+
+  it('rejects a bypass where a backtick-quoted matcher value spoofs the locked namespace text', () => {
+    // The real selector targets "evil"; the decoy `namespace="prod"` text lives inside a
+    // backtick raw-string label value (app=~`...`) and inside a backtick line filter.
+    const query = '{namespace="evil", app=~`foo"bar`} |= `" namespace="prod" }`';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+    expect(validateNamespaceLockdown(query, 'evil')).toBe(true);
+  });
+
+  it('does not block a legitimate query whose backtick-quoted value contains a brace', () => {
+    const query = '{namespace="prod", app=~`foo\\{.*`}';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(true);
+  });
+
+  it('accepts a backtick-quoted namespace matcher value', () => {
+    expect(validateNamespaceLockdown('{namespace=`prod`} |= "error"', 'prod')).toBe(true);
+  });
+
+  it('rejects a negated namespace matcher even when the value matches', () => {
+    expect(validateNamespaceLockdown('{namespace!="prod"} |= "error"', 'prod')).toBe(false);
+    expect(validateNamespaceLockdown('{namespace!~"prod"} |= "error"', 'prod')).toBe(false);
+  });
+
+  it('rejects a malformed selector rather than guessing', () => {
+    expect(validateNamespaceLockdown('{namespace=prod} |= "error"', 'prod')).toBe(false);
+  });
+
+  it('rejects a bypass where a decoy selector is hidden in a leading comment', () => {
+    // Loki ignores the commented line and executes the real (different) selector.
+    const query = '# {namespace="prod"}\n{namespace="evil"} |= "ERROR"';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+    expect(validateNamespaceLockdown(query, 'evil')).toBe(true);
+  });
+
+  it('does not treat a "#" inside a quoted value as a comment', () => {
+    expect(validateNamespaceLockdown('{namespace="pro#d"} |= "error"', 'pro#d')).toBe(true);
+  });
+
+  it('rejects a metric query where only the first of multiple stream selectors matches the locked namespace', () => {
+    const query = 'sum(rate({namespace="prod"}[5m])) / sum(rate({namespace="evil"}[5m]))';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+  });
+
+  it('accepts a metric query where every stream selector matches the locked namespace', () => {
+    const query = 'sum(rate({namespace="prod"}[5m])) / sum(rate({namespace="prod", app="api"}[5m]))';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(true);
+  });
+
+  it('rejects a selector with a non-simple escape sequence rather than mis-decoding it', () => {
+    // Loki decodes `p` as "p" (a real LogQL string-literal unicode escape), but a naive
+    // per-character scan would read it as the literal text "u0070" — fail closed instead of
+    // guessing wrong in either direction.
+    const query = '{namespace="\\u0070rod"} |= "error"';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+    expect(validateNamespaceLockdown(query, 'u0070rod')).toBe(false);
+  });
+
+  it('still decodes simple `\\"` and `\\\\` escapes in matcher values', () => {
+    expect(validateNamespaceLockdown('{namespace="prod\\\\"} |= "error"', 'prod\\')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
