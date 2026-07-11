@@ -94,6 +94,28 @@ describe('validateNamespaceLockdown', () => {
     expect(validateNamespaceLockdown('{namespace="my.ns"} |= "error"', 'my.ns')).toBe(true);
     expect(validateNamespaceLockdown('{namespace="myzns"} |= "error"', 'my.ns')).toBe(false);
   });
+
+  it('rejects a mismatched selector even when a raw-string line filter contains the locked namespace text', () => {
+    expect(
+      validateNamespaceLockdown('{namespace="evil"} |= `namespace="prod"`', 'prod'),
+    ).toBe(false);
+  });
+
+  it('rejects a mismatched selector even when the locked namespace text appears outside the selector', () => {
+    expect(
+      validateNamespaceLockdown('{app="api"} |= "namespace=\\"prod\\""', 'prod'),
+    ).toBe(false);
+  });
+
+  it('rejects a query with no selector at all', () => {
+    expect(validateNamespaceLockdown('namespace="prod"', 'prod')).toBe(false);
+  });
+
+  it('ignores braces inside quoted regex values when locating the selector boundary', () => {
+    expect(
+      validateNamespaceLockdown('{namespace=~"prod-[0-9]{3}"} |= "error"', 'prod-[0-9]{3}'),
+    ).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

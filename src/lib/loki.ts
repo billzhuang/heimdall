@@ -33,15 +33,50 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 export const resolveTime = resolveTimePassthrough;
 
 /**
- * Check that a LogQL query contains an exact namespace selector matching the
- * locked namespace. Accepts namespace="<ns>" or namespace=~"<ns>" (exact-string
- * regex), rejecting selectors that could match other namespaces.
+ * Extract the LogQL stream selector — the leading `{...}` brace group — from
+ * a query, ignoring braces inside quoted label values. Returns null if the
+ * query has no selector or it's unterminated.
+ */
+function extractStreamSelector(query: string): string | null {
+  const start = query.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inQuotes = false;
+  for (let i = start; i < query.length; i++) {
+    const ch = query[i];
+    if (inQuotes) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inQuotes = false;
+      continue;
+    }
+    if (ch === '"') inQuotes = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return query.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Check that a LogQL query's stream selector contains an exact namespace
+ * selector matching the locked namespace. Accepts namespace="<ns>" or
+ * namespace=~"<ns>" (exact-string regex), rejecting selectors that could
+ * match other namespaces.
+ *
+ * Only the stream selector itself is checked (not line filters or other
+ * pipeline stages) — a raw string line filter like `|= \`namespace="prod"\``
+ * must not be able to satisfy the lockdown while the real selector targets a
+ * different namespace.
  */
 export function validateNamespaceLockdown(query: string, lockedNamespace: string): boolean {
+  const selector = extractStreamSelector(query);
+  if (selector === null) return false;
   const escaped = escapeRegExpLiteral(lockedNamespace);
   const exact = new RegExp(`namespace\\s*=\\s*"${escaped}"`);
   const regexExact = new RegExp(`namespace\\s*=~\\s*"${escaped}"`);
-  return exact.test(query) || regexExact.test(query);
+  return exact.test(selector) || regexExact.test(selector);
 }
 
 export interface LokiQueryParams {
