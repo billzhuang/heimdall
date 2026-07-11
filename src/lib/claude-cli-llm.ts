@@ -10,14 +10,10 @@
  * kubectl or other tools. Use this backend when a raw ANTHROPIC_API_KEY is
  * unavailable but the Claude CLI is present and authenticated.
  */
-import { makeCliLlm } from './cli-llm.ts';
+import { makeCliLlm, type CliLlmOptions } from './cli-llm.ts';
 
-export interface ClaudeCliOptions {
-  /** Max execution time in milliseconds. Defaults to 120 000. */
-  timeoutMs?: number;
-  /** Model name (without provider prefix), e.g. `claude-sonnet-4-6`. */
-  model?: string;
-}
+/** Options for `callClaudeCli`. `model` is the name without provider prefix, e.g. `claude-sonnet-4-6`. */
+export type ClaudeCliOptions = CliLlmOptions;
 
 const { callCli, isCliAvailable } = makeCliLlm('claude', '-p');
 
