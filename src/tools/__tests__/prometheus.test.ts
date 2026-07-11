@@ -84,6 +84,30 @@ describe('makePrometheusQuery — timeout precedence', () => {
   });
 });
 
+describe('makePrometheusQuery — namespace lockdown', () => {
+  it('bakes lockedNamespace into the config passed to runPrometheusQuery', async () => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const tool = makePrometheusQuery({}, undefined, 'prod-payments');
+    await tool.run({ input: { queryType: 'instant', query: 'up{namespace="prod-payments"}' } });
+    expect(runPrometheusQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ lockedNamespace: 'prod-payments' }),
+    );
+  });
+
+  it('description mentions lockdown when active', () => {
+    const tool = makePrometheusQuery({}, undefined, 'prod-payments');
+    expect(tool.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    expect(tool.description).toContain('prod-payments');
+  });
+
+  it('description has no lockdown note when no lock is set', () => {
+    const tool = makePrometheusQuery();
+    expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
+  });
+});
+
 describe('makePrometheusQuery — tool metadata and params forwarding', () => {
   it('has the expected model-facing name', () => {
     expect(makePrometheusQuery().name).toBe('prometheus_query');
@@ -154,5 +178,30 @@ describe('prometheusPlugin', () => {
       expect.anything(),
       expect.objectContaining({ url: 'http://prom-test:9090', timeoutMs: 5000, regexRedactionRules: rules }),
     );
+  });
+
+  it('factory passes namespace lock through to makePrometheusQuery', async () => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const config = {
+      prometheus: { url: 'http://prom-test:9090' },
+      namespace: { locked: 'prod-ns' },
+    } as unknown as HeimdallConfig;
+    const tool = prometheusPlugin.factory(config, []);
+    expect(tool.description).toContain('NAMESPACE LOCKDOWN ACTIVE');
+    await tool.run({ input: { queryType: 'instant', query: 'up{namespace="prod-ns"}' } });
+    expect(runPrometheusQuery).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ lockedNamespace: 'prod-ns' }),
+    );
+  });
+
+  it('factory works when namespace.locked is undefined', async () => {
+    runPrometheusQuery.mockResolvedValue('ok');
+    const config = {
+      prometheus: { url: 'http://prom-test:9090' },
+    } as unknown as HeimdallConfig;
+    const tool = prometheusPlugin.factory(config, []);
+    expect(tool.description).not.toContain('NAMESPACE LOCKDOWN');
   });
 });
