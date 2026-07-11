@@ -10,7 +10,6 @@ import { makeTruncate } from './output-truncation.ts';
 import { resolveTimePassthrough } from './time-resolution.ts';
 import { runJsonQuery } from './http.ts';
 import { clampLimit } from './tool-config.ts';
-import { escapeRegExpLiteral } from './regexp-utils.ts';
 import { BLOCKED_PREFIX } from './harness.ts';
 
 export interface LokiConfig {
@@ -34,49 +33,125 @@ export const resolveTime = resolveTimePassthrough;
 
 /**
  * Extract the LogQL stream selector — the leading `{...}` brace group — from
- * a query, ignoring braces inside quoted label values. Returns null if the
- * query has no selector or it's unterminated.
+ * a query. LogQL string literals (double-quoted, with backslash escapes, or
+ * backtick-delimited raw strings) are skipped as opaque spans so that a brace
+ * or quote inside a label value can't be mistaken for the selector boundary.
+ * Returns null if the query has no selector or it's unterminated.
  */
 function extractStreamSelector(query: string): string | null {
   const start = query.indexOf('{');
   if (start === -1) return null;
   let depth = 0;
-  let inQuotes = false;
-  for (let i = start; i < query.length; i++) {
+  let i = start;
+  while (i < query.length) {
     const ch = query[i];
-    if (inQuotes) {
-      if (ch === '\\') i++;
-      else if (ch === '"') inQuotes = false;
+    if (ch === '"') {
+      i++;
+      while (i < query.length && query[i] !== '"') {
+        i += query[i] === '\\' ? 2 : 1;
+      }
+      i++;
       continue;
     }
-    if (ch === '"') inQuotes = true;
-    else if (ch === '{') depth++;
+    if (ch === '`') {
+      i++;
+      while (i < query.length && query[i] !== '`') i++;
+      i++;
+      continue;
+    }
+    if (ch === '{') depth++;
     else if (ch === '}') {
       depth--;
       if (depth === 0) return query.slice(start, i + 1);
     }
+    i++;
   }
   return null;
 }
 
+interface LabelMatcher {
+  label: string;
+  op: string;
+  value: string;
+}
+
+const MATCHER_OPS = ['=~', '!~', '!=', '='];
+
+/**
+ * Parse a `{...}` LogQL stream selector into its label matchers. Returns null
+ * on anything that doesn't parse as a well-formed matcher list — callers
+ * should fail closed (reject) rather than guess at a malformed selector.
+ */
+function parseSelectorMatchers(selector: string): LabelMatcher[] | null {
+  const inner = selector.slice(1, -1);
+  const matchers: LabelMatcher[] = [];
+  let i = 0;
+  const n = inner.length;
+  while (i < n) {
+    while (i < n && /[\s,]/.test(inner[i])) i++;
+    if (i >= n) break;
+
+    const labelStart = i;
+    while (i < n && /[A-Za-z0-9_]/.test(inner[i])) i++;
+    const label = inner.slice(labelStart, i);
+    if (!label) return null;
+
+    while (i < n && /\s/.test(inner[i])) i++;
+    const op = MATCHER_OPS.find((candidate) => inner.startsWith(candidate, i));
+    if (!op) return null;
+    i += op.length;
+    while (i < n && /\s/.test(inner[i])) i++;
+
+    const quote = inner[i];
+    if (quote !== '"' && quote !== '`') return null;
+    i++;
+    let value = '';
+    if (quote === '"') {
+      while (i < n && inner[i] !== '"') {
+        if (inner[i] === '\\' && i + 1 < n) {
+          value += inner[i + 1];
+          i += 2;
+        } else {
+          value += inner[i];
+          i++;
+        }
+      }
+    } else {
+      while (i < n && inner[i] !== '`') {
+        value += inner[i];
+        i++;
+      }
+    }
+    if (i >= n) return null; // unterminated value
+    i++; // consume closing quote/backtick
+
+    matchers.push({ label, op, value });
+  }
+  return matchers;
+}
+
 /**
  * Check that a LogQL query's stream selector contains an exact namespace
- * selector matching the locked namespace. Accepts namespace="<ns>" or
- * namespace=~"<ns>" (exact-string regex), rejecting selectors that could
- * match other namespaces.
+ * matcher for the locked namespace. Accepts namespace="<ns>" or
+ * namespace=~"<ns>" (treated as an exact-string match, not a real regex
+ * evaluation), rejecting anything else — a different value, a wildcard
+ * regex, negated operators (!=, !~), or no namespace matcher at all.
  *
- * Only the stream selector itself is checked (not line filters or other
- * pipeline stages) — a raw string line filter like `|= \`namespace="prod"\``
- * must not be able to satisfy the lockdown while the real selector targets a
- * different namespace.
+ * The selector is fully parsed into label/operator/value matchers rather
+ * than regex-matched as raw text: a naive substring/regex check over the
+ * selector text can be spoofed by decoy text inside another matcher's
+ * backtick-quoted (unescaped) value — e.g. `app=~\`namespace="prod"\`` — while
+ * the real namespace matcher targets something else entirely. Parsing each
+ * matcher's value independently closes that off.
  */
 export function validateNamespaceLockdown(query: string, lockedNamespace: string): boolean {
   const selector = extractStreamSelector(query);
   if (selector === null) return false;
-  const escaped = escapeRegExpLiteral(lockedNamespace);
-  const exact = new RegExp(`namespace\\s*=\\s*"${escaped}"`);
-  const regexExact = new RegExp(`namespace\\s*=~\\s*"${escaped}"`);
-  return exact.test(selector) || regexExact.test(selector);
+  const matchers = parseSelectorMatchers(selector);
+  if (matchers === null) return false;
+  return matchers.some(
+    (m) => m.label === 'namespace' && (m.op === '=' || m.op === '=~') && m.value === lockedNamespace,
+  );
 }
 
 export interface LokiQueryParams {

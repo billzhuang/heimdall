@@ -116,6 +116,32 @@ describe('validateNamespaceLockdown', () => {
       validateNamespaceLockdown('{namespace=~"prod-[0-9]{3}"} |= "error"', 'prod-[0-9]{3}'),
     ).toBe(true);
   });
+
+  it('rejects a bypass where a backtick-quoted matcher value spoofs the locked namespace text', () => {
+    // The real selector targets "evil"; the decoy `namespace="prod"` text lives inside a
+    // backtick raw-string label value (app=~`...`) and inside a backtick line filter.
+    const query = '{namespace="evil", app=~`foo"bar`} |= `" namespace="prod" }`';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+    expect(validateNamespaceLockdown(query, 'evil')).toBe(true);
+  });
+
+  it('does not block a legitimate query whose backtick-quoted value contains a brace', () => {
+    const query = '{namespace="prod", app=~`foo\\{.*`}';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(true);
+  });
+
+  it('accepts a backtick-quoted namespace matcher value', () => {
+    expect(validateNamespaceLockdown('{namespace=`prod`} |= "error"', 'prod')).toBe(true);
+  });
+
+  it('rejects a negated namespace matcher even when the value matches', () => {
+    expect(validateNamespaceLockdown('{namespace!="prod"} |= "error"', 'prod')).toBe(false);
+    expect(validateNamespaceLockdown('{namespace!~"prod"} |= "error"', 'prod')).toBe(false);
+  });
+
+  it('rejects a malformed selector rather than guessing', () => {
+    expect(validateNamespaceLockdown('{namespace=prod} |= "error"', 'prod')).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
