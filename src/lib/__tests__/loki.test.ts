@@ -142,6 +142,27 @@ describe('validateNamespaceLockdown', () => {
   it('rejects a malformed selector rather than guessing', () => {
     expect(validateNamespaceLockdown('{namespace=prod} |= "error"', 'prod')).toBe(false);
   });
+
+  it('rejects a bypass where a decoy selector is hidden in a leading comment', () => {
+    // Loki ignores the commented line and executes the real (different) selector.
+    const query = '# {namespace="prod"}\n{namespace="evil"} |= "ERROR"';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+    expect(validateNamespaceLockdown(query, 'evil')).toBe(true);
+  });
+
+  it('does not treat a "#" inside a quoted value as a comment', () => {
+    expect(validateNamespaceLockdown('{namespace="pro#d"} |= "error"', 'pro#d')).toBe(true);
+  });
+
+  it('rejects a metric query where only the first of multiple stream selectors matches the locked namespace', () => {
+    const query = 'sum(rate({namespace="prod"}[5m])) / sum(rate({namespace="evil"}[5m]))';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(false);
+  });
+
+  it('accepts a metric query where every stream selector matches the locked namespace', () => {
+    const query = 'sum(rate({namespace="prod"}[5m])) / sum(rate({namespace="prod", app="api"}[5m]))';
+    expect(validateNamespaceLockdown(query, 'prod')).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

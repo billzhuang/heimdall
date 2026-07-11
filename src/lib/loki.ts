@@ -32,15 +32,65 @@ const truncate = makeTruncate(MAX_RESULT_CHARS, 'use a narrower time range, smal
 export const resolveTime = resolveTimePassthrough;
 
 /**
- * Extract the LogQL stream selector — the leading `{...}` brace group — from
- * a query. LogQL string literals (double-quoted, with backslash escapes, or
- * backtick-delimited raw strings) are skipped as opaque spans so that a brace
- * or quote inside a label value can't be mistaken for the selector boundary.
- * Returns null if the query has no selector or it's unterminated.
+ * Strip LogQL `#`-to-end-of-line comments (outside quoted/backtick strings).
+ * Loki ignores commented text when executing a query, so a decoy stream
+ * selector hidden in a comment must not be mistaken for the real one.
  */
-function extractStreamSelector(query: string): string | null {
-  const start = query.indexOf('{');
-  if (start === -1) return null;
+function stripLogQLComments(query: string): string {
+  let out = '';
+  let i = 0;
+  const n = query.length;
+  while (i < n) {
+    const ch = query[i];
+    if (ch === '"') {
+      out += ch;
+      i++;
+      while (i < n && query[i] !== '"') {
+        if (query[i] === '\\' && i + 1 < n) {
+          out += query[i] + query[i + 1];
+          i += 2;
+        } else {
+          out += query[i];
+          i++;
+        }
+      }
+      if (i < n) {
+        out += query[i];
+        i++;
+      }
+      continue;
+    }
+    if (ch === '`') {
+      out += ch;
+      i++;
+      while (i < n && query[i] !== '`') {
+        out += query[i];
+        i++;
+      }
+      if (i < n) {
+        out += query[i];
+        i++;
+      }
+      continue;
+    }
+    if (ch === '#') {
+      while (i < n && query[i] !== '\n') i++;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Find the index of the `}` that closes the brace opened at `start` in
+ * `query[start]`. LogQL string literals (double-quoted, with backslash
+ * escapes, or backtick-delimited raw strings) are skipped as opaque spans so
+ * that a brace or quote inside a label value can't be mistaken for the real
+ * boundary. Returns -1 if unterminated.
+ */
+function findMatchingBrace(query: string, start: number): number {
   let depth = 0;
   let i = start;
   while (i < query.length) {
@@ -62,11 +112,49 @@ function extractStreamSelector(query: string): string | null {
     if (ch === '{') depth++;
     else if (ch === '}') {
       depth--;
-      if (depth === 0) return query.slice(start, i + 1);
+      if (depth === 0) return i;
     }
     i++;
   }
-  return null;
+  return -1;
+}
+
+/**
+ * Extract every LogQL stream selector — each top-level `{...}` brace group —
+ * from a query. LogQL metric queries can combine more than one selector via
+ * binary operators (e.g. `sum(rate({a}[5m])) / sum(rate({b}[5m]))`), so a
+ * namespace lockdown must check all of them, not just the first. Returns null
+ * if any selector is unterminated.
+ */
+function extractAllStreamSelectors(query: string): string[] | null {
+  const selectors: string[] = [];
+  let i = 0;
+  while (i < query.length) {
+    const ch = query[i];
+    if (ch === '"') {
+      i++;
+      while (i < query.length && query[i] !== '"') {
+        i += query[i] === '\\' ? 2 : 1;
+      }
+      i++;
+      continue;
+    }
+    if (ch === '`') {
+      i++;
+      while (i < query.length && query[i] !== '`') i++;
+      i++;
+      continue;
+    }
+    if (ch === '{') {
+      const end = findMatchingBrace(query, i);
+      if (end === -1) return null;
+      selectors.push(query.slice(i, end + 1));
+      i = end + 1;
+      continue;
+    }
+    i++;
+  }
+  return selectors;
 }
 
 interface LabelMatcher {
@@ -131,27 +219,37 @@ function parseSelectorMatchers(selector: string): LabelMatcher[] | null {
 }
 
 /**
- * Check that a LogQL query's stream selector contains an exact namespace
- * matcher for the locked namespace. Accepts namespace="<ns>" or
+ * Check that every LogQL stream selector in a query contains an exact
+ * namespace matcher for the locked namespace. Accepts namespace="<ns>" or
  * namespace=~"<ns>" (treated as an exact-string match, not a real regex
  * evaluation), rejecting anything else — a different value, a wildcard
  * regex, negated operators (!=, !~), or no namespace matcher at all.
  *
- * The selector is fully parsed into label/operator/value matchers rather
+ * Metric queries can combine multiple selectors via binary operators (e.g.
+ * `sum(rate({a}[5m])) / sum(rate({b}[5m]))`), so every selector found must
+ * pass — checking only the first would let a later selector read an
+ * unlocked namespace while the whole query is forwarded to Loki unchanged.
+ * A query with no selector at all is rejected (fail closed).
+ *
+ * Each selector is fully parsed into label/operator/value matchers rather
  * than regex-matched as raw text: a naive substring/regex check over the
  * selector text can be spoofed by decoy text inside another matcher's
  * backtick-quoted (unescaped) value — e.g. `app=~\`namespace="prod"\`` — while
  * the real namespace matcher targets something else entirely. Parsing each
- * matcher's value independently closes that off.
+ * matcher's value independently closes that off. `#`-comments are stripped
+ * first so a decoy selector hidden in a comment (which Loki itself ignores)
+ * can't be validated in place of the real, executed selector.
  */
 export function validateNamespaceLockdown(query: string, lockedNamespace: string): boolean {
-  const selector = extractStreamSelector(query);
-  if (selector === null) return false;
-  const matchers = parseSelectorMatchers(selector);
-  if (matchers === null) return false;
-  return matchers.some(
-    (m) => m.label === 'namespace' && (m.op === '=' || m.op === '=~') && m.value === lockedNamespace,
-  );
+  const selectors = extractAllStreamSelectors(stripLogQLComments(query));
+  if (selectors === null || selectors.length === 0) return false;
+  return selectors.every((selector) => {
+    const matchers = parseSelectorMatchers(selector);
+    if (matchers === null) return false;
+    return matchers.some(
+      (m) => m.label === 'namespace' && (m.op === '=' || m.op === '=~') && m.value === lockedNamespace,
+    );
+  });
 }
 
 export interface LokiQueryParams {
