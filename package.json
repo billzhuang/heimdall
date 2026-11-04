@@ -1,17 +1,15 @@
 {
   "name": "heimdall-sre",
   "version": "0.2.0",
-  "description": "AI-powered, read-only Kubernetes SRE agent built on the Flue agent framework",
+  "description": "AI-powered, read-only Kubernetes SRE agent built on Pi Durable",
   "type": "module",
   "bin": {
     "heimdall": "bin/heimdall"
   },
   "scripts": {
-    "dev": "flue dev --target node",
-    "build": "flue build --target node",
-    "build:cloudflare": "flue build --target cloudflare",
-    "deploy:cloudflare": "npm run build:cloudflare && npx wrangler deploy --config dist/heimdall/wrangler.json",
-    "connect": "flue connect heimdall local --target node",
+    "dev": "tsx src/serve-mode.ts",
+    "build": "tsc --noEmit",
+    "connect": "tsx src/pi-runner.ts",
     "prompt": "bin/heimdall",
     "watch": "tsx src/watch-mode.ts",
     "triage": "tsx src/triage-mode.ts",
@@ -36,31 +34,35 @@
     "eks",
     "sre",
     "ai-agent",
-    "flue",
+    "pi-durable",
     "k8s",
     "devops"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@flue/cli": "^1.0.0-beta.6",
-    "@flue/runtime": "^1.0.0-beta.6",
-    "@flue/sdk": "^1.0.0-beta.6",
-    "@valibot/to-json-schema": "^1.7.1",
-    "js-yaml": "^4.2.0",
-    "valibot": "^1.4.1"
+    "@earendil-works/chord": "^1.5.0",
+    "@earendil-works/pi-ai": "^1.5.0",
+    "@earendil-works/pi-durable": "^1.5.0",
+    "@earendil-works/pi-schema": "^1.5.0",
+    "@hono/node-server": "^2.1.6",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@valibot/to-json-schema": "^1.8.0",
+    "hono": "^4.13.16",
+    "js-yaml": "^5.5.0",
+    "valibot": "^1.5.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "wrangler": "^4.0.0",
-    "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.1.9",
-    "eslint": "^10.5.0",
-    "fast-check": "^4.8.0",
-    "tsx": "^4.19.4",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.0",
-    "vitest": "^4.1.9"
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.1.0",
+    "eslint": "^10.14.0",
+    "fast-check": "^4.10.2",
+    "tsx": "^4.23.15",
+    "typescript": "6.0",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.157.0"
   },
   "engines": {
     "node": ">=22.19.0"

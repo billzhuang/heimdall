@@ -11,8 +11,8 @@
  * ALL_TOOL_PLUGINS in src/tools/index.ts, and add a matching key to the
  * config schema in src/lib/config.ts.
  */
-import { defineAgent, defineAgentProfile } from '@flue/runtime';
-import type { ToolDefinition } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '../lib/pi-durable.ts';
+import type { ToolDefinition } from '../lib/pi-durable.ts';
 import { initTelemetry, isTelemetryEnabled, recordToolCall, startOtelExport } from '../lib/telemetry.ts';
 import { resolve } from 'node:path';
 import { ALL_TOOL_PLUGINS } from '../tools/index.ts';

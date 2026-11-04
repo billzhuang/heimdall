@@ -16,12 +16,12 @@ vi.mock('../session.ts', () => ({
 }));
 
 const { promptMock } = vi.hoisted(() => ({ promptMock: vi.fn() }));
-vi.mock('@flue/sdk', () => ({
-  createFlueClient: vi.fn(() => ({ agents: { prompt: promptMock } })),
+vi.mock('../pi-durable.ts', () => ({
+  createSessionClient: vi.fn(() => ({ agents: { prompt: promptMock } })),
 }));
 
 import { createSession, loadSession, updateSession, deleteSession } from '../session.ts';
-import { createFlueClient } from '@flue/sdk';
+import { createSessionClient } from '../pi-durable.ts';
 import {
   cmdInfo,
   cmdEnd,
@@ -272,13 +272,13 @@ describe('cmdPrompt', () => {
     vi.mocked(updateSession).mockImplementation(() => {});
     promptMock.mockReset();
     promptMock.mockResolvedValue({ result: { text: 'crash-looping due to OOMKilled' } });
-    vi.mocked(createFlueClient).mockClear();
+    vi.mocked(createSessionClient).mockClear();
   });
 
   it('sends the message to the resolved session and prints the response', async () => {
     await cmdPrompt(['why is my pod crash-looping?', '--session', 'session-123']);
     expect(loadSession).toHaveBeenCalledWith('session-123');
-    expect(createFlueClient).toHaveBeenCalledWith({ baseUrl: sampleSession.serverUrl });
+    expect(createSessionClient).toHaveBeenCalledWith({ baseUrl: sampleSession.serverUrl });
     expect(promptMock).toHaveBeenCalledWith('heimdall', sampleSession.id, {
       message: 'why is my pod crash-looping?',
     });
@@ -329,10 +329,10 @@ describe('cmdPrompt', () => {
     expect(stderr.join('')).toContain('Invalid server URL "not-a-url"');
   });
 
-  it('dies with a helpful message when the Flue server is unreachable', async () => {
+  it('dies with a helpful message when the Heimdall server is unreachable', async () => {
     promptMock.mockRejectedValue(new Error('fetch failed'));
     await expect(cmdPrompt(['hello', '--session', 'session-123'])).rejects.toThrow('process.exit(1)');
-    expect(stderr.join('')).toContain('Failed to reach Flue server');
+    expect(stderr.join('')).toContain('Failed to reach Heimdall server');
     expect(stderr.join('')).toContain('fetch failed');
   });
 

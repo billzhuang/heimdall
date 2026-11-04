@@ -4,7 +4,7 @@
  * Compatible with both Jaeger Query (port 16686) and Grafana Tempo (via its
  * Jaeger-compatible API). Point `jaeger.url` in heimdall.config.yaml at either.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runJaegerQuery, type JaegerConfig } from '../lib/jaeger.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

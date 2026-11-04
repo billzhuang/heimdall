@@ -17,7 +17,7 @@
  *   HEIMDALL_SESSION_DIR  – directory for session handle files (default: ~/.heimdall/sessions)
  *   HEIMDALL_SERVER       – default Flue server URL (default: http://localhost:3000)
  */
-import { createFlueClient } from '@flue/sdk';
+import { createSessionClient } from './lib/pi-durable.ts';
 import {
   createSession,
   deleteSession,
@@ -164,7 +164,7 @@ export async function cmdPrompt(args: string[]): Promise<void> {
 
   dieOnInvalidServerUrl(session.serverUrl, ` configured for session ${session.id}`);
 
-  const client = createFlueClient({ baseUrl: session.serverUrl });
+  const client = createSessionClient({ baseUrl: session.serverUrl });
 
   process.stderr.write(`[heimdall-session] Sending prompt to session ${session.id} at ${session.serverUrl}...\n`);
 
@@ -173,9 +173,9 @@ export async function cmdPrompt(args: string[]): Promise<void> {
     result = await client.agents.prompt('heimdall', session.id, { message });
   } catch (err) {
     die(
-      `Failed to reach Flue server at ${session.serverUrl}: ${getMessage(err)}\n` +
-      `Make sure a Heimdall Flue server is running:\n` +
-      `  flue dev --target node\n` +
+      `Failed to reach Heimdall server at ${session.serverUrl}: ${getMessage(err)}\n` +
+      `Make sure a Heimdall server is running:\n` +
+      `  heimdall serve (or npm run dev)\n` +
       `  (or pass a different URL with --server when creating the session)`
     );
   }

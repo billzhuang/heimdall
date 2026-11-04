@@ -11,7 +11,7 @@
  *
  * The tool registration loop in heimdall.ts replaces the manual ALL_TOOLS map.
  */
-import type { ToolDefinition } from '@flue/runtime';
+import type { ToolDefinition } from './pi-durable.ts';
 import type { HeimdallConfig } from './config.ts';
 import type { CompiledRedactionRule } from './regex-redact.ts';
 

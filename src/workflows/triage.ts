@@ -15,7 +15,7 @@
  * Schedule externally (cron example):
  *   0 *\/6 * * *  npx flue run triage --target node
  */
-import { defineWorkflow } from '@flue/runtime';
+import { defineWorkflow } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import heimdallAgent from '../agents/heimdall.ts';
 import { buildTriagePrompt } from '../lib/triage.ts';

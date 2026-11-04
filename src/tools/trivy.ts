@@ -5,7 +5,7 @@
  * in `heimdall.config.yaml`. This prevents unexpected network traffic (Trivy DB
  * pulls) on clusters where a Trivy binary is not available.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runTrivy, type RunTrivyOptions } from '../lib/trivy.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

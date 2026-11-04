@@ -1,7 +1,7 @@
 /**
  * The `prometheus_query` tool: read-only Prometheus metric queries.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runPrometheusQuery } from '../lib/prometheus.ts';
 import type { PrometheusConfig } from '../lib/prometheus.ts';

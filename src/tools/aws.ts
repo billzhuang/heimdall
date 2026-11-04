@@ -5,7 +5,7 @@
  * in `heimdall.config.yaml`. This prevents unexpected AWS credential usage on
  * clusters where AWS CLI is not configured.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import { runAwsCli, type RunAwsCliOptions } from '../lib/aws.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';
