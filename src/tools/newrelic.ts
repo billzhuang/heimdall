@@ -9,7 +9,7 @@
  * API key and account ID come from trusted config/env — never from
  * model-selected arguments.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runNewRelicQuery, type NewRelicConfig } from '../lib/newrelic.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

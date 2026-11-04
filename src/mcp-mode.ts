@@ -37,8 +37,11 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import * as v from 'valibot';
-import { toJsonSchema } from '@valibot/to-json-schema';
-import type { ToolDefinition } from '@flue/runtime';
+import {
+  isValibotSchema,
+  schemaToJsonParameters,
+  type ToolDefinition,
+} from './lib/pi-durable.ts';
 import { loadConfig } from './lib/config.ts';
 import { compileRules } from './lib/regex-redact.ts';
 import { isMainModule } from './lib/cli-args.ts';
@@ -56,64 +59,10 @@ const { allTools, enabledKeys } = buildToolRegistry(ALL_TOOL_PLUGINS, config, re
 export const enabledTools: ToolDefinition[] = Array.from(enabledKeys).map((key) => allTools[key]);
 
 /**
- * Detects a valibot schema (identified by its `kind === 'schema'` marker) as
- * opposed to a raw JSON Schema object or other unrecognised input.
- */
-function isValibotSchema(
-  input: unknown,
-): input is v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>> {
-  return (
-    typeof input === 'object' &&
-    input !== null &&
-    'kind' in input &&
-    (input as { kind: unknown }).kind === 'schema'
-  );
-}
-
-/**
- * Build the `{ type: 'object', properties?, required? }` shape shared by both
- * `parametersToInputSchema` branches from a JSON-Schema-like object.
- */
-function buildInputSchemaShape(source: Record<string, unknown>): {
-  type: 'object';
-  properties?: Record<string, unknown>;
-  required?: string[];
-} {
-  return {
-    type: 'object',
-    ...(source.properties !== undefined && {
-      properties: source.properties as Record<string, unknown>,
-    }),
-    ...(Array.isArray(source.required) && { required: source.required as string[] }),
-  };
-}
-
-/**
- * Convert a Flue ToolDefinition's parameters to an MCP-compatible JSON Schema
+ * Convert a ToolDefinition's parameters to an MCP-compatible JSON Schema
  * input schema object.
- *
- * Valibot schemas (detected by their `kind === 'schema'` marker) are converted
- * via `@valibot/to-json-schema`. Raw JSON Schema objects (e.g. from MCP adapters
- * or other schema libraries) are passed through as-is. Falls back to a bare
- * `{ type: 'object' }` when neither conversion applies.
  */
-export function parametersToInputSchema(input: unknown): {
-  type: 'object';
-  properties?: Record<string, unknown>;
-  required?: string[];
-  [key: string]: unknown;
-} {
-  if (isValibotSchema(input)) {
-    try {
-      return buildInputSchemaShape(toJsonSchema(input) as Record<string, unknown>);
-    } catch {
-      // Conversion failed — fall through to bare schema below.
-    }
-  }
-
-  // input is a raw JSON Schema object (or something unrecognised) — use directly.
-  return buildInputSchemaShape((input ?? {}) as Record<string, unknown>);
-}
+export const parametersToInputSchema = schemaToJsonParameters;
 
 export function createMcpServer(): Server {
   const server = new Server(

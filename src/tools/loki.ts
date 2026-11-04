@@ -1,7 +1,7 @@
 /**
  * The `loki_query` tool: read-only Grafana Loki log queries via LogQL.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runLokiQuery, type LokiConfig } from '../lib/loki.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

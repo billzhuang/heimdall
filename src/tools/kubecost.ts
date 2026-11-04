@@ -1,7 +1,7 @@
 /**
  * The `kubecost_query` tool: read-only Kubecost API queries for cost attribution.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runKubecostQuery, type KubecostConfig } from '../lib/kubecost.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

@@ -10,7 +10,7 @@
  * API credentials (DD-API-KEY, DD-APPLICATION-KEY) and site come from trusted
  * config/env — never from model-selected arguments.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runDatadogQuery, type DatadogConfig } from '../lib/datadog.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

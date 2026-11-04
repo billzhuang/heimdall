@@ -10,7 +10,7 @@
  * Mutating subcommands (deploy, destroy, bootstrap, watch, import, migrate, gc,
  * rollback) are blocked in code by the safety policy in cdk-safety.ts.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import { runCdk, type RunCdkOptions } from '../lib/cdk.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';
 import type { ToolPlugin } from '../lib/plugin.ts';

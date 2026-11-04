@@ -1,7 +1,7 @@
 /**
  * The `kubectl` tool: the agent's only path to the cluster, and a read-only one.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runKubectl, type AuditConfig } from '../lib/kubectl.ts';
 import type { CompiledRedactionRule } from '../lib/regex-redact.ts';

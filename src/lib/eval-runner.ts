@@ -80,7 +80,15 @@ export function validateScenarioField(
 
 export async function loadScenario(filePath: string): Promise<EvalScenario> {
   const raw = await readFile(filePath, 'utf8');
-  const parsed = loadYaml(raw) as Record<string, unknown>;
+  let parsed: Record<string, unknown> | undefined;
+  try {
+    parsed = loadYaml(raw) as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof Error && /input is empty/i.test(err.message)) {
+      invalidScenario(filePath, 'is not a valid YAML object');
+    }
+    throw err;
+  }
   if (!parsed || typeof parsed !== 'object') {
     invalidScenario(filePath, 'is not a valid YAML object');
   }

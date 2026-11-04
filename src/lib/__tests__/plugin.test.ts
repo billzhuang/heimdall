@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { buildToolRegistry, type ToolPlugin } from '../plugin.ts';
 import type { HeimdallConfig } from '../config.ts';
 import type { CompiledRedactionRule } from '../regex-redact.ts';
-import type { ToolDefinition } from '@flue/runtime';
+import type { ToolDefinition } from '../pi-durable.ts';
 
 const NO_RULES: CompiledRedactionRule[] = [];
 

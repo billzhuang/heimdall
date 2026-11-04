@@ -1,7 +1,7 @@
 /**
  * Discovery tools: let the agent enumerate clusters and namespaces.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import type { ToolPlugin } from '../lib/plugin.ts';
 import {

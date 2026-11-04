@@ -1,7 +1,7 @@
 /**
  * The `helm_release` tool: read-only Helm release inspection.
  */
-import { defineTool } from '@flue/runtime';
+import { defineTool } from '../lib/pi-durable.ts';
 import * as v from 'valibot';
 import { runHelm, ALLOWED_HELM_ACTIONS, ALLOWED_HELM_GET_TYPES, resolveHelmNamespaceLockdown } from '../lib/helm.ts';
 import { BLOCKED_PREFIX } from '../lib/harness.ts';
